@@ -37,6 +37,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="restore one prompt in the current workspace to the packaged default")
     p.set_defaults(func=cmd_init)
 
+    p = sub.add_parser("import", parents=[common],
+                       help="parse the .docx transcripts in data/ into the paragraph dataset")
+    p.set_defaults(func=cmd_import)
+
     p = sub.add_parser("status", parents=[common], help="show corpus, per-step demo/run state")
     p.add_argument("--json", action="store_true", help="machine-readable output")
     p.set_defaults(func=cmd_status)
@@ -62,6 +66,13 @@ def cmd_init(args) -> None:
     print(f"  1. Put your OpenAI API key in {project.root / '.env'}")
     print(f"  2. Drop your transcript .docx files into {project.data_dir}/")
     print("  3. Run: toolkit import")
+
+
+def cmd_import(args) -> None:
+    from .project import find_project
+    from .steps.import_ import run_import
+
+    run_import(find_project(args.project))
 
 
 def cmd_status(args) -> None:
