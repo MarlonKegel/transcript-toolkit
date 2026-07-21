@@ -1,0 +1,260 @@
+region,country
+Asia-Pacific,Afghanistan
+Asia-Pacific,Bangladesh
+Asia-Pacific,Cambodia
+Asia-Pacific,China
+Asia-Pacific,India
+Asia-Pacific,Indonesia
+Asia-Pacific,Japan
+Asia-Pacific,Laos
+Asia-Pacific,Malaysia
+Asia-Pacific,Mongolia
+Asia-Pacific,Myanmar (Burma)
+Asia-Pacific,Nepal
+Asia-Pacific,Pakistan
+Asia-Pacific,Philippines
+Asia-Pacific,South Korea
+Asia-Pacific,Sri Lanka
+Asia-Pacific,Thailand
+Asia-Pacific,Tibet
+Asia-Pacific,Timor-Leste
+Asia-Pacific,Vietnam
+Australia and New Zealand,NONE
+Baltics,Estonia
+Baltics,Latvia
+Baltics,Lithuania
+Caribbean,Haiti
+Central America,El Salvador
+Central America,Guatemala
+Central America,Honduras
+Central America,Mexico
+Central America,Nicaragua
+Central Asia,Kazakhstan
+Central Asia,Kyrgyzstan
+Central Asia,Tajikistan
+Central Asia,Uzbekistan
+Eastern Africa,Burundi
+Eastern Africa,Djibouti
+Eastern Africa,Eritrea
+Eastern Africa,Ethiopia
+Eastern Africa,Kenya
+Eastern Africa,Rwanda
+Eastern Africa,Somalia
+Eastern Africa,Sudan
+Eastern Africa,Tanzania
+Eastern Africa,Uganda
+Eastern Asia,China
+Eastern Asia,Japan
+Eastern Asia,Mongolia
+Eastern Asia,South Korea
+Eastern Asia,Tibet
+Eastern Europe,Belarus
+Eastern Europe,Bulgaria
+Eastern Europe,Czechia
+Eastern Europe,Hungary
+Eastern Europe,Moldova
+Eastern Europe,Poland
+Eastern Europe,Romania
+Eastern Europe,Russia
+Eastern Europe,Slovakia
+Eastern Europe,Ukraine
+Latin America,Argentina
+Latin America,Bolivia
+Latin America,Brazil
+Latin America,Chile
+Latin America,Colombia
+Latin America,Ecuador
+Latin America,El Salvador
+Latin America,Guatemala
+Latin America,Haiti
+Latin America,Honduras
+Latin America,Mexico
+Latin America,Nicaragua
+Latin America,Paraguay
+Latin America,Peru
+Latin America,Uruguay
+Latin America,Venezuela
+Melanesia,NONE
+Micronesia,NONE
+Middle Africa,Angola
+Middle Africa,Democratic Republic of the Congo
+Northern Africa,Algeria
+Northern Africa,Egypt
+Northern Africa,Libya
+Northern Africa,Morocco
+Northern Africa,Sudan
+Northern Africa,Tunisia
+Northern America,Canada
+Northern America,United States
+Northern Europe,Denmark
+Northern Europe,Estonia
+Northern Europe,Finland
+Northern Europe,Ireland
+Northern Europe,Latvia
+Northern Europe,Lithuania
+Northern Europe,Norway
+Northern Europe,Sweden
+Northern Europe,United Kingdom
+Pacific Islands,Fiji
+Pacific Islands,Papua New Guinea
+Pacific Islands,Vanuatu
+Polynesia,NONE
+South America,Argentina
+South America,Bolivia
+South America,Brazil
+South America,Chile
+South America,Colombia
+South America,Ecuador
+South America,Paraguay
+South America,Peru
+South America,Uruguay
+South America,Venezuela
+Southeastern Asia,Cambodia
+Southeastern Asia,Indonesia
+Southeastern Asia,Laos
+Southeastern Asia,Malaysia
+Southeastern Asia,Myanmar (Burma)
+Southeastern Asia,Philippines
+Southeastern Asia,Thailand
+Southeastern Asia,Timor-Leste
+Southeastern Asia,Vietnam
+Southern Africa,Angola
+Southern Africa,Botswana
+Southern Africa,Democratic Republic of the Congo
+Southern Africa,Lesotho
+Southern Africa,Madagascar
+Southern Africa,Malawi
+Southern Africa,Mozambique
+Southern Africa,Namibia
+Southern Africa,South Africa
+Southern Africa,Swaziland
+Southern Africa,Zambia
+Southern Africa,Zimbabwe
+Southern Asia,Afghanistan
+Southern Asia,Bangladesh
+Southern Asia,India
+Southern Asia,Nepal
+Southern Asia,Pakistan
+Southern Asia,Sri Lanka
+Southern Europe,Albania
+Southern Europe,Bosnia and Herzegovina
+Southern Europe,Croatia
+Southern Europe,Greece
+Southern Europe,Italy
+Southern Europe,Malta
+Southern Europe,Montenegro
+Southern Europe,North Macedonia
+Southern Europe,Portugal
+Southern Europe,Serbia
+Southern Europe,Slovenia
+Southern Europe,Spain
+Subsaharan Africa,Angola
+Subsaharan Africa,Benin
+Subsaharan Africa,Botswana
+Subsaharan Africa,Burundi
+Subsaharan Africa,Côte d’Ivoire
+Subsaharan Africa,Democratic Republic of the Congo
+Subsaharan Africa,Djibouti
+Subsaharan Africa,Eritrea
+Subsaharan Africa,Ethiopia
+Subsaharan Africa,Ghana
+Subsaharan Africa,Guinea
+Subsaharan Africa,Kenya
+Subsaharan Africa,Lesotho
+Subsaharan Africa,Liberia
+Subsaharan Africa,Madagascar
+Subsaharan Africa,Malawi
+Subsaharan Africa,Mali
+Subsaharan Africa,Mozambique
+Subsaharan Africa,Namibia
+Subsaharan Africa,Niger
+Subsaharan Africa,Nigeria
+Subsaharan Africa,Rwanda
+Subsaharan Africa,Senegal
+Subsaharan Africa,Sierra Leone
+Subsaharan Africa,Somalia
+Subsaharan Africa,South Africa
+Subsaharan Africa,Sudan
+Subsaharan Africa,Swaziland
+Subsaharan Africa,Tanzania
+Subsaharan Africa,Uganda
+Subsaharan Africa,Zambia
+Subsaharan Africa,Zimbabwe
+The Balkans,Albania
+The Balkans,Bosnia and Herzegovina
+The Balkans,Bulgaria
+The Balkans,Croatia
+The Balkans,Greece
+The Balkans,Montenegro
+The Balkans,North Macedonia
+The Balkans,Romania
+The Balkans,Serbia
+The Balkans,Slovenia
+The Mediterranean,Albania
+The Mediterranean,Algeria
+The Mediterranean,Bosnia and Herzegovina
+The Mediterranean,Croatia
+The Mediterranean,Egypt
+The Mediterranean,France
+The Mediterranean,Greece
+The Mediterranean,Italy
+The Mediterranean,Lebanon
+The Mediterranean,Libya
+The Mediterranean,Montenegro
+The Mediterranean,Morocco
+The Mediterranean,Palestine
+The Mediterranean,Slovenia
+The Mediterranean,Spain
+The Mediterranean,Tunisia
+The Middle East,Egypt
+The Middle East,Iraq
+The Middle East,Jordan
+The Middle East,Lebanon
+The Middle East,Palestine
+The Middle East,Sudan
+The Middle East,Yemen
+The Soviet Union,Armenia
+The Soviet Union,Azerbaijan
+The Soviet Union,Belarus
+The Soviet Union,Estonia
+The Soviet Union,Georgia
+The Soviet Union,Kazakhstan
+The Soviet Union,Kyrgyzstan
+The Soviet Union,Latvia
+The Soviet Union,Lithuania
+The Soviet Union,Moldova
+The Soviet Union,Russia
+The Soviet Union,Tajikistan
+The Soviet Union,Ukraine
+The Soviet Union,Uzbekistan
+Western Africa,Benin
+Western Africa,Côte d’Ivoire
+Western Africa,Ghana
+Western Africa,Guinea
+Western Africa,Liberia
+Western Africa,Mali
+Western Africa,Niger
+Western Africa,Nigeria
+Western Africa,Senegal
+Western Africa,Sierra Leone
+Western Asia,Armenia
+Western Asia,Azerbaijan
+Western Asia,Georgia
+Western Asia,Iraq
+Western Asia,Jordan
+Western Asia,Lebanon
+Western Asia,Palestine
+Western Asia,Turkey
+Western Asia,Yemen
+Western Europe,Austria
+Western Europe,Belgium
+Western Europe,Denmark
+Western Europe,France
+Western Europe,Germany
+Western Europe,Ireland
+Western Europe,Netherlands
+Western Europe,Norway
+Western Europe,Spain
+Western Europe,Sweden
+Western Europe,Switzerland
+Western Europe,United Kingdom

@@ -52,3 +52,12 @@ def render_clip_plain(clip_id: str, start: int, end: int, para_indexed: pd.DataF
             f"clip {clip_id}: expected {expected} paragraphs in [{start}, {end}], got {len(sub)} "
             f"(clips/paragraphs version skew? re-run `toolkit clip` after the last `toolkit import`)")
     return "\n".join(format_paragraph_plain(r.speaker_role, r.speech) for r in sub.itertuples()) + "\n"
+
+
+def format_paragraph_full(idx: int, ts: str, role: str, word_count: int, speech: str) -> str:
+    """One clipping/labeling paragraph line: `[idx] [HH:MM:SS] [role] (Xw) speech`.
+    The timestamp is dropped (no placeholder) when empty; the `(Xw)` word-count flag lets the
+    model apply the prompt's "substantial paragraph" threshold without counting words."""
+    marker = ROLE_MARKER.get(role, "[O]")
+    ts_str = f"[{ts}] " if ts else ""
+    return f"[{idx}] {ts_str}{marker} ({word_count}w) {speech}"

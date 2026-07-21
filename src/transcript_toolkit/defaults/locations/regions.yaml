@@ -1,0 +1,32 @@
+# Canonical region vocabulary for `toolkit locations tag` — the SINGLE SOURCE OF TRUTH.
+# Injected verbatim into the tagging prompt AND used to build the structured-output enum for
+# region labels (the model can emit only these), so prompt and schema never drift. UN Geoscheme
+# subregions + a few project-specific additions. Country labels are free-form strings and are
+# NOT enumerated here (historical states such as Yugoslavia are allowed).
+- Eastern Africa
+- Middle Africa
+- Northern Africa
+- Southern Africa
+- Western Africa
+- Caribbean
+- Central America
+- Northern America
+- South America
+- Central Asia
+- Eastern Asia
+- Southeastern Asia
+- Southern Asia
+- Western Asia
+- Eastern Europe
+- Northern Europe
+- Southern Europe
+- Western Europe
+- Australia and New Zealand
+- Melanesia
+- Micronesia
+- Polynesia
+- The Balkans
+- The Middle East
+- Baltics
+- Subsaharan Africa
+- The Soviet Union
