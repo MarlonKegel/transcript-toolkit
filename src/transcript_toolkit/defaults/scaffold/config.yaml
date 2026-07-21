@@ -1,0 +1,68 @@
+# =================================================================================================
+# transcript-toolkit project configuration
+#
+# This file holds the settings you are expected to adjust per project. Everything else lives in
+# advanced/<step>.yaml (rarely needed) — see docs/CONFIG.md in the toolkit repo for every key.
+#
+# NOTE: changing a model, prompt, or setting for a step makes its previous demo "stale": the next
+# full run will ask you to demo + review again first. That is intentional.
+# =================================================================================================
+
+project:
+  name: "My Oral History Project"
+
+# --- import: docx -> paragraph dataset -----------------------------------------------------------
+import:
+  # Speaker labels used by the interviewer in your transcripts (everything else = the narrator).
+  interviewer_labels: [Q]          # e.g. [Q, Q1, Q2, Q3]
+  # Labels of other non-narrator voices (moderators, technicians), if any.
+  other_labels: []                 # e.g. [M1, F1]
+  # Filename endings stripped before deriving the interview id from the filename.
+  strip_suffixes: [_SYNC, _final]
+
+# --- clip: split each interview into clips -------------------------------------------------------
+clip:
+  model: gpt-5.5
+  reasoning: medium                # none | low | medium | high | xhigh
+
+# --- label: one-line label per clip --------------------------------------------------------------
+label:
+  model: gpt-5.4
+  reasoning: medium
+  # Optional project-specific consistency rules appended to the label prompt
+  # (e.g. "always write OSF, never Open Society Foundations"). Path relative to the workspace.
+  addendum: null                   # e.g. prompts/label_addendum.md
+
+# --- summarize: one "scope and content" abstract per interview -----------------------------------
+summarize:
+  model: gpt-5.5
+  reasoning: low
+  pool_sessions: true              # true: one summary per narrator (multi-session interviews pooled)
+
+# --- topics: score every clip against your topic list(s) -----------------------------------------
+topics:
+  model: gpt-5.4-mini
+  reasoning: medium
+  default_set: main                # which set runs when --set is omitted
+  sets:
+    main:
+      # Your topic list as a spreadsheet: columns `name`, `description` (optional `id`).
+      file: topics/main.csv
+      # How clip tags roll up to interview tags:
+      #   flat   — an interview gets a topic when >= threshold_pct % of its clips have it.
+      #   binned — per-topic bars: rare topics clear a lower bar than common ones
+      #            (list of bars, rarest band first; run `toolkit topics thresholds` to tune).
+      rollup: { scheme: flat, threshold_pct: 30 }
+      # rollup: { scheme: binned, thresholds: [10, 12.5, 15, 17.5, 20, 22.5, 25, 27.5, 30] }
+
+# --- locations: tag clips to countries and regions ------------------------------------------------
+locations:
+  model: gpt-5.4-mini
+  reasoning: medium
+  # Region -> interview rollup bars (rarest band first), same idea as binned topics.
+  rollup:
+    thresholds: [10, 12.5, 15, 17.5, 20, 22.5, 25, 27.5, 30]
+  # Canonical relabeling applied to model output (spelling variants, merges).
+  relabel: {}                      # e.g. { Czech Republic: Czechia, Macedonia: North Macedonia }
+  # Subnational places tagged in their own right (kept alongside their country).
+  place_tags: []                   # e.g. [Chechnya, Crimea]

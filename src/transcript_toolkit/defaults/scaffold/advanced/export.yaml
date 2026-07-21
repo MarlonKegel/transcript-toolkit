@@ -1,0 +1,7 @@
+# Advanced settings for `toolkit export`. You normally don't touch these.
+
+filename: export.xlsx             # written into outputs/
+tabs:
+  clips: Clips
+  interviews: Interviews
+  categories: Categories

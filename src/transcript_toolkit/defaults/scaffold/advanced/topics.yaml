@@ -1,0 +1,12 @@
+# Advanced settings for `toolkit topics`. You normally don't touch these.
+
+prompt: tag_topics.md             # in prompts/
+justify_prompt: justify_topics.md # appended for demo runs (per-topic justifications)
+verbosity: low
+max_workers: 8
+score_values: [0, 1, 2]           # relevance scale: 0 does not / 1 could / 2 does belong
+justify_min_score: 1              # justification expected for scores >= this
+demo_n_clips: 50                  # clips tagged by `toolkit topics tag --demo`
+demo_seed: 0
+poll_interval_s: 4
+max_total_wait_s: 1800

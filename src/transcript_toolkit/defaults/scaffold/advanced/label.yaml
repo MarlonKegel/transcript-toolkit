@@ -1,0 +1,8 @@
+# Advanced settings for `toolkit label`. You normally don't touch these.
+
+prompt: label_clips.md            # in prompts/
+verbosity: low
+batch_threshold_tokens: 10000     # consecutive clips are batched per call up to this budget
+max_workers: 8
+poll_interval_s: 4
+max_total_wait_s: 1800

@@ -1,0 +1,9 @@
+# toolkit workspace
+.env
+.toolkit/cache/
+logs/
+__pycache__/
+
+# Uncomment to keep transcripts / deliverables out of git (if you version this workspace):
+# data/
+# outputs/

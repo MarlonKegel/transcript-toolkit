@@ -1,0 +1,8 @@
+# Advanced settings for `toolkit import`. You normally don't touch these.
+
+# Trailing session token in filenames marking one session of a multi-session interview.
+# Files whose ids differ only by this token pool into one narrator for summaries and rollups.
+session_regex: '_(?P<date>\d{8})_session(?P<n>\d+)$'
+
+# Also write data/paragraphs.csv beside the parquet (handy for eyeballing in a spreadsheet).
+write_csv: true

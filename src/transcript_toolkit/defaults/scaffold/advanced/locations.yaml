@@ -1,0 +1,20 @@
+# Advanced settings for `toolkit locations`. You normally don't touch these.
+
+prompt: tag_locations.md              # in prompts/
+justify_prompt: justify_locations.md  # appended for demo runs (per-place justifications)
+verbosity: low
+max_workers: 8
+regions_file: locations/regions.yaml            # the region vocabulary (strict enum)
+region_map_file: locations/region_to_country.csv
+demo_n_clips: 25                  # clips tagged by `toolkit locations tag --demo`
+demo_seed: 0
+poll_interval_s: 4
+max_total_wait_s: 1800
+
+# `toolkit locations survey` (optional offline NER pass; needs `pip install transcript-toolkit[survey]`
+# plus the spaCy model and a GeoNames dump — see docs/steps/locations.md).
+survey:
+  spacy_model: en_core_web_trf
+  place_labels: [GPE, LOC]
+  speaker_roles: [Narrator]
+  geonames_dir: null              # directory holding allCountries.txt etc.; required for the survey

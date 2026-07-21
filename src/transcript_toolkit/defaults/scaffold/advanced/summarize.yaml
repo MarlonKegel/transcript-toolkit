@@ -1,0 +1,9 @@
+# Advanced settings for `toolkit summarize`. You normally don't touch these.
+
+prompt: summarize_interview.md    # in prompts/
+verbosity: medium
+max_workers: 8
+demo_n: 2                         # interviews summarized by `toolkit summarize --demo`
+demo_seed: 0
+poll_interval_s: 4
+max_total_wait_s: 1800

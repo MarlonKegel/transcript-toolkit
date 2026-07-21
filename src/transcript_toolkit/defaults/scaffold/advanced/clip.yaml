@@ -1,0 +1,9 @@
+# Advanced settings for `toolkit clip`. You normally don't touch these.
+
+prompt: segment_interview.md      # in prompts/ (edit the prompt there, not this key)
+verbosity: low                    # low | medium | high
+chunk_threshold_tokens: 20000     # interviews estimated above this are split into chunks
+overlap_paragraphs: 20            # chunk seam overlap; half locked context, half re-decided
+max_workers: 8                    # interviews processed in parallel
+poll_interval_s: 4
+max_total_wait_s: 1800
