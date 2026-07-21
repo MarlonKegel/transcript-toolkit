@@ -1,0 +1,45 @@
+# Worked example: the OSF oral history archive this toolkit was built for.
+# Copy the relevant parts into your own workspace's config.yaml. The topic lists referenced here
+# (topics/collection.xlsx, topics/filter.xlsx) and the label addendum are in this folder.
+
+project:
+  name: "OSF Oral History"
+
+import:
+  interviewer_labels: [Q, Q1, Q2, Q3]   # OSF transcripts use Q for the interviewer
+  other_labels: [M1, F1]                # unnamed additional voices
+  strip_suffixes: [_SYNC, _final]
+
+clip:      { model: gpt-5.5, reasoning: medium }
+label:
+  model: gpt-5.4
+  reasoning: medium
+  addendum: label_addendum.md           # OSF naming conventions (e.g. always "OSF")
+
+summarize: { model: gpt-5.5, reasoning: low, pool_sessions: true }
+
+# Two topic sets, tagged independently: a broad Collection (8 topics) and a fine Filter (36).
+topics:
+  model: gpt-5.4-mini
+  reasoning: medium
+  default_set: collection
+  sets:
+    collection:
+      file: topics/collection.xlsx
+      rollup: { scheme: flat, threshold_pct: 30 }
+    filter:
+      file: topics/filter.xlsx
+      # 36 sparse topics: a flat bar floods common topics or zeroes rare ones, so use rarity bins.
+      rollup: { scheme: binned, thresholds: [10, 12.5, 15, 17.5, 20, 22.5, 25, 27.5, 30] }
+
+locations:
+  model: gpt-5.4-mini
+  reasoning: medium
+  rollup: { thresholds: [10, 12.5, 15, 17.5, 20, 22.5, 25, 27.5, 30] }
+  relabel:                              # canonicalize model spellings / merges
+    Czech Republic: Czechia
+    Macedonia: North Macedonia
+    Myanmar: Myanmar (Burma)
+    Israel: Israel and Palestine
+    Palestine: Israel and Palestine
+  place_tags: [Chechnya, Crimea]        # kept as their own tag alongside their country
