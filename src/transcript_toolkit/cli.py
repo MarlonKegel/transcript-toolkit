@@ -15,9 +15,16 @@ from .errors import ToolkitError
 
 def _common() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--project", metavar="DIR", default=None,
+    # SUPPRESS (not None): with nested subparsers, an inner parser's default would otherwise
+    # clobber a --project given before the subcommand. Read via _project(args).
+    common.add_argument("--project", metavar="DIR", default=argparse.SUPPRESS,
                         help="workspace directory (default: walk up from the current directory)")
     return common
+
+
+def _project(args):
+    from .project import find_project
+    return find_project(getattr(args, "project", None))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -41,6 +48,30 @@ def build_parser() -> argparse.ArgumentParser:
                        help="parse the .docx transcripts in data/ into the paragraph dataset")
     p.set_defaults(func=cmd_import)
 
+    p = sub.add_parser("sample", parents=[common],
+                       help="draw the demo sample of interviews used by clip/label demo runs")
+    p.add_argument("--n", type=int, default=None, help="sample size (default 5)")
+    p.add_argument("--seed", type=int, default=0, help="random seed (default 0)")
+    p.add_argument("--interviews", metavar="IDS", default=None,
+                   help="comma-separated interview ids to use instead of a random draw")
+    p.set_defaults(func=cmd_sample)
+
+    p = sub.add_parser("summarize", parents=[common],
+                       help="one 'scope and content' abstract per interview (demo-first)")
+    p.add_argument("--demo", action="store_true", help="summarize a small sample and write the review md only")
+    p.add_argument("--interview", metavar="KEYS", default=None,
+                   help="comma-separated interview keys (subset run, merged into the deliverable)")
+    p.add_argument("--pool-sessions", action=argparse.BooleanOptionalAction, default=None,
+                   help="pool a narrator's sessions into one summary (default: config)")
+    p.add_argument("--yes", action="store_true", help="skip the cost confirmation prompt")
+    p.add_argument("--skip-demo-check", action="store_true",
+                   help="bypass the demo gate (dev use only)")
+    p.set_defaults(func=cmd_summarize)
+    ssub = p.add_subparsers(dest="action", metavar="")
+    pa = ssub.add_parser("annotate", parents=[common],
+                         help="re-render the review md from the existing deliverable")
+    pa.set_defaults(func=cmd_summarize_annotate)
+
     p = sub.add_parser("status", parents=[common], help="show corpus, per-step demo/run state")
     p.add_argument("--json", action="store_true", help="machine-readable output")
     p.set_defaults(func=cmd_status)
@@ -49,13 +80,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def cmd_init(args) -> None:
-    from .project import find_project, init_project, reset_prompt
+    from .project import init_project, reset_prompt
 
     if args.reset_prompt is not None:
         if args.dir is not None:
             raise ToolkitError("Pass either a directory or --reset-prompt, not both.")
-        project = find_project(args.project)
-        dest = reset_prompt(project, args.reset_prompt)
+        dest = reset_prompt(_project(args), args.reset_prompt)
         print(f"Restored default prompt: {dest}")
         return
     if args.dir is None:
@@ -69,17 +99,42 @@ def cmd_init(args) -> None:
 
 
 def cmd_import(args) -> None:
-    from .project import find_project
     from .steps.import_ import run_import
 
-    run_import(find_project(args.project))
+    run_import(_project(args))
+
+
+def cmd_sample(args) -> None:
+    from .core.sampling import DEFAULT_N, draw_interview_sample
+
+    explicit = [s.strip() for s in args.interviews.split(",") if s.strip()] if args.interviews else None
+    sample = draw_interview_sample(_project(args), n=args.n or DEFAULT_N,
+                                   seed=args.seed, explicit=explicit)
+    print(f"Demo sample ({len(sample)} interviews):")
+    for iid in sample:
+        print(f"  {iid}")
+
+
+def cmd_summarize(args) -> None:
+    from .steps.summarize import run_summarize
+
+    interviews = ([s.strip() for s in args.interview.split(",") if s.strip()]
+                  if args.interview else None)
+    run_summarize(_project(args), demo=args.demo, interviews=interviews,
+                  pool_sessions=args.pool_sessions, yes=args.yes,
+                  skip_demo_check=args.skip_demo_check)
+
+
+def cmd_summarize_annotate(args) -> None:
+    from .steps.summarize import annotate_summaries
+
+    annotate_summaries(_project(args))
 
 
 def cmd_status(args) -> None:
-    from .project import find_project
     from .steps.status import run_status
 
-    run_status(find_project(args.project), as_json=args.json)
+    run_status(_project(args), as_json=args.json)
 
 
 def main(argv: list[str] | None = None) -> int:

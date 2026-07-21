@@ -1,0 +1,15 @@
+# USD per 1M tokens, standard + 50%-off Batch API tiers. Reasoning tokens are billed at the
+# OUTPUT rate and are already counted inside output_tokens (reported separately, never added
+# on top). Update here when OpenAI prices change — no code changes needed.
+gpt-5.5:
+  standard: { input: 5.00, cached: 0.50, output: 30.0 }
+  batch:    { input: 2.50, cached: 0.25, output: 15.0 }
+gpt-5.4:
+  standard: { input: 2.50, cached: 0.25, output: 15.0 }
+  batch:    { input: 1.25, cached: 0.125, output: 7.50 }
+gpt-5.4-mini:
+  standard: { input: 0.75, cached: 0.075, output: 4.50 }
+  batch:    { input: 0.375, cached: 0.0375, output: 2.25 }
+gpt-5.4-nano:
+  standard: { input: 0.20, cached: 0.02, output: 1.25 }
+  batch:    { input: 0.10, cached: 0.01, output: 0.625 }
