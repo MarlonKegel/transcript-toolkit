@@ -169,6 +169,12 @@ def build_parser() -> argparse.ArgumentParser:
                          help="offline NER survey of place mentions (needs the [survey] extra)")
     pl.set_defaults(func=cmd_locations_survey)
 
+    p = sub.add_parser("export", parents=[common],
+                       help="build one xlsx of everything produced so far")
+    p.add_argument("--out", metavar="FILE", default=None,
+                   help="output path (default: outputs/export.xlsx)")
+    p.set_defaults(func=cmd_export)
+
     p = sub.add_parser("cost", parents=[common],
                        help="LLM spend so far, from the per-call caches")
     p.add_argument("step", nargs="?", default=None,
@@ -357,6 +363,12 @@ def cmd_locations_survey(args) -> None:
     from .steps.locations import run_locations_survey
 
     run_locations_survey(_project(args))
+
+
+def cmd_export(args) -> None:
+    from .steps.export import run_export
+
+    run_export(_project(args), out=args.out)
 
 
 def cmd_cost(args) -> None:
