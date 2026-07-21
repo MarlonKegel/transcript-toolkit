@@ -40,6 +40,31 @@ def draw_interview_sample(project: Project, n: int = DEFAULT_N, seed: int = 0,
     return sample
 
 
+def sample_clips_spread(clips_df, n: int, seed: int) -> list[str]:
+    """~n clip_ids spread across interviews: round-robin over a shuffled clip order within
+    each interview, one clip per interview per pass. Fully reproducible via `seed` (a single
+    seeded RNG drives all shuffles; interviews visited in deterministic order)."""
+    rng = random.Random(seed)
+    per_interview: dict[str, list[str]] = {}
+    for iid in sorted(clips_df["interview_id"].unique()):
+        ids = (clips_df[clips_df["interview_id"] == iid]
+               .sort_values("start_paragraph_idx")["clip_id"].tolist())
+        rng.shuffle(ids)
+        per_interview[iid] = ids
+    order = sorted(per_interview)
+    rng.shuffle(order)
+    picked: list[str] = []
+    pass_idx = 0
+    while len(picked) < n and any(len(v) > pass_idx for v in per_interview.values()):
+        for iid in order:
+            if pass_idx < len(per_interview[iid]):
+                picked.append(per_interview[iid][pass_idx])
+                if len(picked) >= n:
+                    break
+        pass_idx += 1
+    return picked
+
+
 def load_interview_sample(project: Project) -> list[str]:
     if not project.demo_sample_path.exists():
         raise ToolkitError("No demo sample drawn yet. Run `toolkit sample` first "
