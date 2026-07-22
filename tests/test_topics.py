@@ -178,6 +178,21 @@ def test_unknown_interview_fails_loud(project):
         run_topics_tag(project, interviews=["nobody"], yes=True)
 
 
+def test_per_set_prompt_override(project):
+    # A set may bring its own rubric via config sets.<set>.prompt (e.g. OSF's filter set).
+    (project.prompts_dir / "tag_topics_strict.md").write_text(
+        "STRICT RUBRIC: tag only specific and substantive mentions.")
+    cfg = project.config_path.read_text().replace(
+        "      file: topics/main.csv",
+        "      file: topics/main.csv\n      prompt: tag_topics_strict.md")
+    project.config_path.write_text(cfg)
+    run_topics_tag(project, demo=True)
+    assert any("STRICT RUBRIC" in i for i in project.llm_calls)
+    # the default prompt is no longer part of the instructions for this set
+    default_text = (project.prompts_dir / "tag_topics.md").read_text().strip()
+    assert all(default_text not in i for i in project.llm_calls)
+
+
 def test_unknown_set_fails_loud(project):
     with pytest.raises(ToolkitError, match="Unknown topic set.*main"):
         run_topics_tag(project, set_name="nope", demo=True)

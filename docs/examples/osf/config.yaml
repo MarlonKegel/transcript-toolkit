@@ -29,6 +29,9 @@ topics:
       rollup: { scheme: flat, threshold_pct: 30 }
     filter:
       file: topics/filter.xlsx
+      # The filter set has its own rubric (stricter: tag only specific + substantive mentions).
+      # Copy this folder's tag_filter.md into your workspace's prompts/ for this to resolve.
+      prompt: tag_filter.md
       # 36 sparse topics: a flat bar floods common topics or zeroes rare ones, so use rarity bins.
       rollup: { scheme: binned, thresholds: [10, 12.5, 15, 17.5, 20, 22.5, 25, 27.5, 30] }
 

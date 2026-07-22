@@ -21,8 +21,10 @@ import ─► clip ─► label ──────────┐
 Every LLM step is **demo-first**: you run it on a small sample, review the annotated output in
 `diags/`, adjust settings/prompts, and only then run the full corpus.
 
-> **Status: under construction** — being ported from the research working repo
-> ([transcript_toolkit_working-repo](https://github.com/MarlonKegel/transcript_toolkit_working-repo)).
+> Ported from the research working repo
+> ([transcript_toolkit_working-repo](https://github.com/MarlonKegel/transcript_toolkit_working-repo))
+> and verified against its production outputs: the paragraph dataset, both topic-set interview
+> rollups, and the full locations map/rollup chain reproduce the originals exactly.
 
 ## Quickstart
 

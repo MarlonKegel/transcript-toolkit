@@ -48,6 +48,8 @@ topics:
     main:
       # Your topic list as a spreadsheet: columns `name`, `description` (optional `id`).
       file: topics/main.csv
+      # A set may bring its own rubric when its tagging rules differ from the default prompt:
+      # prompt: tag_topics_strict.md      # a file in prompts/
       # How clip tags roll up to interview tags:
       #   flat   — an interview gets a topic when >= threshold_pct % of its clips have it.
       #   binned — per-topic bars: rare topics clear a lower bar than common ones

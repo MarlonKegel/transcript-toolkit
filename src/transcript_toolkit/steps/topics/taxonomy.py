@@ -30,6 +30,8 @@ class TopicSet:
     topics: list[dict]       # ordered [{id, name}], spreadsheet row order
     taxonomy_text: str       # deterministic markdown fed to the model (feeds cache keys)
     source: Path
+    prompt: str | None       # optional per-set prompt file (config sets.<set>.prompt);
+                             # None = the step-wide advanced `prompt` is used
 
 
 def resolve_set(cfg: dict, set_name: str | None) -> tuple[str, dict]:
@@ -119,7 +121,8 @@ def load_topic_set(project: Project, cfg: dict, set_name: str | None = None) -> 
         raise ToolkitError(f"{path.name} has no topic rows")
 
     return TopicSet(name=name, ids=[t["id"] for t in topics], topics=topics,
-                    taxonomy_text="\n\n".join(blocks), source=path)
+                    taxonomy_text="\n\n".join(blocks), source=path,
+                    prompt=entry.get("prompt"))
 
 
 def build_legend(topics: list[dict]) -> str:
