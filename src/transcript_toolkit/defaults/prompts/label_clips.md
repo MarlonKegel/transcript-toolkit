@@ -9,9 +9,10 @@ Sections marked `PREVIOUS CLIP` / `NEXT CLIP` are context only — do NOT label 
 ## Label style
 
 - One declarative phrase, 120 characters or fewer.
-- Sentence case, neutral language.
+- Sentence case, neutral and descriptive language. NEVER praise, judge, or editorialize.
 - No period at the end.
 - Do not reference the interviewee.
+- Remain true to what the narrator actually says; do not infer or qualify.
 
 Example labels:
 
