@@ -99,8 +99,8 @@ def test_demo_writes_review_and_state_only(project):
     df = run_topics_tag(project, demo=True)
     assert len(df) == len(project.clips)                       # demo_n_clips=50 >= corpus
     assert not wide_path(project).exists()                     # no deliverable from a demo
-    md = project.diags_dir / "topics" / "main_demo.md"
-    text = md.read_text()
+    page = project.diags_dir / "topics" / "main_demo.html"
+    text = page.read_text()
     assert "The clip discusses schooling." in text             # justifications ON for demos
     assert df["clip_id"].iloc[0] in text
     demo = load_state(project)["steps"]["topics:main"]["demo"]
@@ -293,15 +293,16 @@ def test_thresholds_aid_prints_sweep_and_writes_figure(project, capsys):
     assert (project.diags_dir / "topics" / "plots" / "main_thresholds.png").exists()
 
 
-def test_annotate_writes_per_interview_md(project):
+def test_annotate_writes_per_interview_html(project):
     run_topics_tag(project, demo=True)
     run_topics_tag(project, yes=True)
     annotate_topics(project)
     for iid in sorted(project.clips["interview_id"].unique()):
-        md = project.diags_dir / "topics" / f"main_{iid}.md"
-        assert md.exists()
-        text = md.read_text()
+        page = project.diags_dir / "topics" / f"main_{iid}.html"
+        assert page.exists()
+        text = page.read_text()
         assert "Clip 1" in text and "Education" in text
+    assert (project.diags_dir / "topics" / "main_index.html").exists()
 
 
 def test_annotate_without_deliverable_fails(project):

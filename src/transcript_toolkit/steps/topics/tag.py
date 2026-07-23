@@ -3,7 +3,7 @@
 One structured-output LLM call per clip: the stable instructions prefix (task/rubric prompt
 [+ justification addendum] + topic-id legend + generated taxonomy) is shared across calls and
 served from the provider's prompt cache; the only variable part is the clip text. Demo-first:
-`--demo` tags a seeded clip sample with justifications ON and writes the review md only; a
+`--demo` tags a seeded clip sample with justifications ON and writes the review page only; a
 full run is demo-gated, confirms cost, and writes outputs/topics/{set}_clip_topics_{wide,long}.
 Idempotent + resumable via the per-call cache (.toolkit/cache/topics_{set}.jsonl).
 """
@@ -21,9 +21,10 @@ from pydantic import create_model
 from ...core import cost as costmod
 from ...core.cache import JsonlAppender, cache_key, latest_records
 from ...core.config import load_step_config, require
-from ...core.console import confirm_or_abort
+from ...core.console import confirm_or_abort, reveal
 from ...core.llm import build_schema, call_llm, check_levels, openai_client
 from ...core.render import render_clip_plain
+from ...core.reviewdoc import document, esc
 from ...core.sampling import sample_clips_spread
 from ...core.tables import (load_clips, load_paragraphs, merge_subset,
                             paragraphs_by_interview, write_deliverable)
@@ -186,12 +187,13 @@ def run_topics_tag(project: Project, set_name: str | None = None, demo: bool = F
     wide_df, long_df = _build_frames(selected, results, tset, cfg, model, reasoning)
 
     if demo:
-        diag = _write_demo_md(project, sset, selected, texts, results, tset, model, reasoning)
+        diag = _write_demo_html(project, sset, selected, texts, results, tset, model, reasoning)
         record_demo(project, f"topics:{sset}", fingerprint,
                     units=sorted(texts), diag=str(diag))
         print(f"\nDemo review file: {diag}")
         print("Review it; adjust config.yaml / prompts/ / the topic spreadsheet and re-demo if "
               f"needed. Then run `toolkit topics tag --set {sset}` for the full corpus.")
+        reveal(diag)
         return wide_df
 
     out_dir = project.outputs_dir / "topics"
@@ -327,35 +329,41 @@ def _print_distribution(this: pd.DataFrame, tset: TopicSet, cfg: dict) -> None:
         print(f"  {tid:<24} {int((this[tid] == maxv).sum()):>4}")
 
 
-# --- review md ------------------------------------------------------------------------------
+# --- review html ----------------------------------------------------------------------------
 
-def _write_demo_md(project: Project, sset: str, selected: pd.DataFrame, texts: dict[str, str],
-                   results: dict[str, dict], tset: TopicSet, model: str, reasoning: str):
+def _write_demo_html(project: Project, sset: str, selected: pd.DataFrame, texts: dict[str, str],
+                     results: dict[str, dict], tset: TopicSet, model: str, reasoning: str):
     name_by_id = {t["id"]: t["name"] for t in tset.topics}
     diag_dir = project.diags_dir / "topics"
     diag_dir.mkdir(parents=True, exist_ok=True)
-    lines = [f"# Topic tags — set '{sset}' — DEMO", "",
-             f"{len(selected)} clips · model `{model}` · reasoning `{reasoning}`", ""]
+    subtitle = f"<b>{len(selected)}</b> clips · model <code>{esc(model)}</code> · reasoning <code>{esc(reasoning)}</code>"
+    body: list[str] = []
     for row in selected.itertuples():
         parsed = results[row.clip_id]
         scores = parsed["scores"]
         just = {e["topic_id"]: e["justification"] for e in parsed.get("evidence", [])}
-        lines += [f"## {row.clip_id}", "",
-                  f"*{row.interview_id} · paragraphs {int(row.start_paragraph_idx)}–"
-                  f"{int(row.end_paragraph_idx)} · {int(row.total_words)} words*", ""]
+        body.append('<section class="clip">')
+        body.append(f'<h2>{esc(row.clip_id)} <span class="meta">{esc(row.interview_id)} · '
+                    f'paragraphs {int(row.start_paragraph_idx)}–{int(row.end_paragraph_idx)} · '
+                    f'{int(row.total_words)} words</span></h2>')
         hits = sorted((tid for tid in tset.ids if scores[tid] >= 1),
                       key=lambda t: (-scores[t], t))
         if hits:
-            lines.append("**Topics:**")
+            items = []
             for tid in hits:
                 j = str(just.get(tid, "")).strip()
-                lines.append(f"- **{scores[tid]}** · {name_by_id[tid]} (`{tid}`)"
-                             + (f" — {j}" if j else ""))
+                jhtml = f' <span class="just">— {esc(j)}</span>' if j else ""
+                items.append(f'<li><span class="score">{scores[tid]}</span> {esc(name_by_id[tid])} '
+                             f'<code>{esc(tid)}</code>{jhtml}</li>')
+            body.append('<div class="topics"><span class="k">Topics:</span><ul>\n'
+                        + "\n".join(items) + "\n</ul></div>")
         else:
-            lines.append("**Topics:** _(none — clip fits no listed topic)_")
-        lines += ["", "```", texts[row.clip_id].rstrip("\n"), "```", ""]
-    path = diag_dir / f"{sset}_demo.md"
-    path.write_text("\n".join(lines))
+            body.append('<p class="topics"><span class="k">Topics:</span> '
+                        '<span class="just">(none — clip fits no listed topic)</span></p>')
+        body.append(f"<pre>{esc(texts[row.clip_id].rstrip(chr(10)))}</pre>")
+        body.append("</section>")
+    path = diag_dir / f"{sset}_demo.html"
+    path.write_text(document(f"Topics ‘{sset}’ — demo", "\n".join(body), subtitle=subtitle))
     return path
 
 

@@ -1,9 +1,9 @@
 """`toolkit summarize` — one "scope and content" abstract per interview.
 
 One structured-output LLM call per interview unit; a narrator's sessions are pooled by default.
-Demo-first: `--demo` summarizes a small seeded sample and writes the review md only; a full run
+Demo-first: `--demo` summarizes a small seeded sample and writes the review page only; a full run
 is demo-gated, confirms cost, writes outputs/summaries/summaries.{parquet,csv} and re-renders
-the review md (diags/summarize/). Idempotent + resumable via the per-call cache.
+the review page (diags/summarize/*.html). Idempotent + resumable via the per-call cache.
 """
 from __future__ import annotations
 
@@ -17,10 +17,11 @@ from pydantic import create_model
 from ..core import cost as costmod
 from ..core.cache import JsonlAppender, cache_key, latest_records
 from ..core.config import load_step_config, require
-from ..core.console import confirm_or_abort
+from ..core.console import confirm_or_abort, reveal
 from ..core.ids import narrator_key
 from ..core.llm import build_schema, call_llm, check_levels, openai_client
 from ..core.render import render_interview
+from ..core.reviewdoc import document, esc
 from ..core.sampling import sample_keys
 from ..core.tables import load_paragraphs, merge_subset, write_deliverable
 from ..errors import ToolkitError
@@ -136,20 +137,21 @@ def run_summarize(project: Project, demo: bool = False, interviews: list[str] | 
     df = pd.DataFrame(rows)
 
     if demo:
-        diag = _write_md(project, df, "demo_summaries.md",
-                         title="Interview summaries — DEMO")
+        diag = _write_html(project, df, "demo_summaries.html",
+                           title="Interview summaries — DEMO")
         record_demo(project, STEP, fingerprint, units=keys, diag=str(diag))
         print(f"\nDemo review file: {diag}")
         print("Review it; adjust config.yaml / prompts/ and re-demo if needed. "
               "Then run `toolkit summarize` for the full corpus.")
+        reveal(diag)
         return df
 
     out_path = project.outputs_dir / "summaries" / "summaries.parquet"
     if interviews and out_path.exists():
         df = merge_subset(pd.read_parquet(out_path), df, "interview_key")
     write_deliverable(df, out_path, sort_by="interview_key")
-    diag = _write_md(project, df.sort_values("interview_key"), "summaries.md",
-                     title="Interview summaries")
+    diag = _write_html(project, df.sort_values("interview_key"), "summaries.html",
+                       title="Interview summaries")
     if not interviews:
         record_full(project, STEP, fingerprint, model=model, n_units=len(selected))
     print(f"\nWrote {len(df)} summaries -> {out_path}\nReview file: {diag}")
@@ -211,25 +213,26 @@ def _run_units(project: Project, cfg: dict, instructions: str, fingerprint: str,
     return results
 
 
-# --- review md ------------------------------------------------------------------------------
+# --- review html ----------------------------------------------------------------------------
 
-def _write_md(project: Project, df: pd.DataFrame, filename: str, title: str):
+def _write_html(project: Project, df: pd.DataFrame, filename: str, title: str):
     diag_dir = project.diags_dir / "summarize"
     diag_dir.mkdir(parents=True, exist_ok=True)
     model = df["model"].iloc[0] if len(df) else "?"
     reasoning = df["reasoning_effort"].iloc[0] if len(df) else "?"
-    lines = [f"# {title}", "",
-             f"{len(df)} interviews · model `{model}` · reasoning `{reasoning}`", ""]
+    subtitle = (f"<b>{len(df)}</b> interviews · model <code>{esc(model)}</code> · "
+                f"reasoning <code>{esc(reasoning)}</code>")
+    body: list[str] = []
     for r in df.itertuples():
-        lines.append(f"## {r.interview_key}")
-        lines.append("")
-        lines.append(f"*sessions: {r.session_ids} · {r.n_paragraphs} paragraphs / "
-                     f"{r.total_words:,} words · summary {r.summary_word_count} words*")
-        lines.append("")
-        lines.append(r.summary)
-        lines.append("")
+        body.append('<section class="clip">')
+        body.append(f"<h2>{esc(r.interview_key)}</h2>")
+        body.append(f'<p class="meta">sessions: {esc(r.session_ids)} · {r.n_paragraphs} paragraphs / '
+                    f"{r.total_words:,} words · summary {r.summary_word_count} words</p>")
+        for parag in str(r.summary).split("\n\n"):
+            body.append(f"<p>{esc(parag.strip())}</p>")
+        body.append("</section>")
     path = diag_dir / filename
-    path.write_text("\n".join(lines))
+    path.write_text(document(title, "\n".join(body), subtitle=subtitle))
     return path
 
 
@@ -238,5 +241,5 @@ def annotate_summaries(project: Project) -> None:
     if not out_path.exists():
         raise ToolkitError(f"{out_path} not found. Run `toolkit summarize` first.")
     df = pd.read_parquet(out_path).sort_values("interview_key")
-    path = _write_md(project, df, "summaries.md", title="Interview summaries")
+    path = _write_html(project, df, "summaries.html", title="Interview summaries")
     print(f"Wrote {path}")

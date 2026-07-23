@@ -6,17 +6,18 @@ title). Needs `clip` to have run.
 ## Run it
 
 ```sh
-toolkit label --demo    # label the sample's clips → review diags/label/*.md
+toolkit label --demo    # label the sample's clips → review page opens in your browser
 toolkit label           # full corpus
 ```
 
 `toolkit label preview` shows the batching (labels are produced several clips at a time, with
 neighbouring clips shown as read-only context so labels stay distinct). `toolkit label annotate`
-re-renders the review markdown.
+re-renders the review pages.
 
 ## Reviewing
 
-`diags/label/*.md` shows each clip with its label. Check that labels are specific, distinct, and
+`diags/label/index.html` links one page per interview showing each clip with its label (the demo
+opens it for you). Check that labels are specific, distinct, and
 in your house style. For project-wide consistency rules (e.g. "always write UNHCR, never the UN
 Refugee Agency"), put them in a file and point `config.yaml` → `label.addendum` at it (e.g.
 `prompts/label_addendum.md`); the text is appended to the label prompt.

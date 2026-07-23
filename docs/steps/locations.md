@@ -7,7 +7,7 @@ out of the box — a region vocabulary and a region→country mapping ship with 
 ## Run it
 
 ```sh
-toolkit locations tag --demo   # tag a sample of clips → review diags/locations/demo.md
+toolkit locations tag --demo   # tag a sample of clips → review page opens in your browser
 toolkit locations tag          # full corpus  (add --batch for the 50%-off Batch API)
 toolkit locations map          # expand regions to countries, apply the label canon
 toolkit locations rollup       # clip tags → interview tags
@@ -34,9 +34,10 @@ dependencies (`pip install "transcript-toolkit[survey]"`, plus a spaCy model and
 
 ## Reviewing
 
-`diags/locations/demo.md` shows each clip with its country/region tags (and justifications on
-demo runs). Check that only substantive places are tagged, not passing mentions. The prompt is
-`prompts/tag_locations.md`.
+`diags/locations/demo.html` (opened for you after a demo) shows each clip with its country/region
+tags (and justifications on demo runs); `toolkit locations annotate` writes the full-corpus
+`locations.html`. Check that only substantive places are tagged, not passing mentions. The prompt
+is `prompts/tag_locations.md`.
 
 ## Output
 

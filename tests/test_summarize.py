@@ -47,8 +47,8 @@ def test_demo_writes_review_only_and_records_state(project):
     df = run_summarize(project, demo=True)
     assert len(df) == 2                                   # demo_n default = 2 of 2 narrators
     assert not out_path(project).exists()                 # no deliverable from a demo
-    demo_md = project.diags_dir / "summarize" / "demo_summaries.md"
-    assert demo_md.exists() and "fake_alpha" in demo_md.read_text()
+    demo_html = project.diags_dir / "summarize" / "demo_summaries.html"
+    assert demo_html.exists() and "fake_alpha" in demo_html.read_text()
     demo = load_state(project)["steps"]["summarize"]["demo"]
     assert demo["units"] == ["fake_alpha", "fake_beta"]
     assert (project.cache_dir / "summarize.jsonl").exists()
@@ -70,7 +70,7 @@ def test_full_run_after_demo_reuses_cache(project):
     assert set(df.columns) >= {"interview_key", "summary", "model", "reasoning_effort"}
     full = load_state(project)["steps"]["summarize"]["full"]
     assert full["n_units"] == 2
-    assert (project.diags_dir / "summarize" / "summaries.md").exists()
+    assert (project.diags_dir / "summarize" / "summaries.html").exists()
 
 
 def test_prompt_edit_stales_demo(project):
@@ -116,10 +116,10 @@ def test_unknown_interview_key_fails_loud(project):
 def test_annotate_rerenders(project):
     run_summarize(project, demo=True)
     run_summarize(project, yes=True)
-    md = project.diags_dir / "summarize" / "summaries.md"
-    md.unlink()
+    page = project.diags_dir / "summarize" / "summaries.html"
+    page.unlink()
     annotate_summaries(project)
-    assert md.exists()
+    assert page.exists()
 
 
 def test_annotate_without_deliverable_fails(project):

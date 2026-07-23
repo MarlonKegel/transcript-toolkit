@@ -1,7 +1,7 @@
 """`toolkit topics` — deductive topic tagging against user-supplied topic sets.
 
 Sub-steps: tag (clip scores, demo-first), rollup (clip -> interview tags), thresholds
-(rollup decision aid), annotate (per-interview review md), plus a call preview.
+(rollup decision aid), annotate (per-interview review HTML), plus a call preview.
 """
 from .annotate import annotate_topics
 from .rollup import run_topics_rollup

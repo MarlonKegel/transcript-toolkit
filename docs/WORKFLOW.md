@@ -20,8 +20,9 @@ settings you can tune. So every step follows the same loop, and the toolkit **en
 1. **Demo** — run the step on a small sample: `toolkit <step> --demo`
    (for clip/label the sample is the interviews drawn once by `toolkit sample`; topics and
    locations sample clips automatically).
-2. **Review** — open the review file the demo names (in `diags/<step>/`) and judge the output:
-   are clip boundaries sensible, labels sharp, tags right?
+2. **Review** — the demo opens a review page in your browser (a self-contained `.html` file in
+   `diags/<step>/` — on a Mac it opens automatically; elsewhere, double-click it). Judge the
+   output: are clip boundaries sensible, labels sharp, tags right?
 3. **Adjust** — edit `config.yaml` (models, thresholds), the step's prompt in `prompts/`, or
    your topic list, and go back to 1. Every demo is cheap, and repeated runs re-use everything
    already computed.
@@ -39,7 +40,7 @@ call is cached, nothing is paid twice.
 toolkit import                 # parse transcripts; check the printed tables
 toolkit sample                 # pick the demo interviews (once)
 
-toolkit clip --demo            # demo → review diags/clip/ → adjust → re-demo
+toolkit clip --demo            # demo → review page opens → adjust → re-demo
 toolkit clip                   # full corpus
 toolkit label --demo           #   (same loop)
 toolkit label
@@ -48,7 +49,7 @@ toolkit summarize --demo
 toolkit summarize
 
 #   put your topic list at topics/main.csv (or .xlsx) first — columns: name, description
-toolkit topics tag --demo      # demo → review diags/topics/ → tune the topic list → re-demo
+toolkit topics tag --demo      # demo → review page opens → tune the topic list → re-demo
 toolkit topics tag
 toolkit topics thresholds      # decision aid for the interview-rollup thresholds
 toolkit topics rollup          # clip tags → interview tags
@@ -79,5 +80,5 @@ topic tagging ≈ $2–3 per taxonomy; location tagging ≈ $3 (half with `--bat
 | `prompts/`, `topics/`, `locations/` | prompt texts, topic lists, region vocabulary | yes |
 | `data/` | your transcripts + the imported dataset | you add files |
 | `outputs/` | deliverables (tables + export.xlsx) | never by hand |
-| `diags/` | review files from demos and runs | read them |
+| `diags/` | review pages (`.html`) from demos and runs | open them in a browser |
 | `.toolkit/` | caches and run state | never |

@@ -65,7 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
              "preview the clip batching (no API)")):
         p = sub.add_parser(step, parents=[common], help=help_txt)
         p.add_argument("--demo", action="store_true",
-                       help="run on the `toolkit sample` interviews, review mds only")
+                       help="run on the `toolkit sample` interviews, review pages only")
         p.add_argument("--interview", metavar="IDS", default=None,
                        help="comma-separated interview ids (subset run, merged)")
         p.add_argument("--yes", action="store_true", help="skip the cost confirmation prompt")
@@ -74,14 +74,14 @@ def build_parser() -> argparse.ArgumentParser:
         p.set_defaults(func=run_fn)
         csub = p.add_subparsers(dest="action", metavar="")
         pa = csub.add_parser("annotate", parents=[common],
-                             help="re-render the per-interview review mds from the deliverable")
+                             help="re-render the per-interview review pages from the deliverable")
         pa.set_defaults(func=annotate_fn)
         pa = csub.add_parser("preview", parents=[common], help=preview_help)
         pa.set_defaults(func=preview_fn)
 
     p = sub.add_parser("summarize", parents=[common],
                        help="one 'scope and content' abstract per interview (demo-first)")
-    p.add_argument("--demo", action="store_true", help="summarize a small sample and write the review md only")
+    p.add_argument("--demo", action="store_true", help="summarize a small sample and write the review page only")
     p.add_argument("--interview", metavar="KEYS", default=None,
                    help="comma-separated interview keys (subset run, merged into the deliverable)")
     p.add_argument("--pool-sessions", action=argparse.BooleanOptionalAction, default=None,
@@ -92,7 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_summarize)
     ssub = p.add_subparsers(dest="action", metavar="")
     pa = ssub.add_parser("annotate", parents=[common],
-                         help="re-render the review md from the existing deliverable")
+                         help="re-render the review page from the existing deliverable")
     pa.set_defaults(func=cmd_summarize_annotate)
 
     p = sub.add_parser("topics", parents=[common],
@@ -101,7 +101,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     pt = tsub.add_parser("tag", parents=[common], help="tag clips (demo-first)")
     pt.add_argument("--set", dest="set_name", default=None, help="topic set (default: config default_set)")
-    pt.add_argument("--demo", action="store_true", help="tag a spread sample of clips, review md only")
+    pt.add_argument("--demo", action="store_true", help="tag a spread sample of clips, review page only")
     pt.add_argument("--sample", dest="sample_n", type=int, default=None,
                     help="override the demo sample size")
     pt.add_argument("--seed", type=int, default=None, help="override the demo sample seed")
@@ -126,7 +126,7 @@ def build_parser() -> argparse.ArgumentParser:
     pt.add_argument("--set", dest="set_name", default=None)
     pt.set_defaults(func=cmd_topics_thresholds)
 
-    pt = tsub.add_parser("annotate", parents=[common], help="re-render the per-interview review mds")
+    pt = tsub.add_parser("annotate", parents=[common], help="re-render the per-interview review pages")
     pt.add_argument("--set", dest="set_name", default=None)
     pt.set_defaults(func=cmd_topics_annotate)
 
@@ -135,7 +135,7 @@ def build_parser() -> argparse.ArgumentParser:
     lsub = p.add_subparsers(dest="action", metavar="<action>", required=True)
 
     pl = lsub.add_parser("tag", parents=[common], help="tag clips (demo-first)")
-    pl.add_argument("--demo", action="store_true", help="tag a spread sample of clips, review md only")
+    pl.add_argument("--demo", action="store_true", help="tag a spread sample of clips, review page only")
     pl.add_argument("--sample", dest="sample_n", type=int, default=None,
                     help="override the demo sample size")
     pl.add_argument("--seed", type=int, default=None, help="override the demo sample seed")
@@ -162,7 +162,7 @@ def build_parser() -> argparse.ArgumentParser:
     pl = lsub.add_parser("thresholds", parents=[common], help="decision aid for the rollup scheme")
     pl.set_defaults(func=cmd_locations_thresholds)
 
-    pl = lsub.add_parser("annotate", parents=[common], help="re-render the review md")
+    pl = lsub.add_parser("annotate", parents=[common], help="re-render the review page")
     pl.set_defaults(func=cmd_locations_annotate)
 
     pl = lsub.add_parser("survey", parents=[common],

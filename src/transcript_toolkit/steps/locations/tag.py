@@ -7,7 +7,7 @@ workspace's locations/regions.yaml, which is also injected into the prompt so pr
 never drift). A place gets a country XOR a region; either list may be empty. Demo runs add a
 per-place justification (prompts/justify_locations.md) for review.
 
-Demo-first: `--demo` tags a seeded spread-across-interviews sample and writes diags/locations/demo.md
+Demo-first: `--demo` tags a seeded spread-across-interviews sample and writes diags/locations/demo.html
 only; a full run is demo-gated, confirms cost, and writes outputs/locations/clip_locations{,_long}.
 `--batch` fills the cache for the missing clips via the Batch API (50%-off), then builds the same
 deliverables from cache. Idempotent + resumable via .toolkit/cache/locations.jsonl.
@@ -27,7 +27,7 @@ from ...core import cost as costmod
 from ...core.batch import run_batch
 from ...core.cache import JsonlAppender, cache_key, latest_records
 from ...core.config import load_step_config, require
-from ...core.console import confirm_or_abort
+from ...core.console import confirm_or_abort, reveal
 from ...core.llm import build_schema, call_llm, check_levels, openai_client
 from ...core.render import render_clip_plain
 from ...core.sampling import sample_clips_spread
@@ -36,7 +36,7 @@ from ...core.tables import (load_clips, load_paragraphs, merge_subset, paragraph
 from ...errors import ToolkitError
 from ...project import Project
 from ...state import check_demo_gate, record_demo, record_full
-from .annotate import write_review_md
+from .annotate import write_review_html
 
 STEP = "locations"
 
@@ -240,12 +240,13 @@ def run_locations_tag(project: Project, demo: bool = False, sample_n: int | None
                                             "kind", "justification"])
 
     if demo:
-        diag = write_review_md(project, wide, long, para_by_interview, "demo.md",
-                               title="Clip locations — DEMO")
+        diag = write_review_html(project, wide, long, para_by_interview, "demo.html",
+                                 title="Clip locations — DEMO")
         record_demo(project, STEP, fingerprint, units=sorted(wide["clip_id"]), diag=str(diag))
         print(f"\nDemo review file: {diag}")
         print("Review it; adjust config.yaml / prompts/ / locations/ and re-demo if needed. "
               "Then run `toolkit locations tag` for the full corpus.")
+        reveal(diag)
         return wide
 
     out_dir = project.outputs_dir / "locations"

@@ -16,8 +16,9 @@ read-only commands:
 - `config.yaml` — the settings the user is meant to adjust (models, topic lists, thresholds…).
 - `prompts/` — the live prompt texts per step; `topics/` — the user's topic lists;
   `locations/` — region vocabulary and region→country mapping.
-- `diags/` — the human review artifacts of demo runs (annotated markdown, plots). Walk the
-  user through them when they ask "was this demo any good?".
+- `diags/` — the human review artifacts of demo runs (self-contained `.html` pages, plots). Walk
+  the user through them when they ask "was this demo any good?"; a demo opens its page in the
+  browser automatically on a Mac.
 - `outputs/` — the production deliverables (parquet/csv tables, export.xlsx).
 
 Explain settings by connecting them to what they change in the pipeline; docs/CONFIG.md in the

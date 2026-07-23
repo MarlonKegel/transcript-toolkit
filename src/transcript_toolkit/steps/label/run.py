@@ -6,8 +6,8 @@ as read-only context), getting one label back per clip. An optional workspace ad
 (config `label.addendum`) appends project-specific consistency rules to the prompt.
 
 Demo-first: `--demo` labels the persisted `toolkit sample` interviews and writes the annotated
-review mds only; a full run is demo-gated, confirms cost, writes
-outputs/labels/labels.{parquet,csv} and the review mds (diags/label/). A failed batch fails
+review pages only; a full run is demo-gated, confirms cost, writes
+outputs/labels/labels.{parquet,csv} and the review pages (diags/label/*.html). A failed batch fails
 its whole interview (logged to logs/label_validation.log) — never partial labels.
 Idempotent + resumable via the per-batch cache (.toolkit/cache/label.jsonl).
 """
@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from ...core import cost as costmod
 from ...core.cache import JsonlAppender, cache_key, latest_records
 from ...core.config import load_step_config, require
-from ...core.console import confirm_or_abort
+from ...core.console import confirm_or_abort, reveal
 from ...core.llm import build_schema, call_llm, check_levels, openai_client
 from ...core.render import format_paragraph_full
 from ...core.sampling import load_interview_sample
@@ -321,9 +321,10 @@ def run_label(project: Project, demo: bool = False, interviews: list[str] | None
                 f"{', '.join(iid for iid, _ in failed)}. Details in {log_path}. "
                 f"Demo not recorded; adjust config/prompts and re-run `toolkit label --demo`.")
         record_demo(project, STEP, fingerprint, units=keys, diag=str(diag_dir))
-        print(f"\nDemo review files: {diag_dir}/")
+        print(f"\nDemo review files: open {diag_dir}/index.html")
         print("Review them; adjust config.yaml / prompts/ and re-demo if needed. "
               "Then run `toolkit label` for the full corpus.")
+        reveal(diag_dir / "index.html")
         return deliver
 
     labels_out = deliver
@@ -334,7 +335,7 @@ def run_label(project: Project, demo: bool = False, interviews: list[str] | None
             labels_out = merge_subset(pd.read_parquet(out_path), deliver, "interview_id")
         write_deliverable(labels_out, out_path, sort_by="clip_id")
         print(f"\nWrote {len(labels_out)} clip labels ({len(ok)} interview(s)) -> {out_path}")
-        print(f"Review files: {diag_dir}/")
+        print(f"Review files: open {diag_dir}/index.html")
         _print_style_audit(deliver)
 
     if not interviews and not failed:

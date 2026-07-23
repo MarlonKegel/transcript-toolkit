@@ -6,7 +6,7 @@ clipping; needs only `import`.
 ## Run it
 
 ```sh
-toolkit summarize --demo   # summarize a couple of interviews → review diags/summarize/
+toolkit summarize --demo   # summarize a couple of interviews → review page opens in your browser
 toolkit summarize          # all interviews
 ```
 
@@ -15,7 +15,8 @@ By default a narrator's sessions are pooled into one summary; `--no-pool-session
 
 ## Reviewing
 
-`diags/summarize/*.md` lists each summary with its length. Check for accuracy (nothing invented),
+`diags/summarize/summaries.html` lists each summary with its length (the demo opens
+`demo_summaries.html` for you). Check for accuracy (nothing invented),
 coverage of the main through-lines, and length. Tune the tone/length in
 `prompts/summarize_interview.md`.
 

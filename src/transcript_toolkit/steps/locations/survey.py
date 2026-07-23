@@ -18,6 +18,7 @@ from pathlib import Path
 import pandas as pd
 
 from ...core.config import load_step_config, require
+from ...core.reviewdoc import document, esc
 from ...core.tables import load_paragraphs
 from ...errors import ToolkitError
 from ...project import Project
@@ -255,8 +256,8 @@ def run_locations_survey(project: Project) -> None:
     out_dir = project.diags_dir / "locations" / "survey"
     out_dir.mkdir(parents=True, exist_ok=True)
     survey.to_csv(out_dir / "survey.csv", index=False)
-    _write_md(survey, out_dir / "survey.md", model)
-    print(f"\nWrote {len(survey)} distinct mentions -> {out_dir / 'survey.csv'} + survey.md")
+    _write_html(survey, out_dir / "survey.html", model)
+    print(f"\nWrote {len(survey)} distinct mentions -> {out_dir / 'survey.csv'} + survey.html")
     print("\nBy bucket (distinct mentions):")
     print(survey["bucket"].value_counts().reindex(BUCKETS).to_string())
 
@@ -283,20 +284,24 @@ def _build_survey(mentions: pd.DataFrame, gn_dir: Path) -> pd.DataFrame:
                 "geonameid", "population"]]
 
 
-def _write_md(survey: pd.DataFrame, path: Path, model: str) -> None:
-    lines = [f"# Corpus location survey — {len(survey)} distinct mentions",
-             f"\n*spaCy `{model}` NER + GeoNames level lookup; uncurated — a rough map of the "
-             f"corpus's geographic spread, not a deliverable.*\n",
-             "## Distinct mentions by bucket\n"]
+def _write_html(survey: pd.DataFrame, path: Path, model: str) -> None:
+    subtitle = (f"spaCy <code>{esc(model)}</code> NER + GeoNames level lookup; uncurated — a rough "
+                f"map of the corpus's geographic spread, not a deliverable.")
     counts = survey["bucket"].value_counts().reindex(BUCKETS)
-    lines += [f"- {b}: {int(counts[b] or 0)}" for b in BUCKETS]
+    body = ["<h2>Distinct mentions by bucket</h2>", '<ul class="index">']
+    body += [f"<li><b>{esc(b)}:</b> {int(counts[b] or 0)}</li>" for b in BUCKETS]
+    body.append("</ul>")
     for b in BUCKETS:
         sub = survey[survey["bucket"] == b]
         if sub.empty:
             continue
-        lines.append(f"\n## {b} — top 25 of {len(sub)}\n")
-        lines.append("| mention | level | country | mentions | interviews |")
-        lines.append("|---|---|---|---:|---:|")
+        body.append(f"<h2>{esc(b)} <span class=\"meta\">top 25 of {len(sub)}</span></h2>")
+        body.append("<table><thead><tr><th>mention</th><th>level</th><th>country</th>"
+                    '<th class="num">mentions</th><th class="num">interviews</th></tr></thead><tbody>')
         for r in sub.head(25).itertuples():
-            lines.append(f"| {r.ent_text} | {r.level} | {r.country} | {r.frequency} | {r.n_interviews} |")
-    path.write_text("\n".join(lines) + "\n")
+            body.append(f"<tr><td>{esc(r.ent_text)}</td><td>{esc(r.level)}</td>"
+                        f'<td>{esc(r.country)}</td><td class="num">{r.frequency}</td>'
+                        f'<td class="num">{r.n_interviews}</td></tr>')
+        body.append("</tbody></table>")
+    path.write_text(document(f"Corpus location survey — {len(survey)} distinct mentions",
+                             "\n".join(body), subtitle=subtitle))

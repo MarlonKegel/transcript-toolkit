@@ -6,8 +6,8 @@ overlap at each seam. Chunks within an interview run sequentially (each chunk N>
 previous chunk's output for its locked-context preamble); interviews run in parallel.
 
 Demo-first: `--demo` clips the persisted `toolkit sample` interviews and writes the annotated
-review mds only; a full run is demo-gated, confirms cost, writes
-outputs/clips/{clips,paragraphs_clipped}.{parquet,csv} and the review mds (diags/clip/).
+review pages only; a full run is demo-gated, confirms cost, writes
+outputs/clips/{clips,paragraphs_clipped}.{parquet,csv} and the review pages (diags/clip/*.html).
 Every chunk's output is validated for exact decision-region coverage; a failed interview is
 logged to logs/clip_validation.log and never written. Idempotent + resumable via the per-chunk
 cache (.toolkit/cache/clip.jsonl).
@@ -24,7 +24,7 @@ from pydantic import BaseModel
 from ...core import cost as costmod
 from ...core.cache import JsonlAppender, cache_key, latest_records
 from ...core.config import load_step_config, require
-from ...core.console import confirm_or_abort
+from ...core.console import confirm_or_abort, reveal
 from ...core.llm import build_schema, call_llm, check_levels, openai_client
 from ...core.render import format_paragraph_full
 from ...core.sampling import load_interview_sample
@@ -527,9 +527,10 @@ def run_clip(project: Project, demo: bool = False, interviews: list[str] | None 
                 f"{', '.join(iid for iid, _ in failed)}. Details in {log_path}. "
                 f"Demo not recorded; adjust config/prompts and re-run `toolkit clip --demo`.")
         record_demo(project, STEP, fingerprint, units=keys, diag=str(diag_dir))
-        print(f"\nDemo review files: {diag_dir}/")
+        print(f"\nDemo review files: open {diag_dir}/index.html")
         print("Review them; adjust config.yaml / prompts/ and re-demo if needed. "
               "Then run `toolkit clip` for the full corpus.")
+        reveal(diag_dir / "index.html")
         return clips_df
 
     clips_out, paras_out = clips_df, paras_df
@@ -545,7 +546,7 @@ def run_clip(project: Project, demo: bool = False, interviews: list[str] | None 
         write_deliverable(paras_out, out_paras, sort_by=["interview_id", "paragraph_idx"])
         print(f"\nWrote {len(clips_out)} clips -> {out_clips}")
         print(f"Wrote {len(paras_out)} paragraph rows -> {out_paras}")
-        print(f"Review files: {diag_dir}/")
+        print(f"Review files: open {diag_dir}/index.html")
         _print_run_stats(clips_df, paras_df)
 
     if not interviews and not failed:

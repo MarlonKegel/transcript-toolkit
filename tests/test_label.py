@@ -119,8 +119,9 @@ def test_demo_writes_mds_only_and_records_state(project):
     assert sorted(df["interview_id"].unique()) == SAMPLE
     assert not out_path(project).exists()
     for iid in SAMPLE:
-        md = project.diags_dir / "label" / f"{iid}.md"
-        assert md.exists() and "**Label:** Clip starting at" in md.read_text()
+        page = project.diags_dir / "label" / f"{iid}.html"
+        assert page.exists() and "Label:</span> Clip starting at" in page.read_text()
+    assert (project.diags_dir / "label" / "index.html").exists()
     demo = load_state(project)["steps"]["label"]["demo"]
     assert demo["units"] == SAMPLE
     assert (project.cache_dir / "label.jsonl").exists()
@@ -287,10 +288,10 @@ def test_addendum_edit_stales_demo(project):
 
 def test_annotate_rerenders_from_deliverable(project):
     run_label(project, yes=True, skip_demo_check=True)
-    md = project.diags_dir / "label" / "fake_beta.md"
-    md.unlink()
+    page = project.diags_dir / "label" / "fake_beta.html"
+    page.unlink()
     annotate_labels(project)
-    assert md.exists() and "**Label:** Clip starting at" in md.read_text()
+    assert page.exists() and "Label:</span> Clip starting at" in page.read_text()
 
 
 def test_annotate_without_deliverable_fails(project):

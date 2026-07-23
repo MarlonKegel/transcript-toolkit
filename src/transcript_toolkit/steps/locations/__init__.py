@@ -1,7 +1,7 @@
 """`toolkit locations` — clip -> location tagging, country mapping, interview rollup, extras.
 
 Pipeline: tag (LLM, demo-first) -> map (regions down to countries) -> rollup (hybrid interview
-tags). Extras: thresholds (rollover decision aid), annotate (re-render the review md), survey
+tags). Extras: thresholds (rollover decision aid), annotate (re-render the review HTML), survey
 (optional offline NER overview).
 """
 from .annotate import annotate_locations

@@ -97,8 +97,8 @@ def test_demo_writes_review_only_and_records_state(project):
     df = run_locations_tag(project, demo=True)
     assert len(df) == 4                                   # demo_n_clips set to 4 in the fixture
     assert not wide_path(project).exists()                # no deliverable from a demo
-    demo_md = project.diags_dir / "locations" / "demo.md"
-    text = demo_md.read_text()
+    demo_html = project.diags_dir / "locations" / "demo.html"
+    text = demo_html.read_text()
     assert "Czech Republic" in text and "The Balkans" in text
     assert "Justified: Prague." in text                   # demo default: justify on
     demo = load_state(project)["steps"]["locations"]["demo"]
@@ -176,7 +176,7 @@ def test_annotate_rerenders_and_requires_deliverable(project):
     run_locations_tag(project, demo=True)
     run_locations_tag(project, yes=True)
     annotate_locations(project)
-    assert (project.diags_dir / "locations" / "locations.md").exists()
+    assert (project.diags_dir / "locations" / "locations.html").exists()
 
 
 def test_batch_transport_fills_cache_and_builds_deliverables(project, monkeypatch):

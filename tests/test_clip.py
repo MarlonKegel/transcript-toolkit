@@ -95,9 +95,10 @@ def test_demo_writes_mds_only_and_records_state(project):
     assert sorted(df["interview_id"].unique()) == SAMPLE
     assert not out_clips(project).exists()                # no deliverable from a demo
     for iid in SAMPLE:
-        md = project.diags_dir / "clip" / f"{iid}.md"
-        assert md.exists() and "## Clip 1 —" in md.read_text()
-    assert not (project.diags_dir / "clip" / "fake_alpha_20240108_session2.md").exists()
+        page = project.diags_dir / "clip" / f"{iid}.html"
+        assert page.exists() and "Clip 1 " in page.read_text()
+    assert not (project.diags_dir / "clip" / "fake_alpha_20240108_session2.html").exists()
+    assert (project.diags_dir / "clip" / "index.html").exists()
     demo = load_state(project)["steps"]["clip"]["demo"]
     assert demo["units"] == SAMPLE
     assert (project.cache_dir / "clip.jsonl").exists()
@@ -318,10 +319,10 @@ def test_stitch_discards_throwaway_and_restricts_procedural():
 
 def test_annotate_rerenders_from_deliverable(project):
     run_clip(project, yes=True, skip_demo_check=True)
-    md = project.diags_dir / "clip" / "fake_beta.md"
-    md.unlink()
+    page = project.diags_dir / "clip" / "fake_beta.html"
+    page.unlink()
     annotate_clips(project)
-    assert md.exists() and "# fake_beta" in md.read_text()
+    assert page.exists() and "<h1>fake_beta</h1>" in page.read_text()
 
 
 def test_annotate_without_deliverable_fails(project):

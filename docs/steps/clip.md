@@ -7,19 +7,20 @@ paragraphs). Clips are the unit that `label`, `topics`, and `locations` work on.
 
 ```sh
 toolkit sample          # once: pick the demo interviews
-toolkit clip --demo     # clip just those → review diags/clip/*.md
+toolkit clip --demo     # clip just those → review page opens in your browser
 toolkit clip            # full corpus (after a demo of the current settings)
 ```
 
 `toolkit clip preview` shows how each interview would be chunked (for long interviews) without
-calling the API. `toolkit clip annotate` re-renders the review markdown from existing results.
+calling the API. `toolkit clip annotate` re-renders the review pages from existing results.
 
 ## Reviewing
 
-Open the per-interview files in `diags/clip/`: each shows the transcript with clip boundaries
-marked. Judge whether boundaries fall at real topic shifts and whether procedural chatter
-(scheduling, mic checks) is separated out. To adjust, edit `prompts/segment_interview.md` or the
-chunking settings, then re-demo.
+The demo opens `diags/clip/index.html` in your browser (on a Mac; elsewhere, double-click it).
+It links one page per interview, each showing the transcript with clip boundaries marked. Judge
+whether boundaries fall at real topic shifts and whether procedural chatter (scheduling, mic
+checks) is separated out. To adjust, edit `prompts/segment_interview.md` or the chunking settings,
+then re-demo.
 
 ## Settings
 
