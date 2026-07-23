@@ -29,8 +29,8 @@ Every LLM step is **demo-first**: you run it on a small sample, review the annot
 ## Quickstart
 
 ```sh
-# one-time install (see docs/SETUP.md for the full Mac walkthrough)
-pip install git+https://github.com/MarlonKegel/transcript-toolkit.git
+# one-time install (see docs/SETUP.md for the full Mac walkthrough, incl. installing uv)
+uv tool install git+https://github.com/MarlonKegel/transcript-toolkit.git
 
 toolkit init my-archive && cd my-archive
 #  → put your OpenAI key in .env, drop transcripts in data/
