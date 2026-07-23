@@ -46,9 +46,10 @@ go here), `outputs/` (results appear here), `diags/` (review files appear here).
 
 ## 4. Add your OpenAI API key
 
-Every LLM step calls the OpenAI API with a key billed to your team. Ask your admin for a key,
-then open the file `.env` inside your project folder (it's hidden in Finder — in Terminal:
-`open -e .env`) and paste the key after the `=`:
+Every LLM step calls the OpenAI API with a key billed to your team. Ask your admin for a key.
+`toolkit init` already created a `.env` file inside your project folder — you just need to add
+the key to it. Make sure you are inside the workspace (the `cd my-archive` from step 3), then
+open it (it's hidden in Finder — in Terminal: `open -e .env`) and paste the key after the `=`:
 
 ```
 OPENAI_API_KEY=sk-...

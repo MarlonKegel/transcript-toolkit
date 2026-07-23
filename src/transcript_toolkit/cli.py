@@ -201,12 +201,16 @@ def cmd_init(args) -> None:
         return
     if args.dir is None:
         raise ToolkitError("Usage: toolkit init <dir>   (or: toolkit init --reset-prompt <name>)")
+    import shlex
+
     project = init_project(args.dir)
     print(f"Created workspace: {project.root}")
     print("\nNext steps:")
-    print(f"  1. Put your OpenAI API key in {project.root / '.env'}")
-    print(f"  2. Drop your transcript .docx files into {project.data_dir}/")
-    print("  3. Run: toolkit import")
+    print(f"  1. Go into the workspace:  cd {shlex.quote(args.dir)}")
+    print("  2. Add your OpenAI API key to the .env file there  (on Mac: open -e .env)")
+    print("  3. Drop your transcript .docx files into data/")
+    print("  4. Run: toolkit import")
+    print("\n(Run toolkit commands from inside the workspace — they find it automatically.)")
 
 
 def cmd_import(args) -> None:
