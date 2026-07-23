@@ -14,13 +14,8 @@ Close the Terminal window and open a new one afterwards (so the `uv` command is 
 
 ## 2. Install the toolkit
 
-The repo is private, so GitHub needs to know it's you. Ask the repo owner to add your GitHub
-account as a collaborator, then create a *personal access token*: on github.com go to
-Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new
-token, give it read access to the `transcript-toolkit` repository, and copy the token.
-
 ```sh
-uv tool install git+https://<YOUR_TOKEN>@github.com/MarlonKegel/transcript-toolkit.git
+uv tool install git+https://github.com/MarlonKegel/transcript-toolkit.git
 ```
 
 Check it worked:
