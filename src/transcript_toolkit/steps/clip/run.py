@@ -187,19 +187,32 @@ def stitch_chunks(chunk_outputs: list[tuple[Chunk, ChunkSegmentation]]) -> tuple
         own_start, own_end = chunk.owned_start, chunk.owned_end
         clips = sorted(seg.clips, key=lambda c: c.start_paragraph_idx)
 
-        # Handle "extending" clip (must be the first; only one allowed)
+        # Handle "extending" clip (must be the first; only one allowed).
+        # The extension continues the previous chunk's last clip (the one at the seam). The prompt
+        # tells the model to start the extension at that clip's FIRST VISIBLE locked paragraph, so
+        # a valid extension start is either:
+        #   - the previous clip's true start        (the clip began inside this chunk's overlap), or
+        #   - this chunk's shown_start               (the clip continued in from before the overlap,
+        #                                             so its true start isn't visible to the model).
+        # Either way we keep the previous clip's TRUE start and extend its end. Any other start is a
+        # genuine inconsistency and still fails.
         if clips and clips[0].start_paragraph_idx < own_start:
             ext = clips[0]
             clips = clips[1:]
-            # Must match the previous final clip's start exactly
-            if final_clips and final_clips[-1].start_paragraph_idx == ext.start_paragraph_idx:
+            prev = final_clips[-1] if final_clips else None
+            anchors_prev_start = prev is not None and ext.start_paragraph_idx == prev.start_paragraph_idx
+            anchors_shown_start = (
+                prev is not None and ext.start_paragraph_idx == chunk.shown_start
+                and prev.start_paragraph_idx <= chunk.shown_start <= prev.end_paragraph_idx)
+            if anchors_prev_start or anchors_shown_start:
                 new_end = min(ext.end_paragraph_idx, own_end) if not is_last else ext.end_paragraph_idx
-                final_clips[-1] = Clip(start_paragraph_idx=ext.start_paragraph_idx, end_paragraph_idx=new_end)
+                final_clips[-1] = Clip(start_paragraph_idx=prev.start_paragraph_idx,
+                                       end_paragraph_idx=max(prev.end_paragraph_idx, new_end))
             else:
                 raise RuntimeError(
-                    f"chunk {chunk.chunk_idx}: extending clip start={ext.start_paragraph_idx} does not match "
-                    f"any previous final clip's start (last final was "
-                    f"{final_clips[-1] if final_clips else None})"
+                    f"chunk {chunk.chunk_idx}: extending clip start={ext.start_paragraph_idx} matches "
+                    f"neither the previous final clip's start nor this chunk's shown_start="
+                    f"{chunk.shown_start} (last final was {prev})"
                 )
 
         for clip in clips:

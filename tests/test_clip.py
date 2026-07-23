@@ -263,10 +263,41 @@ def test_stitch_extension_mismatch_fails():
                owned_start=0, owned_end=9, est_tokens=0)
     c1 = Chunk(chunk_idx=1, shown_start=8, shown_end=19, decision_start=10,
                owned_start=10, owned_end=19, est_tokens=0)
-    with pytest.raises(RuntimeError, match="does not match"):
+    with pytest.raises(RuntimeError, match="neither the previous final clip"):
         stitch_chunks([
             (c0, seg([(0, 5), (6, 11)])),
-            (c1, seg([(7, 13), (14, 19)])),               # 7 != any previous clip start
+            (c1, seg([(7, 13), (14, 19)])),               # 7 is neither prev.start (6) nor shown_start (8)
+        ])
+
+
+def test_stitch_extension_anchored_at_shown_start():
+    # Regression (the kramer_larry failure): the seam clip's TRUE start is before this chunk's
+    # shown_start, so the model can only see it from shown_start and anchors the extension there.
+    # Geometry mirrors the real failure: prev clip (116,126), chunk-1 shown_start=117.
+    c0 = Chunk(chunk_idx=0, shown_start=0, shown_end=136, decision_start=0,
+               owned_start=0, owned_end=126, est_tokens=0)
+    c1 = Chunk(chunk_idx=1, shown_start=117, shown_end=287, decision_start=127,
+               owned_start=127, owned_end=277, est_tokens=0)
+    clips, _ = stitch_chunks([
+        (c0, seg([(100, 115), (116, 126)])),              # last clip truly starts at 116
+        (c1, seg([(117, 141), (142, 150)])),              # extension anchored at shown_start=117
+    ])
+    # merged clip keeps the TRUE start 116 and takes the extended end 141
+    assert [(c.start_paragraph_idx, c.end_paragraph_idx) for c in clips] == [
+        (100, 115), (116, 141), (142, 150)]
+
+
+def test_stitch_shown_start_extension_requires_clip_to_span_it():
+    # shown_start anchoring is only valid when the previous clip actually spans shown_start.
+    # Here the previous clip (6,7) ends before shown_start=8, so an ext at 8 is a real error.
+    c0 = Chunk(chunk_idx=0, shown_start=0, shown_end=11, decision_start=0,
+               owned_start=0, owned_end=9, est_tokens=0)
+    c1 = Chunk(chunk_idx=1, shown_start=8, shown_end=19, decision_start=10,
+               owned_start=10, owned_end=19, est_tokens=0)
+    with pytest.raises(RuntimeError, match="neither the previous final clip"):
+        stitch_chunks([
+            (c0, seg([(0, 5), (6, 7)], procedural=[8, 9])),
+            (c1, seg([(8, 13), (14, 19)])),
         ])
 
 
