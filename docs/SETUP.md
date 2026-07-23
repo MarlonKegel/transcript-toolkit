@@ -55,6 +55,8 @@ open it (it's hidden in Finder — in Terminal: `open -e .env`) and paste the ke
 OPENAI_API_KEY=sk-...
 ```
 
+Then **save the file** (in TextEdit: `⌘S`) and close it — the key isn't stored until you save.
+
 ## 5. Add transcripts and import
 
 Copy your SYNC'd transcript `.docx` files into `data/` (one file per interview, or per session
