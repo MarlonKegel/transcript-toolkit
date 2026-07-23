@@ -4,7 +4,13 @@ Validates loudly at the door (this is where naming/format mistakes must surface,
 - duplicate interview ids (two files collapsing to the same id) abort with both filenames;
 - a file yielding zero paragraphs aborts with a pointer to the expected line format;
 - the speaker-role table and the narrator-pooling table are printed for eyeballing.
-Orphan paragraphs and stray mid-turn timestamps are logged to logs/import_warnings.log.
+
+Timestamps: the toolkit EXPECTS a `[HH:MM:SS]` on every paragraph (per-paragraph timing). It
+still works when only each speaker turn is timestamped and multi-paragraph turns continue
+without one — but then a clip's start/end time falls back to the speaker-turn's timestamp, so
+per-clip timing is coarser. Import measures this per transcript and warns when timestamps are
+per-turn-only. Details (that fallback, plus paragraphs before the first speaker turn) go to
+logs/import_warnings.log.
 """
 from __future__ import annotations
 
@@ -49,7 +55,8 @@ def run_import(project: Project) -> pd.DataFrame:
         ids[iid] = path
 
     records: list[dict] = []
-    warnings: list[str] = []
+    orphan_lines: list[str] = []       # paragraphs before the first speaker turn (real warning)
+    note_lines: list[str] = []         # benign: continuation had a colon after its own timestamp
     empty: list[str] = []
     for iid, path in ids.items():
         paragraphs, orphans, mid_turn = parse_docx_paragraphs(
@@ -59,9 +66,10 @@ def run_import(project: Project) -> pd.DataFrame:
             continue
         records += paragraphs_to_records(paragraphs)
         for o in orphans:
-            warnings.append(f"{path.name}: paragraph before any turn header (skipped): {o[:120]}")
+            orphan_lines.append(f"{path.name}: paragraph before any turn header (skipped): {o[:120]}")
         for t in mid_turn:
-            warnings.append(f"{path.name}: stray mid-turn timestamp folded into previous turn: {t[:120]}")
+            note_lines.append(f"{path.name}: continuation paragraph with its own timestamp and a "
+                              f"colon; kept with the current speaker (normal): {t[:100]}")
     if empty:
         raise ToolkitError(
             "No parsable paragraphs in: " + ", ".join(empty) + f"\nCheck the files — {EXPECTED_FORMAT_HINT}")
@@ -72,16 +80,65 @@ def run_import(project: Project) -> pd.DataFrame:
     if cfg.get("write_csv", True):
         df.to_csv(project.paragraphs_path.with_suffix(".csv"), index=False)
 
+    regimes = timestamp_regimes(df)
+    flagged = [r for r in regimes if not r["ok"]]
+
     warn_path = project.logs_dir / "import_warnings.log"
     warn_path.parent.mkdir(parents=True, exist_ok=True)
-    warn_path.write_text("\n".join(warnings) + ("\n" if warnings else ""))
+    _write_log(warn_path, flagged, orphan_lines, note_lines)
 
-    _print_summary(df, ids, cfg["session_regex"], warn_path, n_warnings=len(warnings))
+    _print_summary(df, ids, cfg["session_regex"], regimes, orphan_lines, note_lines, warn_path)
     return df
 
 
+def timestamp_regimes(df: pd.DataFrame) -> list[dict]:
+    """Per-transcript timestamp coverage. For each interview, `coverage` = the fraction of
+    continuation paragraphs (those after a turn's first line) that carry their OWN [HH:MM:SS]
+    (`sub_time_start`). Turn-first paragraphs always have one, so they don't count here.
+
+    coverage 1.0  -> every paragraph is timestamped (the expected per-paragraph regime);
+    coverage 0.0  -> timestamps only on speaker turns (tolerated; clip times fall back to the
+                     turn's timestamp for the untimed paragraphs);
+    in between     -> mixed. `ok` is True only for the fully-per-paragraph case.
+    """
+    rows: list[dict] = []
+    for iid, g in df.groupby("interview_id", sort=True):
+        cont = g[g["paragraph_idx_in_turn"] > 0]
+        n_cont = len(cont)
+        n_ts = int((cont["sub_time_start"].astype(str).str.len() > 0).sum()) if n_cont else 0
+        coverage = (n_ts / n_cont) if n_cont else 1.0
+        rows.append({"interview_id": iid, "n_cont": n_cont, "n_timed": n_ts,
+                     "coverage": coverage, "ok": coverage >= 1.0})
+    return rows
+
+
+def _regime_label(r: dict) -> str:
+    if r["coverage"] <= 0.0:
+        return f"timestamps on speaker turns only (0 of {r['n_cont']} continuation paragraphs timed)"
+    return (f"mixed — {r['coverage']:.0%} of {r['n_cont']} continuation paragraphs carry their "
+            f"own timestamp")
+
+
+def _write_log(path: Path, flagged: list[dict], orphan_lines: list[str],
+               note_lines: list[str]) -> None:
+    sections: list[str] = []
+    if flagged:
+        sections.append("=== Timestamp coverage (per-turn-only or mixed transcripts) ===\n"
+                        "For paragraphs without their own timestamp, a clip's start/end time falls "
+                        "back to the speaker-turn's timestamp, so per-clip timing is coarser.\n"
+                        + "\n".join(f"  {r['interview_id']}: {_regime_label(r)}" for r in flagged))
+    if orphan_lines:
+        sections.append("=== Paragraphs before the first speaker turn (skipped) ===\n"
+                        + "\n".join(orphan_lines))
+    if note_lines:
+        sections.append("=== Continuation paragraphs with a colon after their timestamp "
+                        "(kept with the current speaker; normal) ===\n" + "\n".join(note_lines))
+    path.write_text("\n\n".join(sections) + ("\n" if sections else ""))
+
+
 def _print_summary(df: pd.DataFrame, ids: dict[str, Path], session_regex: str,
-                   warn_path: Path, n_warnings: int) -> None:
+                   regimes: list[dict], orphan_lines: list[str], note_lines: list[str],
+                   warn_path: Path) -> None:
     narrators: dict[str, list[str]] = {}
     for iid in ids:
         narrators.setdefault(narrator_key(iid, session_regex), []).append(iid)
@@ -95,10 +152,27 @@ def _print_summary(df: pd.DataFrame, ids: dict[str, Path], session_regex: str,
     for r in roles.itertuples():
         print(f"  {r.speaker_role:<12} {r.speaker_label:<24} {r.n:>6} paragraphs")
 
+    # Timestamps: the toolkit expects one per paragraph; warn when a transcript is per-turn-only.
+    flagged = [r for r in regimes if not r["ok"]]
+    if not flagged:
+        print("\nTimestamps: every paragraph carries its own [HH:MM:SS] (per-paragraph timing).")
+    else:
+        print(f"\n⚠ Timestamps: {len(flagged)} of {len(regimes)} transcripts have timestamps only "
+              f"on speaker turns, not every paragraph.")
+        print("  Clip start/end times fall back to the speaker-turn's timestamp for the untimed "
+              "paragraphs, so per-clip timing is coarser (the pipeline still runs).")
+        for r in flagged:
+            print(f"    {r['interview_id']:<34} {_regime_label(r)}")
+
     multi = {k: v for k, v in narrators.items() if len(v) > 1}
     if multi:
         print("\nMulti-session narrators (sessions pooled for summaries and interview tags):")
         for key, session_ids in sorted(multi.items()):
             print(f"  {key:<32} <- {', '.join(sorted(session_ids))}")
-    if n_warnings:
-        print(f"\n{n_warnings} parse warning(s) -> {warn_path}")
+
+    if orphan_lines:
+        print(f"\n{len(orphan_lines)} paragraph(s) appeared before the first speaker turn and were "
+              f"skipped -> {warn_path}")
+    if note_lines:
+        print(f"\n{len(note_lines)} continuation paragraph(s) had a colon right after their "
+              f"timestamp; kept with the current speaker (normal, not a problem).")
