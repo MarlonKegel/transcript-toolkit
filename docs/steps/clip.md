@@ -14,6 +14,10 @@ toolkit clip            # full corpus (after a demo of the current settings)
 `toolkit clip preview` shows how each interview would be chunked (for long interviews) without
 calling the API. `toolkit clip annotate` re-renders the review pages from existing results.
 
+Clip is the one step with no Batch-API option: a long interview's chunks run in sequence, because
+each chunk's prompt carries the previous chunk's clip decisions as locked context. They therefore
+can't all be submitted up front the way the other steps' calls can.
+
 ## Reviewing
 
 The demo opens `diags/clip/index.html` in your browser (on a Mac; elsewhere, double-click it).

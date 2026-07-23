@@ -64,3 +64,16 @@ def mean_unit_cost(records: list[dict], model: str) -> tuple[float, float] | Non
         return None
     std, batch = costs(sum_usage(records), model)
     return std / len(records), batch / len(records)
+
+
+def estimate_pair(cache: dict, fingerprint: str, model: str,
+                  n_fresh: int) -> tuple[float, float] | None:
+    """Projected (standard_usd, batch_usd) for `n_fresh` fresh calls, extrapolated from the mean
+    usage of this fingerprint's cached records. None when there is nothing to extrapolate from
+    (no matching cache yet, or nothing fresh to run) — callers then omit the figure rather than
+    guess. Shared by every demo-gated step so one run's demo prices its own full run."""
+    if n_fresh <= 0:
+        return None
+    matching = [r for r in cache.values() if r.get("fingerprint") == fingerprint]
+    per = mean_unit_cost(matching, model)
+    return None if per is None else (per[0] * n_fresh, per[1] * n_fresh)

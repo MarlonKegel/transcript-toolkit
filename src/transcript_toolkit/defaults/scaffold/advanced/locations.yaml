@@ -18,3 +18,5 @@ survey:
   place_labels: [GPE, LOC]
   speaker_roles: [Narrator]
   geonames_dir: null              # directory holding allCountries.txt etc.; required for the survey
+batch_poll_interval_s: 30       # --batch: how often to check the Batch API job
+batch_max_total_wait_s: 86400   # --batch: give up polling after this; re-run to resume

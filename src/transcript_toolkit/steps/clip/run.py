@@ -423,11 +423,11 @@ def _plan_calls(frames: dict[str, pd.DataFrame], cache: dict, cfg: dict, instruc
 
 
 def _estimate(cache: dict, fingerprint: str, model: str, n_fresh: int) -> str:
-    matching = [r for r in cache.values() if r.get("fingerprint") == fingerprint]
-    per = costmod.mean_unit_cost(matching, model)
-    if per is None or n_fresh == 0:
-        return ""
-    return f", ~${per[0] * n_fresh:.2f} est."
+    """Standard-tier cost suffix for clip's confirm. Clip has no Batch-API option: chunks within
+    an interview are sequential (chunk N's prompt is built from chunk N-1's output), so its calls
+    cannot all be submitted up front."""
+    est = costmod.estimate_pair(cache, fingerprint, model, n_fresh)
+    return f", ~${est[0]:.2f} est." if est else ""
 
 
 def _log_failures(project: Project, failed: list[tuple[str, list[str]]], filename: str):

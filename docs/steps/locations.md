@@ -8,7 +8,7 @@ out of the box — a region vocabulary and a region→country mapping ship with 
 
 ```sh
 toolkit locations tag --demo   # tag a sample of clips → review page opens in your browser
-toolkit locations tag          # full corpus  (add --batch for the 50%-off Batch API)
+toolkit locations tag          # full corpus  (asks: run now, or 50%-off Batch API?)
 toolkit locations map          # expand regions to countries, apply the label canon
 toolkit locations rollup       # clip tags → interview tags
 ```

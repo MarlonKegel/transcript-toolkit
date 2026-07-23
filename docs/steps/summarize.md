@@ -11,7 +11,8 @@ toolkit summarize          # all interviews
 ```
 
 By default a narrator's sessions are pooled into one summary; `--no-pool-sessions` (or
-`summarize.pool_sessions: false`) summarizes each session file separately.
+`summarize.pool_sessions: false`) summarizes each session file separately. A full run asks whether
+to run now or on the 50%-off [Batch API](../WORKFLOW.md#run-now-or-run-cheap-the-batch-api).
 
 ## Reviewing
 

@@ -308,3 +308,29 @@ def test_annotate_writes_per_interview_html(project):
 def test_annotate_without_deliverable_fails(project):
     with pytest.raises(ToolkitError, match="topics tag"):
         annotate_topics(project)
+
+
+def test_batch_transport_fills_cache_and_builds_deliverables(project, monkeypatch):
+    """--batch routes the uncached clips through one Batch-API job; scoring/assembly then runs
+    entirely off the cache and makes no synchronous call."""
+    import json
+
+    import transcript_toolkit.core.batch as batch_mod
+
+    def fake_run_batch(client, units, batch_dir, **kwargs):
+        return {u["custom_id"]: ({"scores": {"education": 2, "career": 0, "family": 1}},
+                                 {"input_tokens": 10, "output_tokens": 5,
+                                  "reasoning_tokens": 1, "cached_input_tokens": 0})
+                for u in units}, []
+
+    monkeypatch.setattr(batch_mod, "run_batch", fake_run_batch)
+    monkeypatch.setattr(tag_step, "call_llm",
+                        lambda *a, **k: pytest.fail("batch run must not call the sync API"))
+
+    df = run_topics_tag(project, yes=True, skip_demo_check=True, batch=True)
+    assert len(df) == len(project.clips)
+    assert set(df["education"]) == {2} and set(df["family"]) == {1}
+    assert wide_path(project).exists()
+    records = [json.loads(ln) for ln
+               in (project.cache_dir / "topics_main.jsonl").read_text().splitlines()]
+    assert records and all(r.get("api") == "batch" for r in records)

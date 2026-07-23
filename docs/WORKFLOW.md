@@ -27,12 +27,35 @@ settings you can tune. So every step follows the same loop, and the toolkit **en
    your topic list, and go back to 1. Every demo is cheap, and repeated runs re-use everything
    already computed.
 4. **Full run** — `toolkit <step>` (no flags). This only starts if a demo of the *current*
-   prompt+settings has been made (otherwise it tells you what changed), asks for one
-   confirmation with a cost estimate, and then processes the whole corpus. Results land in
-   `outputs/`, review files in `diags/`.
+   prompt+settings has been made (otherwise it tells you what changed), asks you to confirm the
+   spend (see below), and then processes the whole corpus. Results land in `outputs/`, review
+   files in `diags/`.
 
 If a full run is interrupted (laptop sleep, network), just run the same command again — every
 call is cached, nothing is paid twice.
+
+## Run now, or run cheap? (the Batch API)
+
+Demos always run immediately. On a **full run**, the confirmation asks how to send the work, with
+both prices worked out from your own demo:
+
+```
+Tag 801 clip(s) with gpt-5.4 (0 already cached, 801 fresh call(s)).
+  [1] Run now       ~$3.20   results in this session
+  [2] Batch API     ~$1.60   50% cheaper, up to 24h turnaround
+  [n] Cancel
+Choose [1/2/n]
+```
+
+Pick **[1]** when you want the results now — that's the normal choice. Pick **[2]** when the run
+is large and you can wait: OpenAI's Batch API is half price but has no speed guarantee (often
+much faster than 24h, but don't count on it). A batch job is resumable — press Ctrl-C and re-run
+the same command later and it re-attaches to the same job rather than paying again.
+
+Skip the question with `--batch` or `--no-batch`; `--yes` runs immediately without asking.
+Available on `label`, `summarize`, `topics tag` and `locations tag`. **Not** on `clip`: its chunks
+are sequential within an interview (each chunk's prompt is built from the previous chunk's
+result), so they can't all be submitted up front.
 
 ## A typical project, in commands
 

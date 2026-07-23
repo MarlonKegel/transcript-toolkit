@@ -56,9 +56,14 @@ locations:
 
 Per step: `prompt` (the file in `prompts/` used), `verbosity`, `max_workers`, poll settings, and
 step-specific tunables — `clip`: `chunk_threshold_tokens`, `overlap_paragraphs`; `label`:
-`batch_threshold_tokens`; `topics`/`locations`: `demo_n_clips`, `demo_seed`, and for topics
-`score_values`, `justify_min_score`; `import`: `session_regex`; `locations`: `regions_file`,
-`region_map_file`, `survey.*`; `export`: `filename`, `tabs`.
+`batch_threshold_tokens` (how many clips share one request — nothing to do with the Batch API);
+`topics`/`locations`: `demo_n_clips`, `demo_seed`, and for topics `score_values`,
+`justify_min_score`; `import`: `session_regex`; `locations`: `regions_file`, `region_map_file`,
+`survey.*`; `export`: `filename`, `tabs`.
+
+The four steps that can use the Batch API (`label`, `summarize`, `topics`, `locations`) also take
+`batch_poll_interval_s` and `batch_max_total_wait_s` — how often to check a submitted job, and
+when to stop waiting (re-running the command resumes the same job).
 
 ## Prompts and vocabularies
 

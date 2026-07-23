@@ -10,3 +10,5 @@ demo_n_clips: 50                  # clips tagged by `toolkit topics tag --demo`
 demo_seed: 0
 poll_interval_s: 4
 max_total_wait_s: 1800
+batch_poll_interval_s: 30       # --batch: how often to check the Batch API job
+batch_max_total_wait_s: 86400   # --batch: give up polling after this; re-run to resume

@@ -21,9 +21,10 @@ import pandas as pd
 from pydantic import BaseModel
 
 from ...core import cost as costmod
+from ...core.batch import fill_cache_via_batch
 from ...core.cache import JsonlAppender, cache_key, latest_records
 from ...core.config import load_step_config, require
-from ...core.console import confirm_or_abort, reveal
+from ...core.console import choose_transport, reveal
 from ...core.llm import build_schema, call_llm, check_levels, openai_client
 from ...core.render import format_paragraph_full
 from ...core.sampling import load_interview_sample
@@ -32,7 +33,7 @@ from ...errors import ToolkitError
 from ...project import Project
 from ...state import check_demo_gate, record_demo, record_full
 from ..clip.chunking import estimate_paragraph_tokens
-from ..clip.run import _estimate, _log_failures, effective_timestamp
+from ..clip.run import _log_failures, effective_timestamp
 from ..summarize import load_prompt
 from .annotate import write_annotated
 from .batching import LabelBatch, batch_clips
@@ -156,6 +157,49 @@ def _plan_interview(iid: str, clips_df: pd.DataFrame, para_indexed: pd.DataFrame
     return ordered_clip_ids, batches, contents
 
 
+def _record(iid: str, batch: LabelBatch, ck: str, fingerprint: str, parsed: BatchLabels,
+            usage: dict, cfg: dict) -> dict:
+    """One cache record — identical shape from either transport, so they stay interchangeable."""
+    return {
+        "cache_key": ck, "fingerprint": fingerprint,
+        "interview_id": iid, "batch_idx": batch.batch_idx,
+        "clip_ids": batch.clip_ids, "prev_clip_id": batch.prev_clip_id,
+        "next_clip_id": batch.next_clip_id, "est_tokens": batch.est_tokens,
+        "labels": [s.model_dump() for s in parsed.labels],
+        "model": cfg["model"], "reasoning_effort": cfg["reasoning"], "verbosity": cfg["verbosity"],
+        "usage": usage, "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+
+
+def _batch_fill(project: Project, cfg: dict, instructions: str, fingerprint: str, schema: dict,
+                keys: list[str], plans: dict, cache: dict, cache_path) -> None:
+    """Batch transport: one Batch-API job over every uncached grouped call, across all interviews.
+    Validation still happens per interview afterwards, against the now-cached results."""
+    model, reasoning, verbosity = cfg["model"], cfg["reasoning"], cfg["verbosity"]
+    pending = []
+    for iid in keys:
+        _, batches, contents = plans[iid]
+        for b, content in zip(batches, contents):
+            ck = cache_key(model, reasoning, verbosity, instructions, content)
+            if ck not in cache:
+                pending.append({"custom_id": f"{iid}__b{b.batch_idx}", "user_content": content,
+                                "cache_key": ck, "iid": iid, "batch": b})
+
+    def make_record(p: dict, parsed: dict, usage: dict) -> dict:
+        return _record(p["iid"], p["batch"], p["cache_key"], fingerprint,
+                       BatchLabels.model_validate(parsed), usage, cfg)
+
+    fill_cache_via_batch(
+        openai_client(project.root), pending, project.cache_dir / "label_batch",
+        schema=schema, model=model, reasoning=reasoning, verbosity=verbosity,
+        instructions=instructions,
+        prompt_cache_key=cache_key(model, reasoning, verbosity, instructions),
+        make_record=make_record, cache=cache, appender=JsonlAppender(cache_path),
+        poll_interval_s=float(cfg.get("batch_poll_interval_s", 30)),
+        max_total_wait_s=float(cfg.get("batch_max_total_wait_s", 86400)),
+        unit_noun="grouped call")
+
+
 def _label_interview(iid: str, plan, cache: dict, cache_lock: Lock, appender: JsonlAppender,
                      client, cfg: dict, instructions: str, fingerprint: str, schema: dict) -> dict:
     """All batch calls for one interview. On any hard validation/coverage error the whole
@@ -184,15 +228,7 @@ def _label_interview(iid: str, plan, cache: dict, cache_lock: Lock, appender: Js
                                   poll_interval_s=float(cfg.get("poll_interval_s", 4)),
                                   max_total_wait_s=float(cfg.get("max_total_wait_s", 1800)))
             parsed = BatchLabels.model_validate(raw)
-            record = {
-                "cache_key": ck, "fingerprint": fingerprint,
-                "interview_id": iid, "batch_idx": batch.batch_idx,
-                "clip_ids": batch.clip_ids, "prev_clip_id": batch.prev_clip_id,
-                "next_clip_id": batch.next_clip_id, "est_tokens": batch.est_tokens,
-                "labels": [s.model_dump() for s in parsed.labels],
-                "model": model, "reasoning_effort": reasoning, "verbosity": verbosity,
-                "usage": usage, "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            }
+            record = _record(iid, batch, ck, fingerprint, parsed, usage, cfg)
             appender.append(record)
             with cache_lock:
                 cache[ck] = record
@@ -221,7 +257,8 @@ def _label_interview(iid: str, plan, cache: dict, cache_lock: Lock, appender: Js
 
 
 def run_label(project: Project, demo: bool = False, interviews: list[str] | None = None,
-              yes: bool = False, skip_demo_check: bool = False) -> pd.DataFrame:
+              yes: bool = False, skip_demo_check: bool = False,
+              batch: bool | None = None) -> pd.DataFrame:
     if demo and interviews:
         raise ToolkitError("--demo and --interview are mutually exclusive.")
     cfg, instructions, fingerprint = _context(project)
@@ -257,23 +294,28 @@ def run_label(project: Project, demo: bool = False, interviews: list[str] | None
     n_cached = sum(1 for ck in all_cks if ck in cache)
     n_fresh = n_total - n_cached
 
+    use_batch = False
     if not demo:
         check_demo_gate(project, STEP, fingerprint,
                         demo_command="toolkit label --demo", skip=skip_demo_check)
-        estimate = _estimate(cache, fingerprint, model, n_fresh)
-        confirm_or_abort(
+        use_batch = choose_transport(
             f"Label {len(keys)} interview(s) with {model} "
-            f"({n_cached} of {n_total} batch calls cached, {n_fresh} fresh API calls{estimate})?", yes)
+            f"({n_cached} of {n_total} calls cached, {n_fresh} fresh call(s)).",
+            costmod.estimate_pair(cache, fingerprint, model, n_fresh), yes=yes, batch=batch)
 
     print(f"Labeling {len(keys)} interview(s) · {model}/{reasoning} · "
-          f"batch threshold {batch_threshold} tokens, +read-only prev/next neighbour clip · "
-          f"addendum {'on' if cfg.get('addendum') else 'off'} · "
-          f"{n_cached} cached / {n_fresh} fresh batch calls")
+          f"clips grouped up to {batch_threshold} tokens per call, +read-only prev/next "
+          f"neighbour clip · addendum {'on' if cfg.get('addendum') else 'off'} · "
+          f"{n_cached} cached / {n_fresh} fresh call(s)"
+          + (" · Batch API" if use_batch else ""))
 
-    client = openai_client(project.root) if n_fresh else None
     appender = JsonlAppender(cache_path)
     lock = Lock()
     schema = build_schema(BatchLabels, "BatchLabels")
+
+    if use_batch:                   # fill the cache first; the per-interview pass then makes no call
+        _batch_fill(project, cfg, instructions, fingerprint, schema, keys, plans, cache, cache_path)
+    client = openai_client(project.root) if any(ck not in cache for ck in all_cks) else None
 
     results: dict[str, dict] = {}
     failed: list[tuple[str, list[str]]] = []

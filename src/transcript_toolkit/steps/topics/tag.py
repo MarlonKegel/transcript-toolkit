@@ -19,9 +19,10 @@ import pandas as pd
 from pydantic import create_model
 
 from ...core import cost as costmod
+from ...core.batch import fill_cache_via_batch
 from ...core.cache import JsonlAppender, cache_key, latest_records
 from ...core.config import load_step_config, require
-from ...core.console import confirm_or_abort, reveal
+from ...core.console import choose_transport, reveal
 from ...core.llm import build_schema, call_llm, check_levels, openai_client
 from ...core.render import render_clip_plain
 from ...core.reviewdoc import document, esc
@@ -133,7 +134,8 @@ def _context(project: Project, set_name: str | None, justify: bool | None, demo:
 def run_topics_tag(project: Project, set_name: str | None = None, demo: bool = False,
                    sample_n: int | None = None, seed: int | None = None,
                    interviews: list[str] | None = None, justify: bool | None = None,
-                   yes: bool = False, skip_demo_check: bool = False) -> pd.DataFrame:
+                   yes: bool = False, skip_demo_check: bool = False,
+                   batch: bool | None = None) -> pd.DataFrame:
     if demo and interviews:
         raise ToolkitError("--demo and --interview are mutually exclusive.")
     cfg, tset, use_justify, instructions, fingerprint = _context(project, set_name, justify, demo)
@@ -170,18 +172,22 @@ def run_topics_tag(project: Project, set_name: str | None = None, demo: bool = F
                    if cache_key(model, reasoning, verbosity, instructions, texts[cid]) in cache)
     n_fresh = len(texts) - n_cached
 
+    use_batch = False
     if not demo:
         check_demo_gate(project, f"topics:{sset}", fingerprint,
                         demo_command=f"toolkit topics tag --demo --set {sset}", skip=skip_demo_check)
-        estimate = _estimate(cache, fingerprint, model, n_fresh)
-        confirm_or_abort(
+        use_batch = choose_transport(
             f"Tag {len(selected)} clip(s) against topic set '{sset}' with {model} "
-            f"({n_cached} already cached, {n_fresh} fresh API calls{estimate})?", yes)
+            f"({n_cached} already cached, {n_fresh} fresh call(s)).",
+            costmod.estimate_pair(cache, fingerprint, model, n_fresh), yes=yes, batch=batch)
 
     print(f"Tagging {len(selected)} clip(s) · set '{sset}' ({len(tset.ids)} topics) · "
           f"{model}/{reasoning} · justify={'on' if use_justify else 'off'} · "
-          f"{n_cached} cached / {n_fresh} fresh")
+          f"{n_cached} cached / {n_fresh} fresh" + (" · Batch API" if use_batch else ""))
 
+    if use_batch:                       # fill the cache first; _run_clips then makes no API call
+        _batch_fill(project, cfg, tset, sset, use_justify, instructions, fingerprint,
+                    selected, texts, cache, cache_path)
     results = _run_clips(project, cfg, tset, sset, use_justify, instructions, fingerprint,
                          selected, texts, cache, cache_path)
     wide_df, long_df = _build_frames(selected, results, tset, cfg, model, reasoning)
@@ -212,22 +218,59 @@ def run_topics_tag(project: Project, set_name: str | None = None, demo: bool = F
     return wide_df
 
 
-def _estimate(cache: dict, fingerprint: str, model: str, n_fresh: int) -> str:
-    matching = [r for r in cache.values() if r.get("fingerprint") == fingerprint]
-    per = costmod.mean_unit_cost(matching, model)
-    if per is None or n_fresh == 0:
-        return ""
-    return f", ~${per[0] * n_fresh:.2f} est."
+def _scores_schema(cfg: dict, tset: TopicSet, use_justify: bool):
+    """(pydantic model, response schema) for this topic set — shared by both transports."""
+    model_cls = build_scores_model(tset.ids, score_values=tuple(int(v) for v in cfg["score_values"]),
+                                   justify=use_justify)
+    return model_cls, build_schema(model_cls, "topic_scores")
+
+
+def _record(cid: str, iid: str, ck: str, fingerprint: str, sset: str, parsed: dict,
+            usage: dict, cfg: dict) -> dict:
+    """One cache record — identical shape from either transport, so they stay interchangeable."""
+    return {
+        "cache_key": ck, "fingerprint": fingerprint, "set": sset,
+        "clip_id": cid, "interview_id": iid,
+        "scores": parsed["scores"], "evidence": parsed.get("evidence", []),
+        "model": cfg["model"], "reasoning_effort": cfg["reasoning"], "verbosity": cfg["verbosity"],
+        "usage": usage, "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+
+
+def _batch_fill(project: Project, cfg: dict, tset: TopicSet, sset: str, use_justify: bool,
+                instructions: str, fingerprint: str, selected: pd.DataFrame,
+                texts: dict[str, str], cache: dict, cache_path) -> None:
+    """Batch transport: one Batch-API job over exactly the uncached clips."""
+    model, reasoning, verbosity = cfg["model"], cfg["reasoning"], cfg["verbosity"]
+    _, schema = _scores_schema(cfg, tset, use_justify)
+    pending = []
+    for row in selected.itertuples():
+        ck = cache_key(model, reasoning, verbosity, instructions, texts[row.clip_id])
+        if ck not in cache:
+            pending.append({"custom_id": row.clip_id, "user_content": texts[row.clip_id],
+                            "cache_key": ck, "interview_id": row.interview_id})
+
+    def make_record(p: dict, parsed: dict, usage: dict) -> dict:
+        return _record(p["custom_id"], p["interview_id"], p["cache_key"], fingerprint, sset,
+                       parsed, usage, cfg)
+
+    fill_cache_via_batch(
+        openai_client(project.root), pending, project.cache_dir / f"topics_{sset}_batch",
+        schema=schema, model=model, reasoning=reasoning, verbosity=verbosity,
+        instructions=instructions,
+        prompt_cache_key=cache_key(model, reasoning, verbosity, instructions),
+        make_record=make_record, cache=cache, appender=JsonlAppender(cache_path),
+        poll_interval_s=float(cfg.get("batch_poll_interval_s", 30)),
+        max_total_wait_s=float(cfg.get("batch_max_total_wait_s", 86400)),
+        unit_noun="clip")
 
 
 def _run_clips(project: Project, cfg: dict, tset: TopicSet, sset: str, use_justify: bool,
                instructions: str, fingerprint: str, selected: pd.DataFrame,
                texts: dict[str, str], cache: dict, cache_path) -> dict[str, dict]:
     model, reasoning, verbosity = cfg["model"], cfg["reasoning"], cfg["verbosity"]
-    score_values = tuple(int(v) for v in cfg["score_values"])
     justify_min = int(cfg["justify_min_score"])
-    model_cls = build_scores_model(tset.ids, score_values=score_values, justify=use_justify)
-    schema = build_schema(model_cls, "topic_scores")
+    model_cls, schema = _scores_schema(cfg, tset, use_justify)
     prompt_cache_key_str = cache_key(model, reasoning, verbosity, instructions)
     client = None
     if any(cache_key(model, reasoning, verbosity, instructions, texts[cid]) not in cache
@@ -252,13 +295,7 @@ def _run_clips(project: Project, cfg: dict, tset: TopicSet, sset: str, use_justi
                                      instructions, user_content, prompt_cache_key_str,
                                      poll_interval_s=float(cfg.get("poll_interval_s", 4)),
                                      max_total_wait_s=float(cfg.get("max_total_wait_s", 1800)))
-            record = {
-                "cache_key": ck, "fingerprint": fingerprint, "set": sset,
-                "clip_id": cid, "interview_id": iid,
-                "scores": parsed["scores"], "evidence": parsed.get("evidence", []),
-                "model": model, "reasoning_effort": reasoning, "verbosity": verbosity,
-                "usage": usage, "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            }
+            record = _record(cid, iid, ck, fingerprint, sset, parsed, usage, cfg)
             appender.append(record)
             with lock:
                 cache[ck] = record

@@ -15,9 +15,10 @@ import pandas as pd
 from pydantic import create_model
 
 from ..core import cost as costmod
+from ..core.batch import fill_cache_via_batch
 from ..core.cache import JsonlAppender, cache_key, latest_records
 from ..core.config import load_step_config, require
-from ..core.console import confirm_or_abort, reveal
+from ..core.console import choose_transport, reveal
 from ..core.ids import narrator_key
 from ..core.llm import build_schema, call_llm, check_levels, openai_client
 from ..core.render import render_interview
@@ -82,7 +83,7 @@ def _context(project: Project, pool_sessions_override: bool | None):
 
 def run_summarize(project: Project, demo: bool = False, interviews: list[str] | None = None,
                   pool_sessions: bool | None = None, yes: bool = False,
-                  skip_demo_check: bool = False) -> pd.DataFrame:
+                  skip_demo_check: bool = False, batch: bool | None = None) -> pd.DataFrame:
     if demo and interviews:
         raise ToolkitError("--demo and --interview are mutually exclusive.")
     cfg, instructions, fingerprint, units, pool = _context(project, pool_sessions)
@@ -110,17 +111,21 @@ def run_summarize(project: Project, demo: bool = False, interviews: list[str] | 
     n_cached = sum(1 for u in selected if unit_ck(u) in cache)
     n_fresh = len(selected) - n_cached
 
+    use_batch = False
     if not demo:
         check_demo_gate(project, STEP, fingerprint,
                         demo_command="toolkit summarize --demo", skip=skip_demo_check)
-        estimate = _estimate(cache, fingerprint, model, n_fresh)
-        confirm_or_abort(
+        use_batch = choose_transport(
             f"Summarize {len(selected)} interview(s) with {model} "
-            f"({n_cached} already cached, {n_fresh} fresh API calls{estimate})?", yes)
+            f"({n_cached} already cached, {n_fresh} fresh call(s)).",
+            costmod.estimate_pair(cache, fingerprint, model, n_fresh), yes=yes, batch=batch)
 
     print(f"Summarizing {len(selected)} interview(s) · {model}/{reasoning} · "
-          f"pooling={'on' if pool else 'off'} · {n_cached} cached / {n_fresh} fresh")
+          f"pooling={'on' if pool else 'off'} · {n_cached} cached / {n_fresh} fresh"
+          + (" · Batch API" if use_batch else ""))
 
+    if use_batch:                       # fill the cache first; _run_units then makes no API call
+        _batch_fill(project, cfg, instructions, fingerprint, selected, cache, cache_path)
     results = _run_units(project, cfg, instructions, fingerprint, selected, cache, cache_path)
 
     rows = [{
@@ -158,18 +163,52 @@ def run_summarize(project: Project, demo: bool = False, interviews: list[str] | 
     return df
 
 
-def _estimate(cache: dict, fingerprint: str, model: str, n_fresh: int) -> str:
-    matching = [r for r in cache.values() if r.get("fingerprint") == fingerprint]
-    per = costmod.mean_unit_cost(matching, model)
-    if per is None or n_fresh == 0:
-        return ""
-    return f", ~${per[0] * n_fresh:.2f} est."
+def _record(u: dict, ck: str, fingerprint: str, summary: str, usage: dict, cfg: dict) -> dict:
+    """One cache record — identical shape from either transport, so they stay interchangeable."""
+    return {
+        "cache_key": ck, "fingerprint": fingerprint,
+        "interview_key": u["interview_key"], "session_ids": u["session_ids"],
+        "n_sessions": u["n_sessions"], "n_paragraphs": u["n_paragraphs"],
+        "total_words": u["total_words"], "summary": summary,
+        "model": cfg["model"], "reasoning_effort": cfg["reasoning"], "verbosity": cfg["verbosity"],
+        "usage": usage, "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+
+
+def _summarize_schema() -> dict:
+    return build_schema(create_model("InterviewSummary", summary=(str, ...)), "interview_summary")
+
+
+def _batch_fill(project: Project, cfg: dict, instructions: str, fingerprint: str,
+                selected: list[dict], cache: dict, cache_path) -> None:
+    """Batch transport: one Batch-API job over exactly the uncached interviews."""
+    model, reasoning, verbosity = cfg["model"], cfg["reasoning"], cfg["verbosity"]
+    pending = []
+    for u in selected:
+        ck = cache_key(model, reasoning, verbosity, instructions, u["text"])
+        if ck not in cache:
+            pending.append({"custom_id": u["interview_key"], "user_content": u["text"],
+                            "cache_key": ck, "unit": u})
+
+    def make_record(p: dict, parsed: dict, usage: dict) -> dict:
+        return _record(p["unit"], p["cache_key"], fingerprint,
+                       (parsed.get("summary") or "").strip(), usage, cfg)
+
+    fill_cache_via_batch(
+        openai_client(project.root), pending, project.cache_dir / "summarize_batch",
+        schema=_summarize_schema(), model=model, reasoning=reasoning, verbosity=verbosity,
+        instructions=instructions,
+        prompt_cache_key=cache_key(model, reasoning, verbosity, instructions),
+        make_record=make_record, cache=cache, appender=JsonlAppender(cache_path),
+        poll_interval_s=float(cfg.get("batch_poll_interval_s", 30)),
+        max_total_wait_s=float(cfg.get("batch_max_total_wait_s", 86400)),
+        unit_noun="interview")
 
 
 def _run_units(project: Project, cfg: dict, instructions: str, fingerprint: str,
                selected: list[dict], cache: dict, cache_path) -> dict[str, str]:
     model, reasoning, verbosity = cfg["model"], cfg["reasoning"], cfg["verbosity"]
-    schema = build_schema(create_model("InterviewSummary", summary=(str, ...)), "interview_summary")
+    schema = _summarize_schema()
     prompt_cache_key_str = cache_key(model, reasoning, verbosity, instructions)
     client = None
     if any(cache_key(model, reasoning, verbosity, instructions, u["text"]) not in cache
@@ -190,14 +229,7 @@ def _run_units(project: Project, cfg: dict, instructions: str, fingerprint: str,
                                  poll_interval_s=float(cfg.get("poll_interval_s", 4)),
                                  max_total_wait_s=float(cfg.get("max_total_wait_s", 1800)))
         summary = (parsed.get("summary") or "").strip()
-        record = {
-            "cache_key": ck, "fingerprint": fingerprint,
-            "interview_key": u["interview_key"], "session_ids": u["session_ids"],
-            "n_sessions": u["n_sessions"], "n_paragraphs": u["n_paragraphs"],
-            "total_words": u["total_words"], "summary": summary,
-            "model": model, "reasoning_effort": reasoning, "verbosity": verbosity,
-            "usage": usage, "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        }
+        record = _record(u, ck, fingerprint, summary, usage, cfg)
         appender.append(record)
         with lock:
             cache[ck] = record

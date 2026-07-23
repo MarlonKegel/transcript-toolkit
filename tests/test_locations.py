@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 import yaml
 
+import transcript_toolkit.core.batch as batch_mod
 import transcript_toolkit.steps.locations.tag as tag_step
 from transcript_toolkit.core.llm import build_schema
 from transcript_toolkit.errors import ToolkitError
@@ -190,7 +191,8 @@ def test_batch_transport_fills_cache_and_builds_deliverables(project, monkeypatc
                    for u in units}
         return results, []
 
-    monkeypatch.setattr(tag_step, "run_batch", fake_run_batch)
+    # patched on core.batch: the step now goes through the shared fill_cache_via_batch glue
+    monkeypatch.setattr(batch_mod, "run_batch", fake_run_batch)
     df = run_locations_tag(project, yes=True, batch=True)   # fills cache, then builds deliverables
     assert len(df) == 9 and wide_path(project).exists()
     assert set(df["countries"]) == {"Brazil"}

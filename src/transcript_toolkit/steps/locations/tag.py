@@ -24,10 +24,10 @@ import yaml
 from pydantic import create_model
 
 from ...core import cost as costmod
-from ...core.batch import run_batch
+from ...core.batch import fill_cache_via_batch
 from ...core.cache import JsonlAppender, cache_key, latest_records
 from ...core.config import load_step_config, require
-from ...core.console import confirm_or_abort, reveal
+from ...core.console import choose_transport, reveal
 from ...core.llm import build_schema, call_llm, check_levels, openai_client
 from ...core.render import render_clip_plain
 from ...core.sampling import sample_clips_spread
@@ -197,24 +197,24 @@ def run_locations_tag(project: Project, demo: bool = False, sample_n: int | None
     n_cached = sum(1 for u in units if u["cache_key"] in cache)
     n_fresh = len(units) - n_cached
 
+    use_batch = False
     if not demo:
         check_demo_gate(project, STEP, fingerprint,
                         demo_command="toolkit locations tag --demo", skip=skip_demo_check)
-        estimate = _estimate(cache, fingerprint, model, n_fresh, batch)
-        confirm_or_abort(
-            f"Tag {len(units)} clip(s) with {model}{' via the Batch API' if batch else ''} "
-            f"({n_cached} already cached, {n_fresh} fresh API calls{estimate})?", yes)
+        use_batch = choose_transport(
+            f"Tag {len(units)} clip(s) with {model} "
+            f"({n_cached} already cached, {n_fresh} fresh call(s)).",
+            costmod.estimate_pair(cache, fingerprint, model, n_fresh), yes=yes, batch=batch)
 
     print(f"Tagging {len(units)} clip(s) · {model}/{reasoning} · justify={'on' if justify else 'off'} · "
           f"{len(regions)} regions · {n_cached} cached / {n_fresh} fresh"
-          + (" · batch transport" if batch else ""))
+          + (" · Batch API" if use_batch else ""))
 
-    if batch:
-        _run_batch_units(project, cfg, instructions, fingerprint, schema,
-                         prompt_cache_key_str, units, cache, cache_path)
-    else:
-        _run_units(project, cfg, instructions, fingerprint, schema,
-                   prompt_cache_key_str, units, cache, cache_path)
+    if use_batch:                       # fill the cache first; _run_units then makes no API call
+        _batch_fill(project, cfg, instructions, fingerprint, schema,
+                    prompt_cache_key_str, units, cache, cache_path)
+    _run_units(project, cfg, instructions, fingerprint, schema,
+               prompt_cache_key_str, units, cache, cache_path)
 
     # --- deliverable frames: per-clip rollup (wide) + one row per extracted place (long) ------
     wide_rows, long_rows = [], []
@@ -268,14 +268,6 @@ def run_locations_tag(project: Project, demo: bool = False, sample_n: int | None
     return wide
 
 
-def _estimate(cache: dict, fingerprint: str, model: str, n_fresh: int, batch: bool) -> str:
-    matching = [r for r in cache.values() if r.get("fingerprint") == fingerprint]
-    per = costmod.mean_unit_cost(matching, model)
-    if per is None or n_fresh == 0:
-        return ""
-    return f", ~${per[1 if batch else 0] * n_fresh:.2f} est."
-
-
 def _record(u: dict, fingerprint: str, parsed: dict, usage: dict, cfg: dict) -> dict:
     return {
         "cache_key": u["cache_key"], "fingerprint": fingerprint,
@@ -318,37 +310,22 @@ def _run_units(project: Project, cfg: dict, instructions: str, fingerprint: str,
                   f"{len(rec['countries'])} countr(y/ies), {len(rec['regions'])} region(s)")
 
 
-def _run_batch_units(project: Project, cfg: dict, instructions: str, fingerprint: str, schema: dict,
-                     prompt_cache_key_str: str, units: list[dict], cache: dict, cache_path) -> None:
-    """Batch transport: one Batch-API job over exactly the cache-missing clips; identical cache
-    records (marked api: batch), so the two transports are interchangeable per clip."""
-    model, reasoning, verbosity = cfg["model"], cfg["reasoning"], cfg["verbosity"]
-    pending = [u for u in units if u["cache_key"] not in cache]
-    if not pending:
-        print("  nothing pending; building deliverables from cache.")
-        return
-    batch_units = [{"custom_id": u["clip_id"], "instructions": instructions,
-                    "user_content": u["user_content"], "schema": schema, "model": model,
-                    "reasoning": reasoning, "verbosity": verbosity,
-                    "prompt_cache_key": prompt_cache_key_str} for u in pending]
-    results, failures = run_batch(openai_client(project.root), batch_units,
-                                  project.cache_dir / "locations_batch",
-                                  poll_interval_s=float(cfg.get("poll_interval_s", 4)),
-                                  max_total_wait_s=float(cfg.get("max_total_wait_s", 1800)))
-    appender = JsonlAppender(cache_path)
-    by_id = {u["clip_id"]: u for u in pending}
-    for cid, (parsed, usage) in results.items():
-        u = by_id[cid]
-        record = {**_record(u, fingerprint, parsed, usage, cfg), "api": "batch"}
-        appender.append(record)
-        cache[u["cache_key"]] = record
-    print(f"  batch: cached {len(results)} of {len(pending)} pending clips")
-    uncached = [u["clip_id"] for u in pending if u["cache_key"] not in cache]
-    if failures or uncached:                             # failed requests stay uncached; re-run
-        raise ToolkitError(                              # batches exactly the missing clips
-            f"Batch run left {len(uncached)} of {len(pending)} pending clip(s) uncached "
-            f"({len(failures)} failed request(s), e.g. {failures[:3] or uncached[:3]}). "
-            f"Successful results are cached; re-run the same command to batch just the rest.")
+def _batch_fill(project: Project, cfg: dict, instructions: str, fingerprint: str, schema: dict,
+                prompt_cache_key_str: str, units: list[dict], cache: dict, cache_path) -> None:
+    """Batch transport: one Batch-API job over exactly the uncached clips."""
+    pending = [{**u, "custom_id": u["clip_id"]} for u in units if u["cache_key"] not in cache]
+
+    def make_record(p: dict, parsed: dict, usage: dict) -> dict:
+        return _record(p, fingerprint, parsed, usage, cfg)
+
+    fill_cache_via_batch(
+        openai_client(project.root), pending, project.cache_dir / "locations_batch",
+        schema=schema, model=cfg["model"], reasoning=cfg["reasoning"], verbosity=cfg["verbosity"],
+        instructions=instructions, prompt_cache_key=prompt_cache_key_str,
+        make_record=make_record, cache=cache, appender=JsonlAppender(cache_path),
+        poll_interval_s=float(cfg.get("batch_poll_interval_s", 30)),
+        max_total_wait_s=float(cfg.get("batch_max_total_wait_s", 86400)),
+        unit_noun="clip")
 
 
 # --- preview --------------------------------------------------------------------------------

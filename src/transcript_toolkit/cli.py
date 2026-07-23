@@ -13,6 +13,10 @@ from . import __version__
 from .errors import ToolkitError
 
 
+BATCH_HELP = ("run the full corpus on the 50%%-off Batch API (slower: up to 24h) or force it off; "
+              "omit to be asked, with both cost estimates, at the confirmation prompt")
+
+
 def _common() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     # SUPPRESS (not None): with nested subparsers, an inner parser's default would otherwise
@@ -71,6 +75,9 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--yes", action="store_true", help="skip the cost confirmation prompt")
         p.add_argument("--skip-demo-check", action="store_true",
                        help="bypass the demo gate (dev use only)")
+        if step == "label":     # clip cannot batch: its chunks are sequential within an interview
+            p.add_argument("--batch", action=argparse.BooleanOptionalAction, default=None,
+                           help=BATCH_HELP)
         p.set_defaults(func=run_fn)
         csub = p.add_subparsers(dest="action", metavar="")
         pa = csub.add_parser("annotate", parents=[common],
@@ -89,6 +96,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--yes", action="store_true", help="skip the cost confirmation prompt")
     p.add_argument("--skip-demo-check", action="store_true",
                    help="bypass the demo gate (dev use only)")
+    p.add_argument("--batch", action=argparse.BooleanOptionalAction, default=None, help=BATCH_HELP)
     p.set_defaults(func=cmd_summarize)
     ssub = p.add_subparsers(dest="action", metavar="")
     pa = ssub.add_parser("annotate", parents=[common],
@@ -109,6 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="comma-separated interview ids (subset run, merged)")
     pt.add_argument("--justify", action=argparse.BooleanOptionalAction, default=None,
                     help="per-topic justifications (default: on for demos, off for full runs)")
+    pt.add_argument("--batch", action=argparse.BooleanOptionalAction, default=None, help=BATCH_HELP)
     pt.add_argument("--yes", action="store_true", help="skip the cost confirmation prompt")
     pt.add_argument("--skip-demo-check", action="store_true", help="bypass the demo gate (dev use only)")
     pt.set_defaults(func=cmd_topics_tag)
@@ -143,8 +152,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="comma-separated interview ids (subset run, merged)")
     pl.add_argument("--justify", action=argparse.BooleanOptionalAction, default=None,
                     help="per-place justifications (default: on for demos, off for full runs)")
-    pl.add_argument("--batch", action="store_true",
-                    help="use the 50%%-off Batch API for the uncached clips (slower turnaround)")
+    pl.add_argument("--batch", action=argparse.BooleanOptionalAction, default=None, help=BATCH_HELP)
     pl.add_argument("--yes", action="store_true", help="skip the cost confirmation prompt")
     pl.add_argument("--skip-demo-check", action="store_true", help="bypass the demo gate (dev use only)")
     pl.set_defaults(func=cmd_locations_tag)
@@ -258,7 +266,7 @@ def cmd_label(args) -> None:
     from .steps.label import run_label
 
     run_label(_project(args), demo=args.demo, interviews=_split_interviews(args),
-              yes=args.yes, skip_demo_check=args.skip_demo_check)
+              yes=args.yes, skip_demo_check=args.skip_demo_check, batch=args.batch)
 
 
 def cmd_label_annotate(args) -> None:
@@ -280,7 +288,7 @@ def cmd_summarize(args) -> None:
                   if args.interview else None)
     run_summarize(_project(args), demo=args.demo, interviews=interviews,
                   pool_sessions=args.pool_sessions, yes=args.yes,
-                  skip_demo_check=args.skip_demo_check)
+                  skip_demo_check=args.skip_demo_check, batch=args.batch)
 
 
 def cmd_summarize_annotate(args) -> None:
@@ -296,7 +304,8 @@ def cmd_topics_tag(args) -> None:
                   if args.interview else None)
     run_topics_tag(_project(args), set_name=args.set_name, demo=args.demo,
                    sample_n=args.sample_n, seed=args.seed, interviews=interviews,
-                   justify=args.justify, yes=args.yes, skip_demo_check=args.skip_demo_check)
+                   justify=args.justify, yes=args.yes, skip_demo_check=args.skip_demo_check,
+                   batch=args.batch)
 
 
 def cmd_topics_preview(args) -> None:

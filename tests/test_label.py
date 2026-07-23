@@ -297,3 +297,28 @@ def test_annotate_rerenders_from_deliverable(project):
 def test_annotate_without_deliverable_fails(project):
     with pytest.raises(ToolkitError, match="Run `toolkit label` first"):
         annotate_labels(project)
+
+
+def test_batch_transport_fills_cache_and_builds_deliverable(project, monkeypatch):
+    """--batch sends every uncached grouped call across all interviews in one Batch-API job;
+    per-interview validation then runs against the cached results, with no synchronous call."""
+    import json
+
+    import transcript_toolkit.core.batch as batch_mod
+
+    def fake_run_batch(client, units, batch_dir, **kwargs):
+        return {u["custom_id"]: ({"labels": labels_for(u["user_content"])}, USAGE)
+                for u in units}, []
+
+    monkeypatch.setattr(batch_mod, "run_batch", fake_run_batch)
+    monkeypatch.setattr(label_run, "call_llm",
+                        lambda *a, **k: pytest.fail("batch run must not call the sync API"))
+
+    df = run_label(project, yes=True, skip_demo_check=True, batch=True)
+    assert len(df) == 6                                   # 3 interviews x 2 clips
+    assert df["label"].str.startswith("Clip starting at").all()
+    records = [json.loads(ln) for ln
+               in (project.cache_dir / "label.jsonl").read_text().splitlines()]
+    assert records and all(r.get("api") == "batch" for r in records)
+    # custom_ids are per interview+group, so results map back to the right grouped call
+    assert {r["interview_id"] for r in records} == set(df["interview_id"])

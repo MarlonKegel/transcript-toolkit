@@ -27,7 +27,10 @@ toolkit topics rollup         # clip tags → interview tags
 ```
 
 `toolkit topics preview --clip <id>` prints the exact request for one clip. Demos include a
-per-topic justification by default (off for full runs) — useful for judging borderline calls.
+per-topic justification by default (off for full runs) — useful for judging borderline calls. A
+full run asks whether to run now or on the 50%-off
+[Batch API](../WORKFLOW.md#run-now-or-run-cheap-the-batch-api) — worth considering here, since you
+pay for a full pass per taxonomy.
 
 ## Reviewing and tuning
 

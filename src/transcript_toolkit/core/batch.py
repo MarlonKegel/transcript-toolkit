@@ -147,3 +147,48 @@ def run_batch(client, units: list[dict], batch_dir: Path, poll_interval_s: float
             continue
         results[cid] = (parsed, usage_from_body(resp["body"]))
     return results, failures
+
+
+def fill_cache_via_batch(client, pending: list[dict], batch_dir: Path, *, schema: dict,
+                         model: str, reasoning: str, verbosity: str, instructions: str,
+                         prompt_cache_key: str, make_record, cache: dict, appender,
+                         poll_interval_s: float = 20.0, max_total_wait_s: float = 86400.0,
+                         unit_noun: str = "unit") -> int:
+    """Run one Batch-API job over exactly the cache-missing units and write the step's own cache
+    records for the results. This is the whole batch path a step needs: after it returns, the
+    step's normal synchronous assembly runs against a fully-populated cache and makes no API call.
+
+    Each pending unit must carry `custom_id`, `user_content` and `cache_key`;
+    `make_record(unit, parsed, usage) -> dict` builds that step's cache record, so batch and
+    synchronous results stay interchangeable per unit (batch ones are marked `api: "batch"`).
+
+    Returns the number newly cached. Raises if any pending unit stayed uncached — failed requests
+    are never silently dropped, and because only successes are cached, re-running the same command
+    batches exactly the remainder.
+    """
+    if not pending:
+        print(f"  nothing pending; building from cache.")
+        return 0
+    units = [{"custom_id": u["custom_id"], "instructions": instructions,
+              "user_content": u["user_content"], "schema": schema, "model": model,
+              "reasoning": reasoning, "verbosity": verbosity,
+              "prompt_cache_key": prompt_cache_key} for u in pending]
+    print(f"  Batch API: {len(pending)} {unit_noun}(s), 50% off, up to 24h. Safe to press Ctrl-C "
+          f"and re-run the same command later — it resumes the same job.")
+    results, failures = run_batch(client, units, batch_dir, poll_interval_s=poll_interval_s,
+                                  max_total_wait_s=max_total_wait_s)
+    by_id = {u["custom_id"]: u for u in pending}
+    for cid, (parsed, usage) in results.items():
+        u = by_id[cid]
+        record = {**make_record(u, parsed, usage), "api": "batch"}
+        appender.append(record)
+        cache[u["cache_key"]] = record
+    print(f"  batch: cached {len(results)} of {len(pending)} pending {unit_noun}(s)")
+
+    uncached = [u["custom_id"] for u in pending if u["cache_key"] not in cache]
+    if failures or uncached:
+        raise ToolkitError(
+            f"Batch run left {len(uncached)} of {len(pending)} pending {unit_noun}(s) uncached "
+            f"({len(failures)} failed request(s), e.g. {failures[:3] or uncached[:3]}). "
+            f"Successful results are cached; re-run the same command to batch just the rest.")
+    return len(results)

@@ -125,3 +125,43 @@ def test_annotate_rerenders(project):
 def test_annotate_without_deliverable_fails(project):
     with pytest.raises(ToolkitError, match="Run `toolkit summarize` first"):
         annotate_summaries(project)
+
+
+def test_batch_transport_fills_cache_and_builds_deliverable(project, monkeypatch):
+    """--batch routes the uncached interviews through one Batch-API job; the normal assembly then
+    runs entirely off the cache and makes no synchronous call."""
+    import json
+
+    import transcript_toolkit.core.batch as batch_mod
+
+    def fake_run_batch(client, units, batch_dir, **kwargs):
+        return {u["custom_id"]: ({"summary": f"Batched abstract for {u['custom_id']}."},
+                                 {"input_tokens": 10, "output_tokens": 5,
+                                  "reasoning_tokens": 1, "cached_input_tokens": 0})
+                for u in units}, []
+
+    monkeypatch.setattr(batch_mod, "run_batch", fake_run_batch)
+    monkeypatch.setattr(summarize_step, "call_llm",
+                        lambda *a, **k: pytest.fail("batch run must not call the sync API"))
+
+    df = run_summarize(project, yes=True, skip_demo_check=True, batch=True)
+    assert len(df) == 2
+    assert all(s.startswith("Batched abstract") for s in df["summary"])
+    records = [json.loads(ln) for ln
+               in (project.cache_dir / "summarize.jsonl").read_text().splitlines()]
+    assert records and all(r.get("api") == "batch" for r in records)
+
+
+def test_batch_failures_are_not_silently_dropped(project, monkeypatch):
+    import transcript_toolkit.core.batch as batch_mod
+
+    def half_failing(client, units, batch_dir, **kwargs):
+        ok = units[:1]
+        return ({u["custom_id"]: ({"summary": "ok"}, {"input_tokens": 1, "output_tokens": 1,
+                                                      "reasoning_tokens": 0,
+                                                      "cached_input_tokens": 0}) for u in ok},
+                [(u["custom_id"], "boom") for u in units[1:]])
+
+    monkeypatch.setattr(batch_mod, "run_batch", half_failing)
+    with pytest.raises(ToolkitError, match="uncached"):
+        run_summarize(project, yes=True, skip_demo_check=True, batch=True)

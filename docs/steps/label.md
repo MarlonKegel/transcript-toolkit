@@ -10,9 +10,11 @@ toolkit label --demo    # label the sample's clips → review page opens in your
 toolkit label           # full corpus
 ```
 
-`toolkit label preview` shows the batching (labels are produced several clips at a time, with
-neighbouring clips shown as read-only context so labels stay distinct). `toolkit label annotate`
-re-renders the review pages.
+`toolkit label preview` shows the grouping (labels are produced several clips at a time, with
+neighbouring clips shown as read-only context so labels stay distinct — that grouping is about how
+many clips share one request, and is unrelated to the Batch API below). `toolkit label annotate`
+re-renders the review pages. A full run asks whether to run now or on the 50%-off
+[Batch API](../WORKFLOW.md#run-now-or-run-cheap-the-batch-api).
 
 ## Reviewing
 
