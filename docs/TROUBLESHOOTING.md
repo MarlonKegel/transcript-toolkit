@@ -44,5 +44,8 @@ the same command to check on it; you won't be double-charged.
 **The export's tag columns aren't dropdowns in Excel.** Expected — see
 [steps/export.md](steps/export.md). xlsx can't store multi-select validation.
 
-**How much have I spent?** `toolkit cost` (all steps) or `toolkit cost <step>`. `--to-n N`
-extrapolates a demo's per-call cost to a full run of N calls.
+**How much have I spent?** `toolkit cost` (all steps) or `toolkit cost <step>`. Each line is
+priced at the transport it actually used — `sync` or `batch` — so the total is money spent, not a
+hypothetical; a closing line tells you what the synchronous part would have cost on the Batch API.
+`--to-n N` extrapolates a demo's per-call cost to a full run of N calls, and quotes both
+transports (you haven't picked one for that run yet).
