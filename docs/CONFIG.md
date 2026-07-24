@@ -51,6 +51,10 @@ locations:
 - **topics.sets** — one or more topic lists; each has a `file` and a `rollup` scheme (`flat`
   with `threshold_pct`, or `binned` with a `thresholds` bar list, rarest band first).
 - **locations.rollup.thresholds / relabel / place_tags** — see [steps/locations.md](steps/locations.md).
+- **export.locations** — how location tags appear in the xlsx: `countries` (only those tagged
+  directly), `countries_and_regions` (default; those countries plus a separate Regions column), or
+  `countries_incl_regions` (one column, with regions mapped down into it). See
+  [steps/export.md](steps/export.md).
 
 ## `advanced/<step>.yaml`
 

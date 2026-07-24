@@ -181,6 +181,12 @@ def build_parser() -> argparse.ArgumentParser:
                        help="build one xlsx of everything produced so far")
     p.add_argument("--out", metavar="FILE", default=None,
                    help="output path (default: outputs/export.xlsx)")
+    # Not argparse `choices`: the mode list lives in steps/export.py, and importing that here
+    # would pull pandas into every `toolkit` invocation. run_export validates and names them.
+    p.add_argument("--locations", metavar="MODE", default=None,
+                   help="override config.yaml export.locations — countries (direct only) | "
+                        "countries_and_regions (plus a Regions column) | countries_incl_regions "
+                        "(regions mapped down into the countries column)")
     p.set_defaults(func=cmd_export)
 
     p = sub.add_parser("cost", parents=[common],
@@ -381,7 +387,7 @@ def cmd_locations_survey(args) -> None:
 def cmd_export(args) -> None:
     from .steps.export import run_export
 
-    run_export(_project(args), out=args.out)
+    run_export(_project(args), out=args.out, locations=args.locations)
 
 
 def cmd_cost(args) -> None:

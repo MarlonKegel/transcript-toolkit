@@ -99,3 +99,116 @@ def test_export_incremental_adds_columns(project):
     assert "Categories" in sheets
     cat_header = sheets["Categories"][0]
     assert "Topics: main" in cat_header                        # vocabulary from the topic list
+
+
+# --- location modes ------------------------------------------------------------------------------
+# fake_beta_0001 is tagged directly with Czechia and with the region "The Balkans" (which the
+# mapping expands to Serbia + Croatia), plus the place-tag Crimea. Place-tags count as direct
+# evidence — they are tagged in their own right, not derived from a region.
+
+def _locations(project):
+    _write(project, "locations/clip_countries.parquet", pd.DataFrame([
+        {"interview_id": "fake_beta", "clip_id": "fake_beta_0001", "start_paragraph_idx": 0,
+         "countries": "Czechia", "regions": "The Balkans",
+         "countries_from_regions": "Serbia|Croatia",
+         "countries_final": "Czechia|Crimea|Serbia|Croatia", "n_countries_final": 4,
+         "has_country": True}]))
+    _write(project, "locations/clip_countries_long.parquet", pd.DataFrame([
+        {"interview_id": "fake_beta", "clip_id": "fake_beta_0001", "country": "Czechia",
+         "via": "direct"},
+        {"interview_id": "fake_beta", "clip_id": "fake_beta_0001", "country": "Crimea",
+         "via": "place"},
+        {"interview_id": "fake_beta", "clip_id": "fake_beta_0001", "country": "Serbia",
+         "via": "The Balkans"},
+        {"interview_id": "fake_beta", "clip_id": "fake_beta_0001", "country": "Croatia",
+         "via": "The Balkans"}]))
+    _write(project, "locations/interview_locations_wide.parquet", pd.DataFrame([
+        {"interview_key": "fake_beta", "n_sessions": 1, "n_clips": 1, "regions": "The Balkans",
+         "n_regions": 1, "labels": "Czechia|Crimea|Serbia|Croatia", "n_labels": 4}]))
+    _write(project, "locations/interview_locations_long.parquet", pd.DataFrame([
+        {"interview_key": "fake_beta", "label": "Czechia", "via": "direct"},
+        {"interview_key": "fake_beta", "label": "Crimea", "via": "place"},
+        {"interview_key": "fake_beta", "label": "Serbia", "via": "The Balkans"},
+        {"interview_key": "fake_beta", "label": "Croatia", "via": "The Balkans"}]))
+
+
+def _clip_cell(sheets, column):
+    header = sheets["Clips"][0]
+    row = next(r for r in sheets["Clips"][1:] if r[0] == "fake_beta_0001")
+    return row[header.index(column)]
+
+
+def test_locations_mode_countries_only(project):
+    _clips(project)
+    _locations(project)
+    run_export(project, locations="countries")
+    sheets = _sheets(project.outputs_dir / "export.xlsx")
+    assert _clip_cell(sheets, "Locations") == "Crimea, Czechia"   # direct + place, no region fan-out
+    assert "Regions" not in sheets["Clips"][0]
+    assert "Regions" not in sheets["Interviews"][0]
+    assert "Regions" not in sheets["Categories"][0]
+
+
+def test_locations_mode_countries_and_regions(project):
+    _clips(project)
+    _locations(project)
+    run_export(project, locations="countries_and_regions")
+    sheets = _sheets(project.outputs_dir / "export.xlsx")
+    assert _clip_cell(sheets, "Locations") == "Crimea, Czechia"
+    assert _clip_cell(sheets, "Regions") == "The Balkans"
+    iv_header = sheets["Interviews"][0]
+    iv_row = sheets["Interviews"][1]
+    assert iv_row[iv_header.index("Locations")] == "Crimea, Czechia"
+    assert iv_row[iv_header.index("Regions")] == "The Balkans"
+    assert "Regions" in sheets["Categories"][0]                   # reference list is usable here
+
+
+def test_locations_mode_countries_incl_regions(project):
+    _clips(project)
+    _locations(project)
+    run_export(project, locations="countries_incl_regions")
+    sheets = _sheets(project.outputs_dir / "export.xlsx")
+    assert _clip_cell(sheets, "Locations") == "Czechia, Crimea, Serbia, Croatia"
+    assert "Regions" not in sheets["Clips"][0]
+    iv_header = sheets["Interviews"][0]
+    assert iv_header.count("Regions") == 0
+    assert sheets["Interviews"][1][iv_header.index("Locations")] == "Czechia, Crimea, Serbia, Croatia"
+
+
+def test_categories_location_list_follows_mode(project):
+    _clips(project)
+    _locations(project)
+    run_export(project, locations="countries")
+    cats = _sheets(project.outputs_dir / "export.xlsx")["Categories"]
+    col = [r[cats[0].index("Locations")] for r in cats[1:]]
+    assert [c for c in col if c] == ["Crimea", "Czechia"]         # region-derived names excluded
+
+    run_export(project, locations="countries_incl_regions")
+    cats = _sheets(project.outputs_dir / "export.xlsx")["Categories"]
+    col = [r[cats[0].index("Locations")] for r in cats[1:]]
+    assert [c for c in col if c] == ["Crimea", "Croatia", "Czechia", "Serbia"]
+
+
+def test_default_mode_from_config_and_bad_mode_fails_loud(project, capsys):
+    _clips(project)
+    _locations(project)
+    run_export(project)                                            # scaffold default
+    sheets = _sheets(project.outputs_dir / "export.xlsx")
+    assert "Regions" in sheets["Clips"][0]                         # countries_and_regions
+    assert "countries_and_regions" in capsys.readouterr().out
+
+    cfg = project.config_path
+    cfg.write_text(cfg.read_text().replace("locations: countries_and_regions",
+                                           "locations: countries"))
+    run_export(project)
+    assert "Regions" not in _sheets(project.outputs_dir / "export.xlsx")["Clips"][0]
+
+    cfg.write_text(cfg.read_text().replace("locations: countries", "locations: nonsense"))
+    with pytest.raises(ToolkitError, match="export.locations must be one of"):
+        run_export(project)
+
+
+def test_no_dropdown_note(project, capsys):
+    _clips(project)
+    run_export(project)
+    assert "multi-select" not in capsys.readouterr().out

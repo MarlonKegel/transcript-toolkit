@@ -68,3 +68,12 @@ locations:
   relabel: {}                      # e.g. { Czech Republic: Czechia, Macedonia: North Macedonia }
   # Subnational places tagged in their own right (kept alongside their country).
   place_tags: []                   # e.g. [Chechnya, Crimea]
+
+# --- export: the xlsx deliverable -----------------------------------------------------------------
+export:
+  # How location tags appear in the spreadsheet:
+  #   countries              — only the countries tagged directly (regions left out entirely)
+  #   countries_and_regions  — those same countries, plus a separate Regions column
+  #   countries_incl_regions — one Locations column: direct countries PLUS the regions
+  #                            mapped down to their countries (region_to_country.csv)
+  locations: countries_and_regions
