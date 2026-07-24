@@ -2,6 +2,13 @@
 
 The toolkit fails loudly: when something is wrong it stops and prints what to fix. Common cases:
 
+**Install: "Git operation failed … `git init` … No developer tools were found".** Your Mac
+doesn't have `git` yet, and `uv tool install git+https://…` needs it to fetch the code. Install
+Apple's Command Line Tools once — run `xcode-select --install`, click **Install** in the dialog,
+wait for it to finish, then re-run the `uv tool install …` command (this is step 1 of
+[SETUP.md](SETUP.md)). The unrelated `python3.14 … native extensions` warning above the error is
+harmless — the git line is the real failure.
+
 **"OPENAI_API_KEY not set"** — put your key in the workspace's `.env` file
 (`OPENAI_API_KEY=sk-...`). Ask your admin for a key.
 
