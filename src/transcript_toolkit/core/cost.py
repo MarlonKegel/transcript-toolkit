@@ -17,10 +17,39 @@ from ..errors import ToolkitError
 USAGE_KEYS = ("input_tokens", "cached_input_tokens", "reasoning_tokens", "output_tokens")
 
 
+STALE_AFTER_DAYS = 180          # ~6 months: long enough that a repricing is plausible
+
+
 @_memo
-def pricing() -> dict:
+def _price_file() -> dict:
     text = (resources.files("transcript_toolkit") / "defaults" / "pricing.yaml").read_text()
     return yaml.safe_load(text)
+
+
+def pricing() -> dict:
+    """{model: {standard: rates, batch: rates}}."""
+    return _price_file()["models"]
+
+
+def pricing_note() -> str | None:
+    """A warning when the price table hasn't been checked in a long time, else None.
+
+    OpenAI publishes prices as a web page, not an API, so nothing refreshes this by itself —
+    deliberately: a scraper that misreads a layout change would put a wrong figure in front of
+    someone approving a spend, which is worse than an openly old one. So the figures state their
+    own age instead."""
+    from datetime import date
+
+    data = _price_file()
+    verified = data.get("verified")
+    if not isinstance(verified, date):
+        return None
+    age_days = (date.today() - verified).days
+    if age_days < STALE_AFTER_DAYS:
+        return None
+    source = data.get("source", "the OpenAI pricing page")
+    return (f"Prices last verified {verified.isoformat()} ({age_days // 30} months ago) — "
+            f"if these look wrong, check {source}")
 
 
 def cost(inp: int, cached: int, out: int, rates: dict) -> float:
@@ -75,5 +104,11 @@ def estimate_pair(cache: dict, fingerprint: str, model: str,
     if n_fresh <= 0:
         return None
     matching = [r for r in cache.values() if r.get("fingerprint") == fingerprint]
-    per = mean_unit_cost(matching, model)
+    try:
+        per = mean_unit_cost(matching, model)
+    except ToolkitError:
+        # A model newer than this toolkit's price table. "Unknown" is the honest answer and the
+        # caller prints it as such — refusing to run over a missing price would block the user at
+        # the confirmation prompt for a number that is only advisory anyway.
+        return None
     return None if per is None else (per[0] * n_fresh, per[1] * n_fresh)

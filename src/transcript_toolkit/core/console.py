@@ -34,6 +34,14 @@ def _money(v: float | None) -> str:
     return f"~${v:.2f}" if v is not None else "cost unknown"
 
 
+def _print_pricing_note() -> None:
+    """Warn, where the estimate is shown, if the price table is old enough to have drifted."""
+    from .cost import pricing_note
+    note = pricing_note()
+    if note:
+        print(f"  ({note})")
+
+
 def choose_transport(summary: str, est: tuple[float, float] | None = None, yes: bool = False,
                      batch: bool | None = None) -> bool:
     """The full-run gate for steps that can also run on the Batch API: confirm the spend AND pick
@@ -58,6 +66,7 @@ def choose_transport(summary: str, est: tuple[float, float] | None = None, yes: 
         return batch
 
     print(summary)
+    _print_pricing_note()
     print(f"  [1] Run now     {std}   results in this session")
     print(f"  [2] Batch API   {bat}   50% cheaper, up to 24h turnaround")
     print("  [n] Cancel")

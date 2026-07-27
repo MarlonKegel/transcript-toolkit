@@ -13,7 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..core.cache import latest_records
-from ..core.cost import USAGE_KEYS, costs, sum_usage
+from ..core.cost import USAGE_KEYS, costs, pricing_note, sum_usage
 from ..errors import ToolkitError
 from ..project import Project
 
@@ -82,3 +82,6 @@ def run_cost(project: Project, step: str | None = None, to_n: int | None = None)
     if spent["standard"]:
         print(f"The ${spent['standard']:.4f} run synchronously would have been "
               f"${sync_if_batched:.4f} on the Batch API.")
+    note = pricing_note()
+    if note:
+        print(f"\n{note}")

@@ -1,32 +1,38 @@
 # USD per 1M tokens, standard + 50%-off Batch API tiers. Reasoning tokens are billed at the
 # OUTPUT rate and are already counted inside output_tokens (reported separately, never added
-# on top). Update here when OpenAI prices change — no code changes needed.
+# on top). Editing this file is all it takes to correct a price — no code changes needed.
 #
-# Verified against https://developers.openai.com/api/docs/pricing on 2026-07-27. The 5.4/5.5
-# prices below were already current — that generation has not been repriced. Older models stay
-# listed so `toolkit cost` can still price runs that were made with them.
+# `verified` is the date these numbers were last checked against `source`. OpenAI publishes
+# prices as a web page, not as an API, so nothing updates this automatically: scraping a page
+# layout could silently write a WRONG figure into a spend estimate, which is worse than an
+# honestly out-of-date one. Instead the toolkit reports this date once it gets old, so the
+# figures always carry their own provenance. If it is stale, check `source` and edit below.
+verified: 2026-07-27
+source: https://developers.openai.com/api/docs/pricing
 
-# --- GPT-5.6 — the current defaults ---------------------------------------------------------
-gpt-5.6-sol:
-  standard: { input: 5.00, cached: 0.50, output: 30.0 }
-  batch:    { input: 2.50, cached: 0.25, output: 15.0 }
-gpt-5.6-terra:
-  standard: { input: 2.50, cached: 0.25, output: 15.0 }
-  batch:    { input: 1.25, cached: 0.125, output: 7.50 }
-gpt-5.6-luna:
-  standard: { input: 1.00, cached: 0.10, output: 6.00 }
-  batch:    { input: 0.50, cached: 0.05, output: 3.00 }
+models:
+  # --- GPT-5.6 — the current defaults -------------------------------------------------------
+  gpt-5.6-sol:
+    standard: { input: 5.00, cached: 0.50, output: 30.0 }
+    batch:    { input: 2.50, cached: 0.25, output: 15.0 }
+  gpt-5.6-terra:
+    standard: { input: 2.50, cached: 0.25, output: 15.0 }
+    batch:    { input: 1.25, cached: 0.125, output: 7.50 }
+  gpt-5.6-luna:
+    standard: { input: 1.00, cached: 0.10, output: 6.00 }
+    batch:    { input: 0.50, cached: 0.05, output: 3.00 }
 
-# --- GPT-5.5 / GPT-5.4 — previous generation ------------------------------------------------
-gpt-5.5:
-  standard: { input: 5.00, cached: 0.50, output: 30.0 }
-  batch:    { input: 2.50, cached: 0.25, output: 15.0 }
-gpt-5.4:
-  standard: { input: 2.50, cached: 0.25, output: 15.0 }
-  batch:    { input: 1.25, cached: 0.125, output: 7.50 }
-gpt-5.4-mini:
-  standard: { input: 0.75, cached: 0.075, output: 4.50 }
-  batch:    { input: 0.375, cached: 0.0375, output: 2.25 }
-gpt-5.4-nano:
-  standard: { input: 0.20, cached: 0.02, output: 1.25 }
-  batch:    { input: 0.10, cached: 0.01, output: 0.625 }
+  # --- GPT-5.5 / GPT-5.4 — previous generation ----------------------------------------------
+  # Kept so `toolkit cost` can still price runs that were made with them.
+  gpt-5.5:
+    standard: { input: 5.00, cached: 0.50, output: 30.0 }
+    batch:    { input: 2.50, cached: 0.25, output: 15.0 }
+  gpt-5.4:
+    standard: { input: 2.50, cached: 0.25, output: 15.0 }
+    batch:    { input: 1.25, cached: 0.125, output: 7.50 }
+  gpt-5.4-mini:
+    standard: { input: 0.75, cached: 0.075, output: 4.50 }
+    batch:    { input: 0.375, cached: 0.0375, output: 2.25 }
+  gpt-5.4-nano:
+    standard: { input: 0.20, cached: 0.02, output: 1.25 }
+    batch:    { input: 0.10, cached: 0.01, output: 0.625 }

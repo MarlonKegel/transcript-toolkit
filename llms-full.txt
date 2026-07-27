@@ -901,6 +901,19 @@ the same command to check on it; you won't be double-charged.
 **The export's tag columns aren't dropdowns in Excel.** Expected — see
 [steps/export.md](steps/export.md). xlsx can't store multi-select validation.
 
+**"Prices last verified ... — if these look wrong, check ..."** The cost figures come from a
+price table shipped with the toolkit, and that message means it hasn't been checked in a while.
+OpenAI publishes prices as a web page rather than an API, so nothing refreshes it automatically —
+on purpose: a scraper that misread a page change could put a *wrong* number in front of you at
+the moment you approve a spend, which is worse than an openly old one. The figures are still
+usable (prices tend to fall, so an old table reads slightly high). To fix it, compare against the
+linked page and edit `defaults/pricing.yaml` in the toolkit.
+
+**"No pricing for model ..." from `toolkit cost`.** You are using a model newer than your
+toolkit's price table. Update the toolkit (`uv tool upgrade transcript-toolkit`), or add the
+model to `defaults/pricing.yaml`. Runs are not blocked by this — the spend estimate just shows
+"cost unknown".
+
 **How much have I spent?** `toolkit cost` (all steps) or `toolkit cost <step>`. Each line is
 priced at the transport it actually used — `sync` or `batch` — so the total is money spent, not a
 hypothetical; a closing line tells you what the synchronous part would have cost on the Batch API.

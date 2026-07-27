@@ -132,3 +132,43 @@ def test_every_default_model_is_priced():
     used = {v["model"] for v in cfg.values() if isinstance(v, dict) and "model" in v}
     assert used, "no models found in the scaffold config"
     assert used <= set(table), f"unpriced model(s): {sorted(used - set(table))}"
+
+
+# --- pricing provenance ----------------------------------------------------------------------
+
+def test_price_table_states_when_it_was_verified():
+    """Prices carry their own age, because nothing updates them automatically."""
+    import datetime
+    from transcript_toolkit.core.cost import _price_file
+    data = _price_file()
+    assert isinstance(data["verified"], datetime.date)
+    assert data["source"].startswith("https://")
+
+
+def test_no_note_while_prices_are_fresh(monkeypatch):
+    import datetime
+    from transcript_toolkit.core import cost as c
+    monkeypatch.setattr(c, "_price_file", lambda: {"verified": datetime.date.today(),
+                                                   "source": "https://example.test", "models": {}})
+    assert c.pricing_note() is None
+
+
+def test_note_appears_once_prices_are_old(monkeypatch):
+    import datetime
+    from transcript_toolkit.core import cost as c
+    old = datetime.date.today() - datetime.timedelta(days=c.STALE_AFTER_DAYS + 40)
+    monkeypatch.setattr(c, "_price_file", lambda: {"verified": old,
+                                                   "source": "https://example.test", "models": {}})
+    note = c.pricing_note()
+    assert note and old.isoformat() in note
+    assert "if these look wrong" in note and "https://example.test" in note
+
+
+def test_unpriced_model_gives_unknown_not_a_crash():
+    """A model newer than the toolkit's price table must not block a run at the confirmation
+    prompt — the estimate is advisory, so 'unknown' is the right answer."""
+    from transcript_toolkit.core.cost import estimate_pair
+    cache = {"k": {"fingerprint": "fp", "model": "gpt-9.9-unreleased",
+                   "usage": {"input_tokens": 1000, "output_tokens": 100,
+                             "reasoning_tokens": 0, "cached_input_tokens": 0}}}
+    assert estimate_pair(cache, "fp", "gpt-9.9-unreleased", 10) is None
