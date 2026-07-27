@@ -39,8 +39,11 @@ toolkit --version
 To update to the latest version later:
 
 ```sh
-uv tool upgrade transcript-toolkit
+toolkit update
 ```
+
+The toolkit also tells you, at most once a day, when a newer version is out. It never updates
+itself — that is always your call.
 
 ## 4. Create a project workspace
 

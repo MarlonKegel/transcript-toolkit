@@ -70,6 +70,9 @@ toolkit's price table. Update the toolkit (`uv tool upgrade transcript-toolkit`)
 model to `defaults/pricing.yaml`. Runs are not blocked by this — the spend estimate just shows
 "cost unknown".
 
+**How do I update the toolkit?** `toolkit update`. (It runs `uv tool upgrade
+transcript-toolkit` for you. `toolkit upgrade` works too.)
+
 **How much have I spent?** `toolkit cost` (all steps) or `toolkit cost <step>`. Each line is
 priced at the transport it actually used — `sync` or `batch` — so the total is money spent, not a
 hypothetical; a closing line tells you what the synchronous part would have cost on the Batch API.

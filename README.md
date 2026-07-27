@@ -53,6 +53,8 @@ have installed.
 # one-time install (see docs/SETUP.md for the full Mac walkthrough, incl. installing uv)
 uv tool install git+https://github.com/MarlonKegel/transcript-toolkit.git
 
+toolkit update                 # ...and to get the latest version later
+
 toolkit init my-archive && cd my-archive
 #  → put your OpenAI key in .env, drop transcripts in data/
 toolkit import

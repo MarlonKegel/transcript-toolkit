@@ -72,7 +72,7 @@ def update_notice(current: str = __version__) -> str | None:
         latest = latest_version()
         if latest and version_tuple(latest) > version_tuple(current):
             return (f"\nA newer transcript-toolkit is available ({current} -> {latest}).\n"
-                    f"Update with:  {UPGRADE_COMMAND}")
+                    f"Update with:  toolkit update")
     except Exception:                           # offline, DNS, timeout, GitHub down: stay silent
         return None
     return None
@@ -82,3 +82,31 @@ def print_update_notice() -> None:
     notice = update_notice()
     if notice:
         print(notice)
+
+
+def run_update() -> None:
+    """`toolkit update` — do the thing people type when they want a newer version.
+
+    Shells out to uv rather than reimplementing anything: uv owns the installation. If uv isn't
+    driving this install (a dev checkout, or pip), say so and print the command instead of
+    guessing at someone's environment."""
+    import shutil
+    import subprocess
+
+    from ..errors import ToolkitError
+
+    if shutil.which("uv") is None:
+        raise ToolkitError(
+            f"uv is not installed, so this copy was not installed with it.\n"
+            f"If you followed the setup guide, install uv and re-run:  {UPGRADE_COMMAND}\n"
+            f"If this is a development checkout, update it with git instead.")
+
+    print(f"Current version: {__version__}")
+    print(f"Running: {UPGRADE_COMMAND}\n")
+    result = subprocess.run(UPGRADE_COMMAND.split(), check=False)
+    if result.returncode != 0:
+        raise ToolkitError(
+            f"uv could not upgrade this install (exit code {result.returncode}). If you installed "
+            f"the toolkit some other way, update it that way instead.")
+    _cache_path().unlink(missing_ok=True)          # the "newer version" notice is now stale
+    print("\nDone. Check it with:  toolkit --version")

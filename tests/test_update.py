@@ -24,7 +24,7 @@ def test_notice_when_newer_available(monkeypatch):
     monkeypatch.setattr(upd, "_fetch_latest", lambda: "0.1.9")
     notice = upd.update_notice(current="0.1.2")
     assert "0.1.2 -> 0.1.9" in notice
-    assert upd.UPGRADE_COMMAND in notice
+    assert "toolkit update" in notice
 
 
 @pytest.mark.parametrize("latest", ["0.1.2", "0.1.1", None])
@@ -67,3 +67,44 @@ def test_corrupt_cache_is_survivable(monkeypatch):
     upd._cache_path().parent.mkdir(parents=True, exist_ok=True)
     upd._cache_path().write_text("{not json")
     assert upd.latest_version() == "0.9.9"
+
+
+# --- toolkit update --------------------------------------------------------------------------
+
+def test_update_command_shells_out_to_uv(monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(upd.shutil if hasattr(upd, "shutil") else __import__("shutil"),
+                        "which", lambda name: "/usr/bin/uv")
+    import subprocess
+    monkeypatch.setattr(subprocess, "run",
+                        lambda cmd, **kw: calls.append(cmd) or subprocess.CompletedProcess(cmd, 0))
+    upd._cache_path().parent.mkdir(parents=True, exist_ok=True)
+    upd._cache_path().write_text('{"checked_at": 0, "latest": "9.9.9"}')
+
+    upd.run_update()
+    assert calls == [["uv", "tool", "upgrade", "transcript-toolkit"]]
+    assert not upd._cache_path().exists()          # stale "newer version available" note cleared
+    assert "toolkit --version" in capsys.readouterr().out
+
+
+def test_update_without_uv_explains_rather_than_guessing(monkeypatch):
+    import shutil as _shutil
+    from transcript_toolkit.errors import ToolkitError
+    monkeypatch.setattr(_shutil, "which", lambda name: None)
+    with pytest.raises(ToolkitError, match="uv is not installed"):
+        upd.run_update()
+
+
+def test_failed_upgrade_is_reported(monkeypatch):
+    import shutil as _shutil
+    import subprocess
+    from transcript_toolkit.errors import ToolkitError
+    monkeypatch.setattr(_shutil, "which", lambda name: "/usr/bin/uv")
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: subprocess.CompletedProcess(cmd, 1))
+    with pytest.raises(ToolkitError, match="could not upgrade"):
+        upd.run_update()
+
+
+def test_notice_points_at_the_toolkit_command(monkeypatch):
+    monkeypatch.setattr(upd, "_fetch_latest", lambda: "9.9.9")
+    assert "toolkit update" in upd.update_notice(current="0.1.0")

@@ -53,6 +53,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="restore one prompt in the current workspace to the packaged default")
     p.set_defaults(func=cmd_init)
 
+    p = sub.add_parser("update", parents=[common], aliases=["upgrade"],
+                       help="install the latest version of the toolkit")
+    p.set_defaults(func=cmd_update)
+
     p = sub.add_parser("docs", parents=[common],
                        help="save the full documentation to a file, to ask an AI about it")
     p.add_argument("--out", metavar="FILE", default=None,
@@ -238,6 +242,12 @@ def cmd_init(args) -> None:
     print("  3. Drop your transcript .docx files into data/")
     print("  4. Run: toolkit import")
     print("\n(Run toolkit commands from inside the workspace — they find it automatically.)")
+
+
+def cmd_update(args) -> None:
+    from .core.update import run_update
+
+    run_update()
 
 
 def cmd_docs(args) -> None:

@@ -6,7 +6,7 @@ from transcript_toolkit.cli import build_parser
 
 # every command path in the CLI, as argv prefixes
 COMMANDS = [
-    [], ["init"], ["import"], ["sample"],
+    [], ["init"], ["update"], ["docs"], ["import"], ["sample"],
     ["clip"], ["clip", "annotate"], ["clip", "preview"],
     ["label"], ["label", "annotate"], ["label", "preview"],
     ["summarize"], ["summarize", "annotate"],
@@ -38,6 +38,13 @@ def test_batchable_steps_take_batch_flag(argv):
     assert parser.parse_args([*argv, "--batch"]).batch is True
     assert parser.parse_args([*argv, "--no-batch"]).batch is False
     assert parser.parse_args(argv).batch is None          # unset -> ask at the prompt
+
+
+def test_update_has_an_upgrade_alias():
+    """`toolkit upgrade` is what people type first; it must not error."""
+    parser = build_parser()
+    for name in ("update", "upgrade"):
+        assert parser.parse_args([name]).func.__name__ == "cmd_update"
 
 
 def test_clip_has_no_batch_flag():
