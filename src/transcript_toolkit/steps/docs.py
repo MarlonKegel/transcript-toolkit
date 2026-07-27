@@ -36,6 +36,8 @@ def run_docs(out: str | None = None, to_stdout: bool = False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
     print(f"Wrote the complete documentation (transcript-toolkit {__version__}) to:\n  {path}\n")
-    print("To ask an AI about the toolkit, either:")
-    print(f"  · drag this file into ChatGPT / Claude / Gemini and ask your question, or")
-    print(f"  · paste this link into the chat instead: {BUNDLE_URL}")
+    print("Drag this file into ChatGPT / Claude / Gemini and ask your question. That always\n"
+          "works — no fetching involved.\n")
+    print(f"Or paste this link instead: {BUNDLE_URL}")
+    print(f"If you do, check the reply starts with \"[transcript-toolkit docs v{__version__}]\" — "
+          f"without it\nthe assistant did not read the docs and is guessing.")

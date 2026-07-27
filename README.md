@@ -31,16 +31,21 @@ Read the documentation at this link, then answer my questions about this toolkit
 https://raw.githubusercontent.com/MarlonKegel/transcript-toolkit/main/llms-full.txt
 ```
 
-Then ask away — *"can I choose which interviews the demo runs on?"*, *"how do I add a second
-topic list?"*, *"what does it cost to tag 800 clips?"*
+That link is the entire documentation — every page, plus a complete list of every command and
+flag — as one plain-text file. Give the assistant **that** link, not the GitHub repo link:
+GitHub's file pages are rendered with JavaScript and aren't in most search indexes, so an
+assistant handed the repo URL will answer from general knowledge and get the specifics wrong.
 
-That link is the entire documentation as one plain-text file. Give the assistant **that** link,
-not the GitHub repo link: GitHub's pages are rendered with JavaScript and aren't in most search
-indexes, so an assistant handed the repo URL will usually answer from general knowledge and get
-the specifics wrong.
+**Check that it actually read it.** The file asks the assistant to begin its reply with
+`[transcript-toolkit docs v…]`. If that line is missing, it did not fetch the file, and its
+answer is a guess no matter how confident it sounds — some assistants will say "I read the
+documentation" and then invent flags. (Not all chat tools can fetch URLs; this varies by
+product and plan.)
 
-Offline, or want the docs for the version you actually have installed? Run **`toolkit docs`** —
-it writes `transcript-toolkit-docs.md` into the current folder, ready to drag into a chat.
+**The method that always works:** run **`toolkit docs`**. It writes
+`transcript-toolkit-docs.md` into the current folder — drag that file straight into the chat.
+No fetching, no plan restrictions, and it's the documentation for the version you actually
+have installed.
 
 ## Quickstart
 

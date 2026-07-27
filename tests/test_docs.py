@@ -18,8 +18,27 @@ def test_bundle_ships_with_the_package_and_has_every_doc():
         assert f"# FILE: {doc}" in text, doc
     # content, not just headers
     assert "xcode-select --install" in text            # SETUP's first step
-    assert "--interviews" in text                      # the flag ChatGPT couldn't find
     assert "--set collection" in text                  # the new topics flow
+
+
+def test_bundle_carries_the_generated_command_reference():
+    """Every command and flag, taken from argparse itself. Generated rather than written, so it
+    cannot drift from the CLI — inventing or denying a flag is the mistake assistants make most."""
+    text = bundle_text()
+    for cmd in ("$ toolkit sample --help", "$ toolkit topics tag --help",
+                "$ toolkit locations survey --help", "$ toolkit clip preview --help"):
+        assert cmd in text, cmd
+    assert "--interviews IDS" in text                  # the flag an assistant claimed didn't exist
+    assert "--no-batch" in text and "--skip-demo-check" in text
+
+
+def test_bundle_asks_for_proof_of_reading():
+    """A reader that really fetched the file can quote the token, so 'I read the docs' is
+    checkable — the observed failure was an assistant answering confidently without fetching."""
+    from transcript_toolkit import __version__
+    text = bundle_text()
+    assert f"[transcript-toolkit docs v{__version__}]" in text
+    assert text.index("TO THE ASSISTANT READING THIS") < 2000    # near the top, before any truncation
 
 
 def test_docs_command_writes_a_droppable_file(tmp_path, monkeypatch, capsys):
@@ -28,8 +47,9 @@ def test_docs_command_writes_a_droppable_file(tmp_path, monkeypatch, capsys):
     written = tmp_path / DEFAULT_FILENAME
     assert written.exists() and written.read_text() == bundle_text()
     out = capsys.readouterr().out
-    assert "drag this file into ChatGPT" in out
-    assert "llms-full.txt" in out
+    assert "Drag this file into ChatGPT" in out         # the method that needs no fetching
+    assert "llms-full.txt" in out                       # the link, as the alternative
+    assert "is guessing" in out                         # how to spot an assistant that bluffed
 
 
 def test_docs_command_can_print_and_target_a_path(tmp_path, monkeypatch, capsys):
