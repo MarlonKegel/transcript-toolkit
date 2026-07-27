@@ -34,21 +34,141 @@ class TopicSet:
                              # None = the step-wide advanced `prompt` is used
 
 
-def resolve_set(cfg: dict, set_name: str | None) -> tuple[str, dict]:
-    """Resolve --set / topics.default_set to (set_name, its config entry)."""
+TOPIC_SUFFIXES = (".csv", ".xlsx")
+EXAMPLE_STEM = "example_topics"          # the shipped template; not a usable set on its own
+DEFAULT_ROLLUP = "{ scheme: flat, threshold_pct: 30 }"
+
+
+def discover_topic_files(project: Project) -> dict[str, Path]:
+    """{set name: spreadsheet} for every topic list sitting in topics/, the set name being the
+    filename without its extension. The shipped example template is excluded — it is meant to be
+    filled in and renamed, not tagged against."""
+    found: dict[str, Path] = {}
+    if not project.topics_dir.is_dir():
+        return found
+    for path in sorted(project.topics_dir.iterdir()):
+        if path.suffix.lower() in TOPIC_SUFFIXES and path.stem != EXAMPLE_STEM:
+            found.setdefault(path.stem, path)     # .csv wins over .xlsx for the same stem
+    return found
+
+
+def available_sets(project: Project, cfg: dict) -> list[str]:
+    """Every set a user could name: configured ones plus spreadsheets waiting in topics/."""
+    configured = cfg.get("sets") or {}
+    names = set(configured) if isinstance(configured, dict) else set()
+    return sorted(names | set(discover_topic_files(project)))
+
+
+def _no_set_error(project: Project, cfg: dict, given: str | None) -> ToolkitError:
+    names = available_sets(project, cfg)
+    lead = (f"Unknown topic set {given!r}. There is no topics.sets.{given} in config.yaml and no "
+            f"topics/{given}.csv or topics/{given}.xlsx." if given
+            else "No topic set given. Use --set <name>.")
+    if names:
+        return ToolkitError(f"{lead}\nAvailable: {', '.join(names)}")
+    example = project.topics_dir / f"{EXAMPLE_STEM}.csv"
+    hint = (f"\nStart from {example.name}: fill in your topics, then rename it to the set name you "
+            f"want (e.g. topics/collection.csv)." if example.exists() else "")
+    return ToolkitError(
+        f"{lead}\nNo topic lists found. Put one in {project.topics_dir}{'/'} as a .csv or .xlsx — "
+        f"the filename becomes the set name.{hint}\n"
+        f"Then run: toolkit topics tag --set <name> --demo")
+
+
+def resolve_set(project: Project, cfg: dict, set_name: str | None) -> tuple[str, dict]:
+    """Resolve `--set NAME` to (name, its config entry).
+
+    A set may simply be a spreadsheet dropped into topics/ — no config editing needed. The first
+    time such a set is used it is written into config.yaml (so its rollup and any per-set prompt
+    are visible and editable afterwards). There is deliberately no default set: tagging the wrong
+    taxonomy is expensive, so the set is always named explicitly."""
     sets = cfg.get("sets") or {}
-    if not isinstance(sets, dict) or not sets:
-        raise ToolkitError("No topic sets configured. Add topics.sets.<name>.file to config.yaml.")
-    name = set_name or cfg.get("default_set")
-    if name is None:
-        raise ToolkitError(f"No topic set given and no topics.default_set configured. "
-                           f"Configured sets: {', '.join(sorted(sets))}")
-    if name not in sets:
-        raise ToolkitError(f"Unknown topic set {name!r}. Configured sets: {', '.join(sorted(sets))}")
-    entry = sets[name]
-    if not isinstance(entry, dict):
-        raise ToolkitError(f"config.yaml topics.sets.{name} must be a mapping")
-    return name, entry
+    if not isinstance(sets, dict):
+        raise ToolkitError("config.yaml topics.sets must be a mapping of set name -> settings.")
+    if not set_name:
+        raise _no_set_error(project, cfg, None)
+
+    if set_name in sets:
+        entry = sets[set_name]
+        if not isinstance(entry, dict):
+            raise ToolkitError(f"config.yaml topics.sets.{set_name} must be a mapping")
+        return set_name, entry
+
+    discovered = discover_topic_files(project)
+    if set_name not in discovered:
+        raise _no_set_error(project, cfg, set_name)
+
+    file_rel = discovered[set_name].relative_to(project.root).as_posix()
+    entry = {"file": file_rel, "rollup": {"scheme": "flat", "threshold_pct": 30}}
+    if register_topic_set(project, set_name, file_rel):
+        print(f"Registered topic set '{set_name}' in config.yaml (file: {file_rel}, "
+              f"rollup: flat 30%). Edit it there to change how clip tags roll up to interviews.")
+    else:
+        print(f"NOTE: could not add '{set_name}' to config.yaml automatically — using "
+              f"file: {file_rel} with a flat 30% rollup for this run.\n"
+              f"      To make it permanent, add under `topics:` -> `sets:`:\n"
+              f"        {set_name}:\n          file: {file_rel}\n          rollup: {DEFAULT_ROLLUP}")
+    return set_name, entry
+
+
+def register_topic_set(project: Project, name: str, file_rel: str) -> bool:
+    """Append topics.sets.<name> to config.yaml as TEXT, so the file's comments (which are the
+    user-facing documentation of every setting) survive — a yaml load/dump round-trip would strip
+    them all. Returns False, changing nothing, if the file does not have the shape we expect or
+    the edit would alter anything other than adding this one set."""
+    import yaml
+
+    path = project.config_path
+    text = path.read_text()
+    try:
+        before = yaml.safe_load(text) or {}
+    except yaml.YAMLError:
+        return False
+    if not isinstance(before, dict):
+        return False
+    topics_before = before.get("topics") or {}
+    sets_before = topics_before.get("sets") or {} if isinstance(topics_before, dict) else None
+    if sets_before is None or not isinstance(sets_before, dict) or name in sets_before:
+        return False
+
+    block = [f"    {name}:", f"      file: {file_rel}", f"      rollup: {DEFAULT_ROLLUP}"]
+    lines = text.splitlines()
+
+    def top_level_end(start: int) -> int:
+        """Index just past the block owned by the top-level key opened at `start`."""
+        for i in range(start + 1, len(lines)):
+            if lines[i].strip() and not lines[i][0].isspace():
+                return i
+        return len(lines)
+
+    topics_at = next((i for i, ln in enumerate(lines) if ln.rstrip() == "topics:"), None)
+    if topics_at is None:                                   # no topics block at all: append one
+        new_lines = lines + ["", "topics:", "  sets:", *block]
+    else:
+        end = top_level_end(topics_at)
+        sets_at = next((i for i in range(topics_at + 1, end)
+                        if lines[i].rstrip() in ("  sets:", "  sets: {}")), None)
+        if sets_at is None:                                 # topics block without a sets: key
+            new_lines = lines[:end] + ["  sets:", *block] + lines[end:]
+        else:
+            new_lines = lines[:sets_at + 1] + block + lines[sets_at + 1:]
+            if lines[sets_at].rstrip() == "  sets: {}":
+                new_lines[sets_at] = "  sets:"
+
+    new_text = "\n".join(new_lines) + ("\n" if text.endswith("\n") else "")
+    try:                                                    # the edit must do exactly one thing
+        after = yaml.safe_load(new_text) or {}
+    except yaml.YAMLError:
+        return False
+    expected = {**before, "topics": {**topics_before,
+                                     "sets": {**sets_before,
+                                              name: {"file": file_rel,
+                                                     "rollup": {"scheme": "flat",
+                                                                "threshold_pct": 30}}}}}
+    if after != expected:
+        return False
+    path.write_text(new_text)
+    return True
 
 
 def slug(name: str) -> str:
@@ -76,7 +196,7 @@ def _read_table(path: Path) -> list[list[str]]:
 def load_topic_set(project: Project, cfg: dict, set_name: str | None = None) -> TopicSet:
     """Load one topic set's spreadsheet into a TopicSet. `cfg` is the merged topics step
     config (load_step_config(project, "topics")); the `sets` dict arrives nested in it."""
-    name, entry = resolve_set(cfg, set_name)
+    name, entry = resolve_set(project, cfg, set_name)
     file_rel = entry.get("file")
     if not file_rel:
         raise ToolkitError(f"config.yaml topics.sets.{name} has no `file` "

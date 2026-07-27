@@ -1,4 +1,5 @@
 id,name,description
+DELETE THIS ROW,How to use this file,"1) Replace the example rows below with your own topics. 2) RENAME this file to the name you want for the topic set — e.g. collection.csv (.xlsx works too). 3) Run: toolkit topics tag --set collection --demo. The `id` column is optional; leave it blank and it is derived from the name. The `description` is the ONLY thing the model reads to decide whether a clip belongs to this topic, so be specific — say what counts and what does not."
 education,Education,"Discussion of schooling, universities, teaching, or educational institutions — the narrator's own education or education as a theme of their work. Tag when the clip substantively discusses education, not on a passing mention."
 career,Career and Work,"The narrator's professional path: jobs, organizations they worked for or founded, career changes, and significant projects. Tag when the clip is about the work itself, not merely set at a workplace."
 community,Community and Belonging,"Family, neighborhood, and community life; belonging, identity, and social ties. Tag when these are what the clip is about."

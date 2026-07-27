@@ -5,7 +5,7 @@ One structured-output LLM call per clip. The model returns two lists of {place, 
 and `regions` = {place, region} (the place + its acceptable region — a strict enum built from the
 workspace's locations/regions.yaml, which is also injected into the prompt so prompt and schema
 never drift). A place gets a country XOR a region; either list may be empty. Demo runs add a
-per-place justification (prompts/justify_locations.md) for review.
+per-place justification (prompts/prompt_addendums/justify_locations.md) for review.
 
 Demo-first: `--demo` tags a seeded spread-across-interviews sample and writes diags/locations/demo.html
 only; a full run is demo-gated, confirms cost, and writes outputs/locations/clip_locations{,_long}.

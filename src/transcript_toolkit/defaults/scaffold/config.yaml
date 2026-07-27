@@ -31,7 +31,7 @@ label:
   reasoning: medium
   # Optional project-specific consistency rules appended to the label prompt
   # (e.g. "always write OSF, never Open Society Foundations"). Path relative to the workspace.
-  addendum: null                   # e.g. prompts/label_addendum.md
+  addendum: null                   # e.g. prompts/prompt_addendums/label_addendum.md
 
 # --- summarize: one "scope and content" abstract per interview -----------------------------------
 summarize:
@@ -43,19 +43,20 @@ summarize:
 topics:
   model: gpt-5.4-mini
   reasoning: medium
-  default_set: main                # which set runs when --set is omitted
-  sets:
-    main:
-      # Your topic list as a spreadsheet: columns `name`, `description` (optional `id`).
-      file: topics/main.csv
-      # A set may bring its own rubric when its tagging rules differ from the default prompt:
-      # prompt: tag_topics_strict.md      # a file in prompts/
-      # How clip tags roll up to interview tags:
-      #   flat   — an interview gets a topic when >= threshold_pct % of its clips have it.
-      #   binned — per-topic bars: rare topics clear a lower bar than common ones
-      #            (list of bars, rarest band first; run `toolkit topics thresholds` to tune).
-      rollup: { scheme: flat, threshold_pct: 30 }
-      # rollup: { scheme: binned, thresholds: [10, 12.5, 15, 17.5, 20, 22.5, 25, 27.5, 30] }
+  # You do NOT need to fill `sets` in by hand. Put your topic list in topics/ as a .csv or
+  # .xlsx — the filename is the set name — and run `toolkit topics tag --set <name> --demo`.
+  # The set is added here automatically the first time you use it; edit its rollup below.
+  #   flat   — an interview gets a topic when >= threshold_pct % of its clips have it.
+  #   binned — per-topic bars: rare topics clear a lower bar than common ones
+  #            (list of bars, rarest band first; run `toolkit topics thresholds` to tune).
+  # A set may also bring its own rubric when its tagging rules differ from the default prompt:
+  #   prompt: tag_topics_strict.md        # a file in prompts/
+  sets: {}
+    # Filled in automatically. An entry looks like this:
+    # my_set_name:
+    #   file: topics/my_set_name.xlsx
+    #   rollup: { scheme: flat, threshold_pct: 30 }
+    #   # rollup: { scheme: binned, thresholds: [10, 12.5, 15, 17.5, 20, 22.5, 25, 27.5, 30] }
 
 # --- locations: tag clips to countries and regions ------------------------------------------------
 locations:

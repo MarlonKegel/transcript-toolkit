@@ -112,7 +112,7 @@ def test_full_run_gated_without_demo(project):
 def test_prompt_edit_stales_demo(project):
     draw_sample(project)
     run_clip(project, demo=True)
-    prompt = project.prompts_dir / "segment_interview.md"
+    prompt = project.prompts_dir / "clip_interview.md"
     prompt.write_text(prompt.read_text() + "\nNever split anecdotes.")
     with pytest.raises(ToolkitError, match="stale"):
         run_clip(project, yes=True)

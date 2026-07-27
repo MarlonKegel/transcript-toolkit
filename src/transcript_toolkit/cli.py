@@ -13,6 +13,9 @@ from . import __version__
 from .errors import ToolkitError
 
 
+SET_HELP = ("which topic set to use — the name of your topic spreadsheet in topics/ "
+            "(topics/collection.xlsx -> --set collection). Required: there is no default.")
+
 BATCH_HELP = ("run the full corpus on the 50%%-off Batch API (slower: up to 24h) or force it off; "
               "omit to be asked, with both cost estimates, at the confirmation prompt")
 
@@ -108,7 +111,7 @@ def build_parser() -> argparse.ArgumentParser:
     tsub = p.add_subparsers(dest="action", metavar="<action>", required=True)
 
     pt = tsub.add_parser("tag", parents=[common], help="tag clips (demo-first)")
-    pt.add_argument("--set", dest="set_name", default=None, help="topic set (default: config default_set)")
+    pt.add_argument("--set", dest="set_name", default=None, help=SET_HELP)
     pt.add_argument("--demo", action="store_true", help="tag a spread sample of clips, review page only")
     pt.add_argument("--sample", dest="sample_n", type=int, default=None,
                     help="override the demo sample size")
@@ -123,20 +126,20 @@ def build_parser() -> argparse.ArgumentParser:
     pt.set_defaults(func=cmd_topics_tag)
 
     pt = tsub.add_parser("preview", parents=[common], help="print the exact request for one clip (no API)")
-    pt.add_argument("--set", dest="set_name", default=None)
+    pt.add_argument("--set", dest="set_name", default=None, help=SET_HELP)
     pt.add_argument("--clip", default=None, help="clip id (default: first clip)")
     pt.set_defaults(func=cmd_topics_preview)
 
     pt = tsub.add_parser("rollup", parents=[common], help="clip tags -> interview tags")
-    pt.add_argument("--set", dest="set_name", default=None)
+    pt.add_argument("--set", dest="set_name", default=None, help=SET_HELP)
     pt.set_defaults(func=cmd_topics_rollup)
 
     pt = tsub.add_parser("thresholds", parents=[common], help="decision aid for the rollup thresholds")
-    pt.add_argument("--set", dest="set_name", default=None)
+    pt.add_argument("--set", dest="set_name", default=None, help=SET_HELP)
     pt.set_defaults(func=cmd_topics_thresholds)
 
     pt = tsub.add_parser("annotate", parents=[common], help="re-render the per-interview review pages")
-    pt.add_argument("--set", dest="set_name", default=None)
+    pt.add_argument("--set", dest="set_name", default=None, help=SET_HELP)
     pt.set_defaults(func=cmd_topics_annotate)
 
     p = sub.add_parser("locations", parents=[common],

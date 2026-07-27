@@ -78,7 +78,7 @@ def run_topics_rollup(project: Project, set_name: str | None = None) -> pd.DataF
     sset = tset.name
     tids = tset.ids
     name_by_id = {t["id"]: t["name"] for t in tset.topics}
-    _, entry = resolve_set(cfg, sset)
+    _, entry = resolve_set(project, cfg, sset)
 
     counts, pct, freq, n_clips, n_sessions = pooled_shares(project, cfg, tset)
     thr_by_topic, scheme_desc = scheme_thresholds(entry.get("rollup"), freq, sset)

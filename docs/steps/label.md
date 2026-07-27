@@ -22,7 +22,7 @@ re-renders the review pages. A full run asks whether to run now or on the 50%-of
 opens it for you). Check that labels are specific, distinct, and
 in your house style. For project-wide consistency rules (e.g. "always write UNHCR, never the UN
 Refugee Agency"), put them in a file and point `config.yaml` → `label.addendum` at it (e.g.
-`prompts/label_addendum.md`); the text is appended to the label prompt.
+`prompts/prompt_addendums/label_addendum.md`); the text is appended to the label prompt.
 
 ## Settings
 

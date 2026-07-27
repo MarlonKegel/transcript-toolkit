@@ -1,7 +1,7 @@
 # Advanced settings for `toolkit locations`. You normally don't touch these.
 
 prompt: tag_locations.md              # in prompts/
-justify_prompt: justify_locations.md  # appended for demo runs (per-place justifications)
+justify_prompt: prompt_addendums/justify_locations.md  # appended for demo runs (per-place justifications)
 verbosity: low
 max_workers: 8
 regions_file: locations/regions.yaml            # the region vocabulary (strict enum)

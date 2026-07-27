@@ -27,10 +27,9 @@ summarize: { model: gpt-5.5,      reasoning: low,    pool_sessions: true }
 topics:
   model: gpt-5.4-mini
   reasoning: medium
-  default_set: main
-  sets:
-    main:
-      file: topics/main.csv       # your topic list (xlsx/csv: name, description, [id])
+  sets:                           # written for you when a set is first used; no default set
+    collection:
+      file: topics/collection.xlsx  # your topic list (xlsx/csv: name, description, [id])
       rollup: { scheme: flat, threshold_pct: 30 }
       # or:  { scheme: binned, thresholds: [10, 12.5, ..., 30] }
 

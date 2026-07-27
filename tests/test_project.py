@@ -52,3 +52,33 @@ def test_reset_prompt_unknown_name(tmp_path):
     project = init_project(str(tmp_path / "ws"))
     with pytest.raises(ToolkitError, match="No default prompt"):
         reset_prompt(project, "nope.md")
+
+
+def test_reset_prompt_handles_subfolders_and_old_names(tmp_path):
+    """Prompt addendums live in prompts/prompt_addendums/, and prompts renamed after workspaces
+    already existed keep working under their old names."""
+    from transcript_toolkit.project import reset_prompt
+    project = init_project(str(tmp_path / "ws"))
+
+    addendum = project.prompts_dir / "prompt_addendums" / "justify_topics.md"
+    assert addendum.exists()                                  # scaffolded recursively
+    addendum.write_text("edited")
+    assert reset_prompt(project, "prompt_addendums/justify_topics.md") == addendum
+    assert addendum.read_text() != "edited"
+
+    # old names still resolve to their new locations
+    assert reset_prompt(project, "justify_topics.md") == addendum
+    assert reset_prompt(project, "segment_interview.md").name == "clip_interview.md"
+
+
+def test_reset_prompt_unknown_name_lists_available(tmp_path):
+    from transcript_toolkit.project import reset_prompt
+    project = init_project(str(tmp_path / "ws"))
+    with pytest.raises(ToolkitError, match="prompt_addendums/justify_topics.md"):
+        reset_prompt(project, "nope.md")
+
+
+def test_no_claude_md_in_workspace(tmp_path):
+    project = init_project(str(tmp_path / "ws"))
+    assert (project.root / "AGENTS.md").exists()
+    assert not (project.root / "CLAUDE.md").exists()

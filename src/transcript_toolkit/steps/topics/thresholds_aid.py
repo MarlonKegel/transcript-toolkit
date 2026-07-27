@@ -22,7 +22,7 @@ def run_topics_thresholds(project: Project, set_name: str | None = None) -> None
     require(cfg, ["score_values"], STEP)
     tset = load_topic_set(project, cfg, set_name)
     sset = tset.name
-    _, entry = resolve_set(cfg, sset)
+    _, entry = resolve_set(project, cfg, sset)
 
     _, pct, freq, n_clips, _ = pooled_shares(project, cfg, tset)
     n_int, n_top = pct.shape

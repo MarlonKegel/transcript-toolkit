@@ -14,7 +14,7 @@ clip:      { model: gpt-5.5, reasoning: medium }
 label:
   model: gpt-5.4
   reasoning: medium
-  addendum: label_addendum.md           # OSF naming conventions (e.g. always "OSF")
+  addendum: prompts/prompt_addendums/label_addendum.md   # OSF naming conventions (always "OSF")
 
 summarize: { model: gpt-5.5, reasoning: low, pool_sessions: true }
 
@@ -22,7 +22,6 @@ summarize: { model: gpt-5.5, reasoning: low, pool_sessions: true }
 topics:
   model: gpt-5.4-mini
   reasoning: medium
-  default_set: collection
   sets:
     collection:
       file: topics/collection.xlsx

@@ -9,6 +9,7 @@ from transcript_toolkit.errors import ToolkitError
 from transcript_toolkit.project import init_project
 from transcript_toolkit.steps.export import run_export
 from transcript_toolkit.steps.import_ import run_import
+from transcript_toolkit.steps.topics.taxonomy import register_topic_set
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -79,6 +80,9 @@ def test_export_incremental_adds_columns(project):
          "model": "m", "reasoning_effort": "r"}]))
     (project.topics_dir / "main.csv").write_text(
         "name,description\nEducation,About education.\nCareer and Work,About work.\n")
+    # export reads the configured sets; tagging registers them, but this test writes the
+    # deliverables directly, so register it here.
+    register_topic_set(project, "main", "topics/main.csv")
     _write(project, "topics/main_clip_topics_long.parquet", pd.DataFrame([
         {"clip_id": "fake_beta_0001", "interview_id": "fake_beta", "topic_id": "career",
          "topic_name": "Career and Work", "score": 2, "justification": ""},

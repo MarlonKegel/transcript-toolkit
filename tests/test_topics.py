@@ -84,6 +84,15 @@ def project(tmp_path, monkeypatch):
     return project
 
 
+def set_entry(project, **overrides):
+    """Set topics.sets.main explicitly. (Tests don't need the scaffold's comments preserved —
+    test_taxonomy.py covers that the real auto-registration keeps them.)"""
+    import yaml
+    cfg = yaml.safe_load(project.config_path.read_text())
+    cfg["topics"]["sets"] = {"main": {"file": "topics/main.csv", **overrides}}
+    project.config_path.write_text(yaml.safe_dump(cfg, sort_keys=False))
+
+
 def wide_path(project):
     return project.outputs_dir / "topics" / "main_clip_topics_wide.parquet"
 
@@ -96,7 +105,7 @@ def long_path(project):
 
 
 def test_demo_writes_review_and_state_only(project):
-    df = run_topics_tag(project, demo=True)
+    df = run_topics_tag(project, "main", demo=True)
     assert len(df) == len(project.clips)                       # demo_n_clips=50 >= corpus
     assert not wide_path(project).exists()                     # no deliverable from a demo
     page = project.diags_dir / "topics" / "main_demo.html"
@@ -109,20 +118,20 @@ def test_demo_writes_review_and_state_only(project):
 
 
 def test_demo_sample_n_and_seed_override(project):
-    df = run_topics_tag(project, demo=True, sample_n=3, seed=1)
+    df = run_topics_tag(project, "main", demo=True, sample_n=3, seed=1)
     assert len(df) == 3
 
 
 def test_full_run_gated_without_demo(project):
     with pytest.raises(ToolkitError, match="No demo run"):
-        run_topics_tag(project, yes=True)
+        run_topics_tag(project, "main", yes=True)
 
 
 def test_justify_on_demo_approves_justify_off_full_run(project):
-    run_topics_tag(project, demo=True)                         # justify defaults ON
+    run_topics_tag(project, "main", demo=True)                         # justify defaults ON
     n_demo = len(project.llm_calls)
     assert n_demo == len(project.clips)
-    df = run_topics_tag(project, yes=True)                     # justify defaults OFF
+    df = run_topics_tag(project, "main", yes=True)                     # justify defaults OFF
     # The gate fingerprints the justify-OFF base instructions, so the justify-on demo is
     # current here — but the actual instructions differ, so the full run makes fresh calls.
     assert len(project.llm_calls) == 2 * n_demo
@@ -131,21 +140,21 @@ def test_justify_on_demo_approves_justify_off_full_run(project):
     assert (long_df["justification"] == "").all()              # no rationales on the full run
     full = load_state(project)["steps"]["topics:main"]["full"]
     assert full["n_units"] == len(project.clips)
-    run_topics_tag(project, yes=True)                          # re-run: everything cached
+    run_topics_tag(project, "main", yes=True)                          # re-run: everything cached
     assert len(project.llm_calls) == 2 * n_demo
 
 
 def test_topic_spreadsheet_edit_stales_demo(project):
-    run_topics_tag(project, demo=True)
+    run_topics_tag(project, "main", demo=True)
     (project.topics_dir / "main.csv").write_text(
         TOPICS_CSV + 'Travel,"Journeys and migration."\n')
     with pytest.raises(ToolkitError, match="stale"):
-        run_topics_tag(project, yes=True)
+        run_topics_tag(project, "main", yes=True)
 
 
 def test_deliverable_schemas(project):
-    run_topics_tag(project, demo=True)
-    run_topics_tag(project, yes=True)
+    run_topics_tag(project, "main", demo=True)
+    run_topics_tag(project, "main", yes=True)
     wide = pd.read_parquet(wide_path(project))
     assert list(wide.columns) == ["clip_id", "interview_id", "education", "career", "family",
                                   "top_score", "top_topics", "n_topics_assigned", "fits_any",
@@ -161,10 +170,10 @@ def test_deliverable_schemas(project):
 
 
 def test_interview_subset_merges(project):
-    run_topics_tag(project, demo=True)
-    run_topics_tag(project, yes=True)
+    run_topics_tag(project, "main", demo=True)
+    run_topics_tag(project, "main", yes=True)
     before = pd.read_parquet(wide_path(project))
-    run_topics_tag(project, interviews=["fake_beta"], yes=True)
+    run_topics_tag(project, "main", interviews=["fake_beta"], yes=True)
     after = pd.read_parquet(wide_path(project))
     assert len(after) == len(before)                           # merged, not clobbered
     assert after["clip_id"].is_unique
@@ -173,20 +182,17 @@ def test_interview_subset_merges(project):
 
 
 def test_unknown_interview_fails_loud(project):
-    run_topics_tag(project, demo=True)
+    run_topics_tag(project, "main", demo=True)
     with pytest.raises(ToolkitError, match="Unknown interview id"):
-        run_topics_tag(project, interviews=["nobody"], yes=True)
+        run_topics_tag(project, "main", interviews=["nobody"], yes=True)
 
 
 def test_per_set_prompt_override(project):
     # A set may bring its own rubric via config sets.<set>.prompt (e.g. OSF's filter set).
     (project.prompts_dir / "tag_topics_strict.md").write_text(
         "STRICT RUBRIC: tag only specific and substantive mentions.")
-    cfg = project.config_path.read_text().replace(
-        "      file: topics/main.csv",
-        "      file: topics/main.csv\n      prompt: tag_topics_strict.md")
-    project.config_path.write_text(cfg)
-    run_topics_tag(project, demo=True)
+    set_entry(project, prompt="tag_topics_strict.md")
+    run_topics_tag(project, "main", demo=True)
     assert any("STRICT RUBRIC" in i for i in project.llm_calls)
     # the default prompt is no longer part of the instructions for this set
     default_text = (project.prompts_dir / "tag_topics.md").read_text().strip()
@@ -194,7 +200,7 @@ def test_per_set_prompt_override(project):
 
 
 def test_unknown_set_fails_loud(project):
-    with pytest.raises(ToolkitError, match="Unknown topic set.*main"):
+    with pytest.raises(ToolkitError, match="Unknown topic set"):
         run_topics_tag(project, set_name="nope", demo=True)
 
 
@@ -230,7 +236,7 @@ def interview_paths(project):
 
 def test_rollup_flat(project):
     write_hand_wide(project)
-    wide = run_topics_rollup(project).set_index("interview_key")
+    wide = run_topics_rollup(project, "main").set_index("interview_key")
     # flat 30% (scaffold config): alpha education 50% >= 30 tagged, career 25% < 30 not
     assert list(wide.index) == ["fake_alpha", "fake_beta"]     # sessions pooled per narrator
     assert wide.loc["fake_alpha", "topics"] == "education"
@@ -247,13 +253,11 @@ def test_rollup_flat(project):
 
 def test_rollup_binned_hand_computed(project):
     write_hand_wide(project)
-    project.config_path.write_text(project.config_path.read_text().replace(
-        "rollup: { scheme: flat, threshold_pct: 30 }",
-        "rollup: { scheme: binned, thresholds: [10, 30] }"))
+    set_entry(project, rollup={"scheme": "binned", "thresholds": [10, 30]})
     # 2 equal-width bins over frequencies [6, 1, 0]: family(0) and career(1) fall in the rare
     # band -> bar 10%; education(6) in the common band -> bar 30%. So alpha's career (25% of
     # clips) now clears its 10% bar while education still needs (and clears) 30%.
-    wide = run_topics_rollup(project).set_index("interview_key")
+    wide = run_topics_rollup(project, "main").set_index("interview_key")
     assert wide.loc["fake_alpha", "topics"] == "education|career"
     assert wide.loc["fake_alpha", "n_topics"] == 2
     assert wide.loc["fake_beta", "topics"] == "education"
@@ -267,7 +271,7 @@ def test_rollup_binned_hand_computed(project):
 
 def test_rollup_schemas(project):
     write_hand_wide(project)
-    run_topics_rollup(project)
+    run_topics_rollup(project, "main")
     wide_p, long_p = interview_paths(project)
     assert list(pd.read_parquet(wide_p).columns) == [
         "interview_key", "n_sessions", "n_clips", "education", "career", "family",
@@ -279,7 +283,7 @@ def test_rollup_schemas(project):
 
 def test_rollup_without_tag_fails(project):
     with pytest.raises(ToolkitError, match="topics tag"):
-        run_topics_rollup(project)
+        run_topics_rollup(project, "main")
 
 
 # --- thresholds aid + annotate -------------------------------------------------------------
@@ -287,16 +291,16 @@ def test_rollup_without_tag_fails(project):
 
 def test_thresholds_aid_prints_sweep_and_writes_figure(project, capsys):
     write_hand_wide(project)
-    run_topics_thresholds(project)
+    run_topics_thresholds(project, "main")
     out = capsys.readouterr().out
     assert "Flat-threshold sweep" in out and ">= 10%" in out and ">= 40%" in out
     assert (project.diags_dir / "topics" / "plots" / "main_thresholds.png").exists()
 
 
 def test_annotate_writes_per_interview_html(project):
-    run_topics_tag(project, demo=True)
-    run_topics_tag(project, yes=True)
-    annotate_topics(project)
+    run_topics_tag(project, "main", demo=True)
+    run_topics_tag(project, "main", yes=True)
+    annotate_topics(project, "main")
     for iid in sorted(project.clips["interview_id"].unique()):
         page = project.diags_dir / "topics" / f"main_{iid}.html"
         assert page.exists()
@@ -307,7 +311,7 @@ def test_annotate_writes_per_interview_html(project):
 
 def test_annotate_without_deliverable_fails(project):
     with pytest.raises(ToolkitError, match="topics tag"):
-        annotate_topics(project)
+        annotate_topics(project, "main")
 
 
 def test_batch_transport_fills_cache_and_builds_deliverables(project, monkeypatch):
@@ -327,7 +331,7 @@ def test_batch_transport_fills_cache_and_builds_deliverables(project, monkeypatc
     monkeypatch.setattr(tag_step, "call_llm",
                         lambda *a, **k: pytest.fail("batch run must not call the sync API"))
 
-    df = run_topics_tag(project, yes=True, skip_demo_check=True, batch=True)
+    df = run_topics_tag(project, "main", yes=True, skip_demo_check=True, batch=True)
     assert len(df) == len(project.clips)
     assert set(df["education"]) == {2} and set(df["family"]) == {1}
     assert wide_path(project).exists()

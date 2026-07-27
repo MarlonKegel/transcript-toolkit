@@ -116,7 +116,6 @@ def init_project(dest: str) -> Project:
     (project.root / ".gitignore").write_bytes((scaffold / "gitignore.template").read_bytes())
     (project.root / ".env").write_bytes((scaffold / "env.template").read_bytes())
     (project.root / "AGENTS.md").write_bytes((scaffold / "AGENTS.md").read_bytes())
-    (project.root / "CLAUDE.md").write_bytes((scaffold / "CLAUDE.md").read_bytes())
 
     prompts = _defaults() / "prompts"
     if prompts.is_dir():
@@ -134,13 +133,40 @@ def init_project(dest: str) -> Project:
     return project
 
 
+# Prompts that moved or were renamed after workspaces were already created. Old names keep
+# working so an existing workspace's `--reset-prompt` (and its own config) never breaks.
+PROMPT_ALIASES = {
+    "segment_interview.md": "clip_interview.md",
+    "justify_topics.md": "prompt_addendums/justify_topics.md",
+    "justify_locations.md": "prompt_addendums/justify_locations.md",
+}
+
+
+def _default_prompt_names(src=None, prefix: str = "") -> list[str]:
+    """Every packaged default prompt, as workspace-relative posix paths (recursing subfolders)."""
+    src = src if src is not None else _defaults() / "prompts"
+    if not src.is_dir():
+        return []
+    names: list[str] = []
+    for entry in src.iterdir():
+        if entry.is_dir():
+            names += _default_prompt_names(entry, f"{prefix}{entry.name}/")
+        else:
+            names.append(f"{prefix}{entry.name}")
+    return sorted(names)
+
+
 def reset_prompt(project: Project, name: str) -> Path:
     """Restore one prompt in the workspace to the pristine packaged default."""
-    prompts = _defaults() / "prompts"
-    src = prompts / name
-    if not src.is_file():
-        available = sorted(e.name for e in prompts.iterdir() if e.is_file()) if prompts.is_dir() else []
-        raise ToolkitError(f"No default prompt named {name!r}. Available: {', '.join(available) or '(none)'}")
+    name = PROMPT_ALIASES.get(name, name)
+    available = _default_prompt_names()
+    if name not in available:
+        raise ToolkitError(f"No default prompt named {name!r}. "
+                           f"Available: {', '.join(available) or '(none)'}")
+    src = _defaults() / "prompts"
+    for part in name.split("/"):
+        src = src / part
     dest = project.prompts_dir / name
+    dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(src.read_bytes())
     return dest

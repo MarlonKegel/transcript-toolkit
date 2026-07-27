@@ -23,7 +23,7 @@ can't all be submitted up front the way the other steps' calls can.
 The demo opens `diags/clip/index.html` in your browser (on a Mac; elsewhere, double-click it).
 It links one page per interview, each showing the transcript with clip boundaries marked. Judge
 whether boundaries fall at real topic shifts and whether procedural chatter (scheduling, mic
-checks) is separated out. To adjust, edit `prompts/segment_interview.md` or the chunking settings,
+checks) is separated out. To adjust, edit `prompts/clip_interview.md` or the chunking settings,
 then re-demo.
 
 ## Settings
