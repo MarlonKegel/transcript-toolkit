@@ -6,3 +6,4 @@ dist/
 .venv/
 .env
 .pytest_cache/
+_site/

@@ -19,7 +19,9 @@ settings you can tune. So every step follows the same loop, and the toolkit **en
 
 1. **Demo** — run the step on a small sample: `toolkit <step> --demo`
    (for clip/label the sample is the interviews drawn once by `toolkit sample`; topics and
-   locations sample clips automatically).
+   locations sample clips automatically). You can demo the steps in sequence — `label --demo`
+   works off `clip --demo`, so you can review the whole pipeline on a few interviews before
+   committing to a full run of anything.
 2. **Review** — the demo opens a review page in your browser (a self-contained `.html` file in
    `diags/<step>/` — on a Mac it opens automatically; elsewhere, double-click it). Judge the
    output: are clip boundaries sensible, labels sharp, tags right?
@@ -31,8 +33,19 @@ settings you can tune. So every step follows the same loop, and the toolkit **en
    spend (see below), and then processes the whole corpus. Results land in `outputs/`, review
    files in `diags/`.
 
-If a full run is interrupted (laptop sleep, network), just run the same command again — every
-call is cached, nothing is paid twice.
+### If a step seems stuck
+
+Occasionally one API call stops responding while the rest finish — you'll see progress reach,
+say, 134 of 136 and then sit there. **Press Ctrl-C (more than once if it doesn't stop the first
+time), then run the exact same command again.** It picks up where it left off and usually
+completes immediately.
+
+Nothing is lost and nothing is paid for twice: every finished call is written to the cache as it
+completes, so a re-run only redoes what was still missing. The same is true after a laptop sleep,
+a dropped network, or a crash — the fix is always "run it again".
+
+A call that is merely slow now says so (`still waiting on a gpt-5.5 call (94s elapsed)`), so
+silence for more than a minute or two is the signal to interrupt.
 
 ## Run now, or run cheap? (the Batch API)
 
@@ -71,11 +84,11 @@ toolkit label
 toolkit summarize --demo
 toolkit summarize
 
-#   put your topic list at topics/main.csv (or .xlsx) first — columns: name, description
-toolkit topics tag --demo      # demo → review page opens → tune the topic list → re-demo
-toolkit topics tag
-toolkit topics thresholds      # decision aid for the interview-rollup thresholds
-toolkit topics rollup          # clip tags → interview tags
+#   drop your topic list into topics/ first (collection.xlsx or .csv: name, description)
+toolkit topics tag --set collection --demo    # → review page opens → tune the list → re-demo
+toolkit topics tag --set collection
+toolkit topics thresholds --set collection    # decision aid for the interview-rollup thresholds
+toolkit topics rollup --set collection        # clip tags → interview tags
 
 toolkit locations tag --demo   # works out of the box (built-in region list)
 toolkit locations tag

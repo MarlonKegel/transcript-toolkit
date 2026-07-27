@@ -1,0 +1,943 @@
+# transcript-toolkit — complete documentation
+
+A command-line toolkit that processes oral history interview transcripts through five LLM steps
+(clip, label, summarize, tag topics, tag locations) and exports the results as a spreadsheet.
+Built for non-technical researchers: every step is demo-first, idempotent, and resumable.
+
+This file is the ENTIRE documentation set, concatenated for you to read in one go. It is
+generated from the repository, so it matches the current version.
+
+Repository: https://github.com/MarlonKegel/transcript-toolkit
+Install:    uv tool install git+https://github.com/MarlonKegel/transcript-toolkit.git
+Command:    toolkit
+
+When answering questions about this toolkit, rely on the text below rather than on general
+knowledge about similar tools — the flags, file layout and defaults here are specific to it.
+
+
+================================================================================================
+
+## Contents
+
+ 1. README.md — What the toolkit is, and the 10-line quickstart
+ 2. docs/SETUP.md — Installing it on a Mac, step by step
+ 3. docs/WORKFLOW.md — The demo-first workflow, costs, and what to do when a step hangs
+ 4. docs/steps/import.md — import: transcripts (.docx) -> the paragraph dataset
+ 5. docs/steps/sample.md — sample: choosing the interviews demos run on
+ 6. docs/steps/clip.md — clip: splitting interviews into topically coherent clips
+ 7. docs/steps/label.md — label: a one-line label per clip
+ 8. docs/steps/summarize.md — summarize: a 'scope and content' abstract per interview
+ 9. docs/steps/topics.md — topics: scoring clips against your own topic lists
+10. docs/steps/locations.md — locations: tagging clips to countries and regions
+11. docs/steps/export.md — export: one xlsx of everything produced
+12. docs/CONFIG.md — Every setting, and which edits invalidate a demo
+13. docs/TROUBLESHOOTING.md — Errors and what to do about them
+14. docs/examples/osf/README.md — A real worked example (the OSF oral history archive)
+
+================================================================================================
+# FILE: README.md
+# What the toolkit is, and the 10-line quickstart
+================================================================================================
+
+# transcript-toolkit
+
+Toolkit for processing oral history interview transcripts. Takes SYNC'd (timestamped) `.docx`
+transcripts and produces, via LLM steps with human review built in:
+
+```
+import ─► clip ─► label ──────────┐
+   │        └──► topics ──────────┤
+   │        └──► locations ───────┼─► export (xlsx)
+   └───────► summarize ───────────┘
+```
+
+- **import** — parse transcripts into a paragraph dataset
+- **clip** — split each interview into topically coherent clips
+- **label** — one-line label per clip
+- **summarize** — a "scope and content" abstract per interview
+- **topics** — score every clip against your topic list(s), roll up to interview tags
+- **locations** — tag clips to countries/regions, roll up to interview tags
+- **export** — one spreadsheet with everything produced so far
+
+Every LLM step is **demo-first**: you run it on a small sample, review the annotated output in
+`diags/`, adjust settings/prompts, and only then run the full corpus.
+
+## Ask an AI about this toolkit
+
+Rather than reading the docs, you can have ChatGPT, Claude or Gemini answer questions about them.
+Paste this into a new chat:
+
+```
+Read the documentation at this link, then answer my questions about this toolkit:
+https://raw.githubusercontent.com/MarlonKegel/transcript-toolkit/main/llms-full.txt
+```
+
+Then ask away — *"can I choose which interviews the demo runs on?"*, *"how do I add a second
+topic list?"*, *"what does it cost to tag 800 clips?"*
+
+That link is the entire documentation as one plain-text file. Give the assistant **that** link,
+not the GitHub repo link: GitHub's pages are rendered with JavaScript and aren't in most search
+indexes, so an assistant handed the repo URL will usually answer from general knowledge and get
+the specifics wrong.
+
+Offline, or want the docs for the version you actually have installed? Run **`toolkit docs`** —
+it writes `transcript-toolkit-docs.md` into the current folder, ready to drag into a chat.
+
+## Quickstart
+
+```sh
+# one-time install (see docs/SETUP.md for the full Mac walkthrough, incl. installing uv)
+uv tool install git+https://github.com/MarlonKegel/transcript-toolkit.git
+
+toolkit init my-archive && cd my-archive
+#  → put your OpenAI key in .env, drop transcripts in data/
+toolkit import
+toolkit status
+```
+
+## Documentation
+
+- [docs/SETUP.md](docs/SETUP.md) — install walkthrough (Mac)
+- [docs/WORKFLOW.md](docs/WORKFLOW.md) — the demo-first pipeline, end to end
+- [docs/steps/](docs/steps/) — one page per step
+- [docs/CONFIG.md](docs/CONFIG.md) — every setting
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — when something goes wrong
+- [llms-full.txt](llms-full.txt) — all of the above in one file, for AI assistants (see above)
+- [AGENTS.md](AGENTS.md) — for coding agents working on this repo (each workspace also gets its
+  own `AGENTS.md` for agent-assisted use)
+
+================================================================================================
+# FILE: docs/SETUP.md
+# Installing it on a Mac, step by step
+================================================================================================
+
+# Setup (Mac)
+
+One-time setup takes about 20 minutes. You'll copy commands into **Terminal** (find it with
+Spotlight: press `⌘ Space`, type "Terminal", press Enter). Paste each command with `⌘V` and
+press Enter, then wait for it to finish (you get the prompt back).
+
+## 1. Install Apple's Command Line Tools (this gives you `git`)
+
+A fresh Mac doesn't include `git`, which the installer in step 3 needs. Install it once:
+
+```sh
+xcode-select --install
+```
+
+A window pops up — click **Install**, agree to the terms, and wait for it to finish (a few
+minutes; it's a sizeable download). If it instead says *"command line tools are already
+installed"*, you're set — carry on. Wait until that install is fully done before the next steps.
+
+## 2. Install uv (a Python installer/manager)
+
+```sh
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Close the Terminal window and open a new one afterwards (so the `uv` command is found).
+
+## 3. Install the toolkit
+
+```sh
+uv tool install git+https://github.com/MarlonKegel/transcript-toolkit.git
+```
+
+Check it worked:
+
+```sh
+toolkit --version
+```
+
+To update to the latest version later:
+
+```sh
+uv tool upgrade transcript-toolkit
+```
+
+## 4. Create a project workspace
+
+Pick a folder name for your project (here `my-archive`):
+
+```sh
+cd ~/Documents
+toolkit init my-archive
+cd my-archive
+```
+
+This creates the project folder with everything in place: `config.yaml` (your settings),
+`prompts/` (editable prompt texts), `topics/` (your topic lists go here), `data/` (transcripts
+go here), `outputs/` (results appear here), `diags/` (review files appear here).
+
+## 5. Add your OpenAI API key
+
+Every LLM step calls the OpenAI API with a key billed to your team. Ask your admin for a key.
+`toolkit init` already created a `.env` file inside your project folder — you just need to add
+the key to it. Make sure you are inside the workspace (the `cd my-archive` from step 4), then
+open it (it's hidden in Finder — in Terminal: `open -e .env`) and paste the key after the `=`:
+
+```
+OPENAI_API_KEY=sk-...
+```
+
+Then **save the file** (in TextEdit: `⌘S`) and close it — the key isn't stored until you save.
+
+## 6. Add transcripts and import
+
+Copy your SYNC'd transcript `.docx` files into `data/` (one file per interview, or per session
+for multi-session interviews — see [steps/import.md](steps/import.md) for the required
+file-naming and timestamp format). Then:
+
+```sh
+toolkit import
+```
+
+Read what it prints: the speaker-role table shows whether your interviewer labels are
+configured correctly (fix `config.yaml` → `import:` and re-run if not), and the
+narrator-pooling table shows which session files it grouped together.
+
+From here, follow [WORKFLOW.md](WORKFLOW.md).
+
+## If something goes wrong
+
+See [TROUBLESHOOTING.md](TROUBLESHOOTING.md). The golden rule: the toolkit fails loudly and
+tells you what to fix; interrupted runs are never lost — run the same command again and it
+picks up where it stopped.
+
+================================================================================================
+# FILE: docs/WORKFLOW.md
+# The demo-first workflow, costs, and what to do when a step hangs
+================================================================================================
+
+# The workflow, end to end
+
+The pipeline (after [setup](SETUP.md) and `toolkit import`):
+
+```
+import ─► clip ─► label ──────────┐
+   │        └──► topics ──────────┤
+   │        └──► locations ───────┼─► export (xlsx)
+   └───────► summarize ───────────┘
+```
+
+`clip` must run before `label` / `topics` / `locations`; those three are independent of each
+other; `summarize` only needs `import`. `export` includes whatever has been produced so far.
+
+## Demo-first: how every LLM step is run
+
+Each LLM step costs real money on a full corpus and its behavior depends on prompts and
+settings you can tune. So every step follows the same loop, and the toolkit **enforces** it:
+
+1. **Demo** — run the step on a small sample: `toolkit <step> --demo`
+   (for clip/label the sample is the interviews drawn once by `toolkit sample`; topics and
+   locations sample clips automatically). You can demo the steps in sequence — `label --demo`
+   works off `clip --demo`, so you can review the whole pipeline on a few interviews before
+   committing to a full run of anything.
+2. **Review** — the demo opens a review page in your browser (a self-contained `.html` file in
+   `diags/<step>/` — on a Mac it opens automatically; elsewhere, double-click it). Judge the
+   output: are clip boundaries sensible, labels sharp, tags right?
+3. **Adjust** — edit `config.yaml` (models, thresholds), the step's prompt in `prompts/`, or
+   your topic list, and go back to 1. Every demo is cheap, and repeated runs re-use everything
+   already computed.
+4. **Full run** — `toolkit <step>` (no flags). This only starts if a demo of the *current*
+   prompt+settings has been made (otherwise it tells you what changed), asks you to confirm the
+   spend (see below), and then processes the whole corpus. Results land in `outputs/`, review
+   files in `diags/`.
+
+### If a step seems stuck
+
+Occasionally one API call stops responding while the rest finish — you'll see progress reach,
+say, 134 of 136 and then sit there. **Press Ctrl-C (more than once if it doesn't stop the first
+time), then run the exact same command again.** It picks up where it left off and usually
+completes immediately.
+
+Nothing is lost and nothing is paid for twice: every finished call is written to the cache as it
+completes, so a re-run only redoes what was still missing. The same is true after a laptop sleep,
+a dropped network, or a crash — the fix is always "run it again".
+
+A call that is merely slow now says so (`still waiting on a gpt-5.5 call (94s elapsed)`), so
+silence for more than a minute or two is the signal to interrupt.
+
+## Run now, or run cheap? (the Batch API)
+
+Demos always run immediately. On a **full run**, the confirmation asks how to send the work, with
+both prices worked out from your own demo:
+
+```
+Tag 801 clip(s) with gpt-5.4 (0 already cached, 801 fresh call(s)).
+  [1] Run now       ~$3.20   results in this session
+  [2] Batch API     ~$1.60   50% cheaper, up to 24h turnaround
+  [n] Cancel
+Choose [1/2/n]
+```
+
+Pick **[1]** when you want the results now — that's the normal choice. Pick **[2]** when the run
+is large and you can wait: OpenAI's Batch API is half price but has no speed guarantee (often
+much faster than 24h, but don't count on it). A batch job is resumable — press Ctrl-C and re-run
+the same command later and it re-attaches to the same job rather than paying again.
+
+Skip the question with `--batch` or `--no-batch`; `--yes` runs immediately without asking.
+Available on `label`, `summarize`, `topics tag` and `locations tag`. **Not** on `clip`: its chunks
+are sequential within an interview (each chunk's prompt is built from the previous chunk's
+result), so they can't all be submitted up front.
+
+## A typical project, in commands
+
+```sh
+toolkit import                 # parse transcripts; check the printed tables
+toolkit sample                 # pick the demo interviews (once)
+
+toolkit clip --demo            # demo → review page opens → adjust → re-demo
+toolkit clip                   # full corpus
+toolkit label --demo           #   (same loop)
+toolkit label
+
+toolkit summarize --demo
+toolkit summarize
+
+#   drop your topic list into topics/ first (collection.xlsx or .csv: name, description)
+toolkit topics tag --set collection --demo    # → review page opens → tune the list → re-demo
+toolkit topics tag --set collection
+toolkit topics thresholds --set collection    # decision aid for the interview-rollup thresholds
+toolkit topics rollup --set collection        # clip tags → interview tags
+
+toolkit locations tag --demo   # works out of the box (built-in region list)
+toolkit locations tag
+toolkit locations map          # regions → countries
+toolkit locations rollup       # clip tags → interview tags
+
+toolkit export                 # one xlsx in outputs/ with everything so far
+toolkit status                 # where things stand, any time
+toolkit cost                   # what has been spent so far
+```
+
+## Cost expectations
+
+Rough production figures from the project this toolkit grew out of (35 interviews, ~800
+clips): clipping ≈ a few dollars; labels ≈ a few dollars; summaries well under a dollar;
+topic tagging ≈ $2–3 per taxonomy; location tagging ≈ $3 (half with `--batch`). `toolkit cost
+--to-n N` extrapolates from your own demo runs.
+
+## Where things live
+
+| Folder | What | Do you edit it? |
+|---|---|---|
+| `config.yaml` | the settings meant to be adjusted | yes |
+| `advanced/` | everything else tunable | rarely |
+| `prompts/`, `topics/`, `locations/` | prompt texts, topic lists, region vocabulary | yes |
+| `data/` | your transcripts + the imported dataset | you add files |
+| `outputs/` | deliverables (tables + export.xlsx) | never by hand |
+| `diags/` | review pages (`.html`) from demos and runs | open them in a browser |
+| `.toolkit/` | caches and run state | never |
+
+================================================================================================
+# FILE: docs/steps/import.md
+# import: transcripts (.docx) -> the paragraph dataset
+================================================================================================
+
+# import
+
+`toolkit import` — parse the transcripts in `data/` into `data/paragraphs.parquet`, the dataset
+every other step reads.
+
+## Input: transcript files
+
+Put one `.docx` per interview (or per session) into `data/`. Requirements:
+
+- **Timestamps.** Ideally **every paragraph** begins with its own `[HH:MM:SS]` (a fully SYNC'd
+  transcript) — this gives the most precise per-clip start/end times. Each speaker turn must at
+  minimum begin with `[HH:MM:SS] SPEAKER: text`. If a turn spans several paragraphs and only the
+  first is timestamped, the toolkit still runs, but a clip that starts or ends mid-turn inherits
+  the *turn's* timestamp, so its timing is coarser — import prints a **⚠ Timestamps** warning
+  naming those transcripts. A file with no timestamps at all is rejected loudly.
+- **File names → interview id.** The id is the filename with the `strip_suffixes` removed and
+  spaces/commas turned into underscores, lowercased. `Ramos_Ana_20240115_session1_SYNC.docx` →
+  `ramos_ana_20240115_session1`; `Ramos, Ana_SYNC.docx` → `ramos_ana`.
+- **Multi-session interviews.** Name them `{Name}_{YYYYMMDD}_session{N}` so the toolkit groups a
+  narrator's sessions together for summaries and interview-level tags. Single-file interviews
+  need no session token.
+
+## What it does
+
+Reads the printed output carefully:
+
+- **Speaker roles table** — every distinct speaker label, classed as Interviewer / Other /
+  Narrator. If your interviewer shows up as "Narrator", set `import.interviewer_labels` in
+  `config.yaml` to your interviewer's label(s) and re-run.
+- **Timestamps line** — confirms every paragraph is timestamped, or warns (⚠) that some
+  transcripts are timestamped per speaker-turn only (see above).
+- **Narrator-pooling table** — which session files were grouped into one narrator. If a
+  grouping is wrong, the filenames don't follow the session convention.
+- Details (per-turn-only transcripts, paragraphs before the first turn, and benign
+  continuation-paragraph notes) go to `logs/import_warnings.log`.
+
+## Settings
+
+`config.yaml` → `import`: `interviewer_labels`, `other_labels`, `strip_suffixes`.
+`advanced/import.yaml`: `session_regex` (the multi-session token pattern), `write_csv`.
+
+## Output
+
+`data/paragraphs.parquet` (+ `.csv`). Re-running is safe and cheap; do it whenever you add or
+change transcripts.
+
+================================================================================================
+# FILE: docs/steps/sample.md
+# sample: choosing the interviews demos run on
+================================================================================================
+
+# sample
+
+`toolkit sample` — choose the handful of interviews that `clip --demo` and `label --demo` run
+on. Run it once, after `toolkit import`; the choice is remembered.
+
+## Run it
+
+```sh
+toolkit sample                       # 5 interviews, picked reproducibly
+toolkit sample --n 8                 # a bigger sample
+toolkit sample --seed 3              # a different draw
+```
+
+## Choosing the interviews yourself
+
+**You do not have to accept a random draw.** Name the interviews you want:
+
+```sh
+toolkit sample --interviews ramos_ana,kramer_larry,acemoglu_daron
+```
+
+Use the interview ids exactly as `toolkit import` printed them (lowercase, underscores — the
+filename with its suffixes stripped). An unknown id fails immediately and lists the valid ones,
+so a typo can't silently give you a different sample.
+
+This is worth doing when the random five aren't representative — pick a short interview and a
+long one, a single-session and a multi-session narrator, or the transcript you know is messiest.
+The demo is only useful if it shows you the cases you're actually worried about.
+
+## Why it exists
+
+Every LLM step is demo-first: you run it on a few interviews, review the result, adjust, and only
+then spend money on the whole corpus. Fixing the sample means each step demos on the *same*
+interviews, so when you compare clip boundaries against the labels they produced, you're looking
+at the same material.
+
+Re-running `toolkit sample` replaces the sample. Do that between steps and your earlier demos no
+longer correspond to the current one — harmless, but the comparison is lost.
+
+## What it writes
+
+`.toolkit/demo_sample.txt`, one interview id per line. `toolkit status` shows the current sample.
+
+## Which steps use it
+
+| step | demo sample |
+|---|---|
+| `clip --demo`, `label --demo` | exactly these interviews |
+| `topics tag --demo`, `locations tag --demo` | a spread of *clips* drawn from whatever clips exist (`advanced/<step>.yaml` → `demo_n_clips`) |
+| `summarize --demo` | its own small draw (`advanced/summarize.yaml` → `demo_n`), since summaries read whole interviews and are the priciest per call |
+
+================================================================================================
+# FILE: docs/steps/clip.md
+# clip: splitting interviews into topically coherent clips
+================================================================================================
+
+# clip
+
+`toolkit clip` — split each interview into topically coherent **clips** (contiguous ranges of
+paragraphs). Clips are the unit that `label`, `topics`, and `locations` work on.
+
+## Run it (demo-first)
+
+```sh
+toolkit sample          # once: pick the demo interviews
+toolkit clip --demo     # clip just those → review page opens in your browser
+toolkit clip            # full corpus (after a demo of the current settings)
+```
+
+`toolkit clip preview` shows how each interview would be chunked (for long interviews) without
+calling the API. `toolkit clip annotate` re-renders the review pages from existing results.
+
+Clip is the one step with no Batch-API option: a long interview's chunks run in sequence, because
+each chunk's prompt carries the previous chunk's clip decisions as locked context. They therefore
+can't all be submitted up front the way the other steps' calls can.
+
+## Reviewing
+
+The demo opens `diags/clip/index.html` in your browser (on a Mac; elsewhere, double-click it).
+It links one page per interview, each showing the transcript with clip boundaries marked. Judge
+whether boundaries fall at real topic shifts and whether procedural chatter (scheduling, mic
+checks) is separated out. To adjust, edit `prompts/clip_interview.md` or the chunking settings,
+then re-demo.
+
+## Settings
+
+`config.yaml` → `clip`: `model`, `reasoning`. `advanced/clip.yaml`: `chunk_threshold_tokens`
+(interviews above this are processed in overlapping chunks), `overlap_paragraphs`, `max_workers`,
+`verbosity`, `prompt`.
+
+## Output
+
+`outputs/clips/clips.parquet` (one row per clip) and `outputs/clips/paragraphs_clipped.parquet`
+(every paragraph with its clip id; procedural paragraphs marked). Interrupted runs resume — just
+re-run.
+
+================================================================================================
+# FILE: docs/steps/label.md
+# label: a one-line label per clip
+================================================================================================
+
+# label
+
+`toolkit label` — give each clip a one-line label (a short declarative phrase, like a chapter
+title). Needs `clip` to have run.
+
+## Run it
+
+```sh
+toolkit label --demo    # label the sample's clips → review page opens in your browser
+toolkit label           # full corpus
+```
+
+`toolkit label preview` shows the grouping (labels are produced several clips at a time, with
+neighbouring clips shown as read-only context so labels stay distinct — that grouping is about how
+many clips share one request, and is unrelated to the Batch API below). `toolkit label annotate`
+re-renders the review pages. A full run asks whether to run now or on the 50%-off
+[Batch API](../WORKFLOW.md#run-now-or-run-cheap-the-batch-api).
+
+## Reviewing
+
+`diags/label/index.html` links one page per interview showing each clip with its label (the demo
+opens it for you). Check that labels are specific, distinct, and
+in your house style. For project-wide consistency rules (e.g. "always write UNHCR, never the UN
+Refugee Agency"), put them in a file and point `config.yaml` → `label.addendum` at it (e.g.
+`prompts/prompt_addendums/label_addendum.md`); the text is appended to the label prompt.
+
+## Settings
+
+`config.yaml` → `label`: `model`, `reasoning`, `addendum`. `advanced/label.yaml`:
+`batch_threshold_tokens`, `max_workers`, `verbosity`, `prompt`.
+
+## Output
+
+`outputs/labels/labels.parquet` (the clips table plus a `label` column).
+
+================================================================================================
+# FILE: docs/steps/summarize.md
+# summarize: a 'scope and content' abstract per interview
+================================================================================================
+
+# summarize
+
+`toolkit summarize` — a short "scope and content" abstract for each interview. Independent of
+clipping; needs only `import`.
+
+## Run it
+
+```sh
+toolkit summarize --demo   # summarize a couple of interviews → review page opens in your browser
+toolkit summarize          # all interviews
+```
+
+By default a narrator's sessions are pooled into one summary; `--no-pool-sessions` (or
+`summarize.pool_sessions: false`) summarizes each session file separately. A full run asks whether
+to run now or on the 50%-off [Batch API](../WORKFLOW.md#run-now-or-run-cheap-the-batch-api).
+
+## Reviewing
+
+`diags/summarize/summaries.html` lists each summary with its length (the demo opens
+`demo_summaries.html` for you). Check for accuracy (nothing invented),
+coverage of the main through-lines, and length. Tune the tone/length in
+`prompts/summarize_interview.md`.
+
+## Settings
+
+`config.yaml` → `summarize`: `model`, `reasoning`, `pool_sessions`. `advanced/summarize.yaml`:
+`verbosity`, `max_workers`, `demo_n`, `prompt`.
+
+## Output
+
+`outputs/summaries/summaries.parquet` (one row per interview).
+
+================================================================================================
+# FILE: docs/steps/topics.md
+# topics: scoring clips against your own topic lists
+================================================================================================
+
+# topics
+
+`toolkit topics` — score every clip against a **topic list** you provide, then roll the clip
+tags up to interview-level tags. Needs `clip` to have run.
+
+## Provide a topic list
+
+**Put a spreadsheet in `topics/`. The filename is the name of the set — that's the whole setup.**
+
+`topics/collection.xlsx` → the set is called `collection`. Then:
+
+```sh
+toolkit topics tag --set collection --demo
+```
+
+The first time you use a set, the toolkit adds it to `config.yaml` for you, so its rollup
+settings are there to adjust later. You never have to edit config to get started.
+
+Every workspace ships with `topics/example_topics.csv` — **fill it in with your topics and
+rename it** to whatever you want the set called. Or bring your own file; `.csv` and `.xlsx`
+both work. The columns:
+
+| column | required | notes |
+|---|---|---|
+| `name` | yes | the topic's display name (also the tag shown in the export) |
+| `description` | yes | what belongs under it — the model reads *only* this to decide. Be specific: say what counts **and what doesn't**. |
+| `id` | no | a short code; auto-derived from the name if omitted |
+
+Several topic lists? Drop in several files. `topics/collection.xlsx` and `topics/filter.csv`
+give you `--set collection` and `--set filter`, tagged independently, each with its own outputs.
+
+There is **no default set** — every `toolkit topics` command needs `--set`. Tagging a whole
+corpus against the wrong taxonomy is expensive, so the set is always named explicitly. Forget it
+and the error lists the sets you have.
+
+## Run it
+
+```sh
+toolkit topics tag --set collection --demo   # sample of clips → review page opens in your browser
+toolkit topics tag --set collection          # full corpus
+toolkit topics thresholds --set collection   # decision aid for the rollup bar(s)
+toolkit topics rollup --set collection       # clip tags → interview tags
+```
+
+`toolkit topics preview --set collection --clip <id>` prints the exact request for one clip.
+Demos include a per-topic justification by default (off for full runs) — useful for judging
+borderline calls. A full run asks whether to run now or on the 50%-off
+[Batch API](../WORKFLOW.md#run-now-or-run-cheap-the-batch-api) — worth considering here, since you
+pay for a full pass per taxonomy.
+
+## Reviewing and tuning
+
+The demo opens `diags/topics/<set>_demo.html`; `toolkit topics annotate --set <name>` writes a
+per-interview page for every tagged clip (linked from `<set>_index.html`). Each clip is scored
+0/1/2 per topic (0 = no, 1 = maybe, 2 = yes); a clip is "tagged" with a topic at score 2. If
+topics are over- or under-applied, sharpen the `description` in your spreadsheet and re-demo —
+that text, not the code, is where the tagging rules live.
+
+The **rollup** decides when an interview gets a topic: either a flat share-of-clips bar
+(`rollup: {scheme: flat, threshold_pct: 30}`) or rarity-binned bars that ask more of common
+topics than rare ones (`scheme: binned`). `toolkit topics thresholds --set <name>` shows the
+trade-offs.
+
+## Settings
+
+`config.yaml` → `topics`: `model`, `reasoning`, `sets.<set>.{file, rollup, prompt}` (written for
+you when a set is first used). `advanced/topics.yaml`: `score_values`, `justify_min_score`,
+`demo_n_clips`, `max_workers`, `prompt`.
+
+## Output
+
+`outputs/topics/<set>_clip_topics_{wide,long}.parquet` (clip scores) and
+`<set>_interview_topics_{wide,long}.parquet` (interview tags).
+
+================================================================================================
+# FILE: docs/steps/locations.md
+# locations: tagging clips to countries and regions
+================================================================================================
+
+# locations
+
+`toolkit locations` — tag each clip with the **countries and regions** it is substantively
+about, map regions down to countries, and roll up to interview-level tags. Needs `clip`. Works
+out of the box — a region vocabulary and a region→country mapping ship with the toolkit.
+
+## Run it
+
+```sh
+toolkit locations tag --demo   # tag a sample of clips → review page opens in your browser
+toolkit locations tag          # full corpus  (asks: run now, or 50%-off Batch API?)
+toolkit locations map          # expand regions to countries, apply the label canon
+toolkit locations rollup       # clip tags → interview tags
+```
+
+`toolkit locations preview --clip <id>` prints the request for one clip.
+
+## The vocabulary is yours to edit
+
+- `locations/regions.yaml` — the region names the model may use (a strict list; ships with a UN
+  Geoscheme-based default plus common historical/political regions). Editing it changes both the
+  prompt and the allowed outputs, so they never drift.
+- `locations/region_to_country.csv` — how each region expands to countries in the `map` step.
+- `config.yaml` → `locations.relabel` — spelling/merge fixes applied to model output (e.g.
+  `Czech Republic: Czechia`). `locations.place_tags` — subnational places to keep as their own
+  tag (e.g. `Crimea`).
+
+## Optional: survey your corpus first
+
+If you want to build a custom region list, `toolkit locations survey` runs an offline
+named-entity pass over your transcripts and reports the places mentioned. It needs the extra
+dependencies (`pip install "transcript-toolkit[survey]"`, plus a spaCy model and a GeoNames dump
+— the command tells you exactly what's missing).
+
+## Reviewing
+
+`diags/locations/demo.html` (opened for you after a demo) shows each clip with its country/region
+tags (and justifications on demo runs); `toolkit locations annotate` writes the full-corpus
+`locations.html`. Check that only substantive places are tagged, not passing mentions. The prompt
+is `prompts/tag_locations.md`.
+
+## Output
+
+`outputs/locations/clip_locations*.parquet` (raw tags), `clip_countries*.parquet` (after
+region→country mapping), `interview_locations_*.parquet` and `interview_regions_long.parquet`
+(interview tags). `toolkit locations thresholds` is the rollup decision aid.
+
+================================================================================================
+# FILE: docs/steps/export.md
+# export: one xlsx of everything produced
+================================================================================================
+
+# export
+
+`toolkit export` — collect everything produced so far into one spreadsheet,
+`outputs/export.xlsx`.
+
+## Run it
+
+```sh
+toolkit export                 # -> outputs/export.xlsx
+toolkit export --out final.xlsx
+```
+
+Incremental: it includes whatever steps have run. Clips only? You get a Clips tab with ids and
+timings. Added labels, topics, locations, summaries? Each fills in its columns. Re-run any time;
+it overwrites the file. `toolkit status` shows what the next export would include.
+
+## What's in it
+
+- **Clips** — one row per clip: Clip Id, Interview (narrator), Session, Start, End, Label, a
+  column per topic set (the clip's tags), Locations (and Regions, depending on the mode below).
+- **Interviews** — one row per narrator: Sessions, Summary, a column per topic set (interview
+  tags), Locations (and Regions).
+- **Categories** — the vocabularies (each topic set's names, the country and region lists) as
+  reference columns. These follow the same mode, so you never see a reference value that appears
+  in no row.
+
+## How locations appear
+
+The tagger records **countries** and **regions** separately, and `toolkit locations map` expands
+each region into its countries. Pick which of those views the spreadsheet shows with
+`config.yaml` → `export.locations` (or `--locations MODE` for a one-off):
+
+| mode | Locations column | Regions column |
+|---|---|---|
+| `countries` | only countries tagged directly | — |
+| `countries_and_regions` *(default)* | only countries tagged directly | the region tags |
+| `countries_incl_regions` | direct countries **plus** the regions mapped down to countries | — |
+
+For a clip tagged `Czechia` + the region `The Balkans` (which maps to Serbia, Croatia, …):
+
+```
+countries              Locations: Czechia
+countries_and_regions  Locations: Czechia          Regions: The Balkans
+countries_incl_regions Locations: Czechia, Serbia, Croatia, …
+```
+
+The first two never fold regions into the countries column, so each tag appears exactly once —
+use `countries_incl_regions` when you want one country column that misses nothing. Subnational
+**place tags** (`locations.place_tags`, e.g. Crimea) count as directly tagged in every mode; only
+region *expansions* are what the modes add or withhold.
+
+## A note on Google Sheets
+
+This is a plain `.xlsx`. Excel has no "multiple selections per cell" validation, so the tag
+columns are comma-separated text and the Categories tab is just a reference list. If you upload
+the file to Google Sheets and want the tag columns to be multi-select dropdowns bound to the
+Categories vocabulary, you add that validation in Sheets by hand — the toolkit can't set it in
+an xlsx file.
+
+================================================================================================
+# FILE: docs/CONFIG.md
+# Every setting, and which edits invalidate a demo
+================================================================================================
+
+# Configuration reference
+
+Two levels, both YAML, in the workspace:
+
+- **`config.yaml`** — the settings you're expected to change. One section per step.
+- **`advanced/<step>.yaml`** — everything else tunable, rarely needed.
+
+For a given step the two are merged; a key set in `config.yaml` wins. **Changing any setting
+that shapes an LLM call (model, reasoning, a prompt, a topic list) makes that step's previous
+demo "stale"** — the next full run will ask you to demo and review again. That's intended.
+
+## `config.yaml`
+
+```yaml
+project:
+  name: "..."                     # shown in `toolkit status` and the export
+
+import:
+  interviewer_labels: [Q]         # speaker labels used by the interviewer
+  other_labels: []                # other non-narrator voices (moderators, etc.)
+  strip_suffixes: [_SYNC, _final] # filename endings removed to derive the interview id
+
+clip:      { model: gpt-5.5,      reasoning: medium }
+label:     { model: gpt-5.4,      reasoning: medium, addendum: null }
+summarize: { model: gpt-5.5,      reasoning: low,    pool_sessions: true }
+
+topics:
+  model: gpt-5.4-mini
+  reasoning: medium
+  sets:                           # written for you when a set is first used; no default set
+    collection:
+      file: topics/collection.xlsx  # your topic list (xlsx/csv: name, description, [id])
+      rollup: { scheme: flat, threshold_pct: 30 }
+      # or:  { scheme: binned, thresholds: [10, 12.5, ..., 30] }
+
+locations:
+  model: gpt-5.4-mini
+  reasoning: medium
+  rollup: { thresholds: [10, 12.5, ..., 30] }
+  relabel: {}                     # output spelling/merge fixes, e.g. {Macedonia: North Macedonia}
+  place_tags: []                  # subnational places kept as their own tag, e.g. [Crimea]
+```
+
+- **model / reasoning** — the OpenAI model and reasoning effort (`none|low|medium|high|xhigh`)
+  for that step. Higher reasoning = better but pricier. Model ids the pricing table knows are in
+  `defaults/pricing.yaml`.
+- **label.addendum** — path (relative to the workspace) to project-specific labeling rules, or
+  `null`.
+- **summarize.pool_sessions** — pool a narrator's session files into one summary.
+- **topics.sets** — one or more topic lists; each has a `file` and a `rollup` scheme (`flat`
+  with `threshold_pct`, or `binned` with a `thresholds` bar list, rarest band first).
+- **locations.rollup.thresholds / relabel / place_tags** — see [steps/locations.md](steps/locations.md).
+- **export.locations** — how location tags appear in the xlsx: `countries` (only those tagged
+  directly), `countries_and_regions` (default; those countries plus a separate Regions column), or
+  `countries_incl_regions` (one column, with regions mapped down into it). See
+  [steps/export.md](steps/export.md).
+
+## `advanced/<step>.yaml`
+
+Per step: `prompt` (the file in `prompts/` used), `verbosity`, `max_workers`, poll settings, and
+step-specific tunables — `clip`: `chunk_threshold_tokens`, `overlap_paragraphs`; `label`:
+`batch_threshold_tokens` (how many clips share one request — nothing to do with the Batch API);
+`topics`/`locations`: `demo_n_clips`, `demo_seed`, and for topics `score_values`,
+`justify_min_score`; `import`: `session_regex`; `locations`: `regions_file`, `region_map_file`,
+`survey.*`; `export`: `filename`, `tabs`.
+
+The four steps that can use the Batch API (`label`, `summarize`, `topics`, `locations`) also take
+`batch_poll_interval_s` and `batch_max_total_wait_s` — how often to check a submitted job, and
+when to stop waiting (re-running the command resumes the same job).
+
+## Prompts and vocabularies
+
+Editable files, read live at run time (changing them re-stales the demo):
+
+- `prompts/*.md` — one prompt per LLM step. Restore a pristine copy with
+  `toolkit init --reset-prompt <name>`.
+- `topics/*.csv|xlsx` — your topic lists.
+- `locations/regions.yaml`, `locations/region_to_country.csv` — the location vocabulary and
+  mapping.
+
+================================================================================================
+# FILE: docs/TROUBLESHOOTING.md
+# Errors and what to do about them
+================================================================================================
+
+# Troubleshooting
+
+The toolkit fails loudly: when something is wrong it stops and prints what to fix. Common cases:
+
+**Install: "Git operation failed … `git init` … No developer tools were found".** Your Mac
+doesn't have `git` yet, and `uv tool install git+https://…` needs it to fetch the code. Install
+Apple's Command Line Tools once — run `xcode-select --install`, click **Install** in the dialog,
+wait for it to finish, then re-run the `uv tool install …` command (this is step 1 of
+[SETUP.md](SETUP.md)). The unrelated `python3.14 … native extensions` warning above the error is
+harmless — the git line is the real failure.
+
+**"OPENAI_API_KEY not set"** — put your key in the workspace's `.env` file
+(`OPENAI_API_KEY=sk-...`). Ask your admin for a key.
+
+**"Not inside a toolkit workspace"** — run the command from inside your project folder (the one
+`toolkit init` created), or pass `--project /path/to/project`.
+
+**A step is stuck / hangs / stops making progress.** Press **Ctrl-C** (several times if the first
+doesn't take), then re-run the exact same command. This resolves it almost every time: the
+finished calls are cached, so the re-run only retries the ones that never came back. Usually it
+completes straight away. A call that is just slow prints `still waiting on ... (94s elapsed)`,
+and one that never returns is abandoned after 10 minutes so the run can't hang forever.
+
+**A run stopped partway (laptop slept, network dropped, you hit Ctrl-C).** Nothing is lost. Run
+the exact same command again — every completed call is cached and won't be paid for twice; it
+picks up where it stopped.
+
+**"No demo run recorded" / "the demo … is stale".** A full run needs a demo of the *current*
+settings first. Run the step with `--demo`, review the file it points to in `diags/`, then run
+the full command. "Stale" means you changed a prompt, model, or setting since the last demo — so
+re-demo to see the effect before spending on the whole corpus.
+
+**Import: my interviewer shows up as "Narrator".** Set `import.interviewer_labels` in
+`config.yaml` to the label(s) your interviewer uses (e.g. `[Q, Q1]`) and re-run `toolkit import`.
+
+**Import: "No parsable paragraphs" / a file is rejected.** That transcript isn't in the expected
+`[HH:MM:SS] SPEAKER: text` format (see [steps/import.md](steps/import.md)). It probably isn't a
+SYNC'd transcript.
+
+**Import: "Two transcripts yield the same interview id".** Two filenames collapse to the same id
+after stripping suffixes. Rename one.
+
+**Location tagging seems to add or drop places.** Tune the prompt (`prompts/tag_locations.md`)
+and re-demo, or edit the region vocabulary in `locations/regions.yaml`. The `map` step only
+knows regions listed in `locations/region_to_country.csv` — it will tell you if a tagged region
+is missing from the mapping.
+
+**`toolkit locations survey` won't run.** It needs extra software:
+`pip install "transcript-toolkit[survey]"`, then `python -m spacy download en_core_web_trf`, and
+a GeoNames dump (the command prints the exact download link and where to put it). The survey is
+optional — you don't need it unless you're building a custom region list.
+
+**A Batch API run (`--batch`) is taking a long time.** Batch jobs are cheaper (half price) but
+run on OpenAI's own schedule — usually minutes, occasionally up to a day. It's resumable: re-run
+the same command to check on it; you won't be double-charged.
+
+**The export's tag columns aren't dropdowns in Excel.** Expected — see
+[steps/export.md](steps/export.md). xlsx can't store multi-select validation.
+
+**How much have I spent?** `toolkit cost` (all steps) or `toolkit cost <step>`. Each line is
+priced at the transport it actually used — `sync` or `batch` — so the total is money spent, not a
+hypothetical; a closing line tells you what the synchronous part would have cost on the Batch API.
+`--to-n N` extrapolates a demo's per-call cost to a full run of N calls, and quotes both
+transports (you haven't picked one for that run yet).
+
+================================================================================================
+# FILE: docs/examples/osf/README.md
+# A real worked example (the OSF oral history archive)
+================================================================================================
+
+# Worked example — OSF Oral History
+
+The real configuration of the archive this toolkit was built for, as a reference when setting up
+your own project. Nothing here runs on its own; copy the parts you need into your workspace.
+
+## Files
+
+- `config.yaml` — a filled-in project config: interviewer labels, two topic sets (a broad
+  8-topic **collection** and a fine 36-topic **filter**, each with its own rollup scheme), and
+  location relabeling/place-tags tuned for this corpus.
+- `topics/collection.xlsx`, `topics/filter.xlsx` — the two topic lists in the format
+  `toolkit topics` expects (`id`, `name`, `description`). Open them to see how much detail a good
+  topic `description` carries — that text is what the model reads to decide whether a clip
+  belongs.
+- `label_addendum.md` — project-specific labeling rules (naming conventions) referenced by
+  `label.addendum`.
+
+## Things worth copying from this example
+
+- **Two topic sets** tagged independently: point `--set collection` / `--set filter` at each.
+- **Rollup schemes**: the broad collection uses a flat 30% bar; the sparse 36-topic filter uses
+  rarity-binned bars (rare topics clear a lower share-of-clips bar than common ones) — see the
+  `thresholds` list and `toolkit topics thresholds`.
+- **Location canon**: `relabel` fixes model spelling variants and merges (e.g. Israel + Palestine
+  into one tag); `place_tags` keeps subnational places (Chechnya, Crimea) as their own tag.
+- **Descriptions matter**: the filter topics are tagged only on a *specific, substantive* mention
+  — that instruction lives in the topic descriptions and the prompt, not in code.

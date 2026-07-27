@@ -10,3 +10,7 @@ jobs:
           python-version: "3.12"
       - run: pip install -e .[dev]
       - run: pytest -q
+      # The AI docs bundle is generated from the Markdown sources and checked in. Without this,
+      # editing a doc would silently leave the link people paste into ChatGPT out of date.
+      - name: documentation bundle is current
+        run: python scripts/build_docs_bundle.py --check

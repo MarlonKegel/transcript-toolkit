@@ -1,0 +1,22 @@
+# transcript-toolkit
+
+> A command-line toolkit that processes oral history interview transcripts through five LLM steps (clip, label, summarize, tag topics, tag locations) and exports the results as a spreadsheet. Demo-first, idempotent and resumable; built for non-technical researchers on macOS.
+
+For the complete documentation in one file, read https://raw.githubusercontent.com/MarlonKegel/transcript-toolkit/main/llms-full.txt
+
+## Docs
+
+- [README.md](https://raw.githubusercontent.com/MarlonKegel/transcript-toolkit/main/README.md): What the toolkit is, and the 10-line quickstart
+- [docs/SETUP.md](https://raw.githubusercontent.com/MarlonKegel/transcript-toolkit/main/docs/SETUP.md): Installing it on a Mac, step by step
+- [docs/WORKFLOW.md](https://raw.githubusercontent.com/MarlonKegel/transcript-toolkit/main/docs/WORKFLOW.md): The demo-first workflow, costs, and what to do when a step hangs
+- [docs/steps/import.md](https://raw.githubusercontent.com/MarlonKegel/transcript-toolkit/main/docs/steps/import.md): import: transcripts (.docx) -> the paragraph dataset
+- [docs/steps/sample.md](https://raw.githubusercontent.com/MarlonKegel/transcript-toolkit/main/docs/steps/sample.md): sample: choosing the interviews demos run on
+- [docs/steps/clip.md](https://raw.githubusercontent.com/MarlonKegel/transcript-toolkit/main/docs/steps/clip.md): clip: splitting interviews into topically coherent clips
+- [docs/steps/label.md](https://raw.githubusercontent.com/MarlonKegel/transcript-toolkit/main/docs/steps/label.md): label: a one-line label per clip
+- [docs/steps/summarize.md](https://raw.githubusercontent.com/MarlonKegel/transcript-toolkit/main/docs/steps/summarize.md): summarize: a 'scope and content' abstract per interview
+- [docs/steps/topics.md](https://raw.githubusercontent.com/MarlonKegel/transcript-toolkit/main/docs/steps/topics.md): topics: scoring clips against your own topic lists
+- [docs/steps/locations.md](https://raw.githubusercontent.com/MarlonKegel/transcript-toolkit/main/docs/steps/locations.md): locations: tagging clips to countries and regions
+- [docs/steps/export.md](https://raw.githubusercontent.com/MarlonKegel/transcript-toolkit/main/docs/steps/export.md): export: one xlsx of everything produced
+- [docs/CONFIG.md](https://raw.githubusercontent.com/MarlonKegel/transcript-toolkit/main/docs/CONFIG.md): Every setting, and which edits invalidate a demo
+- [docs/TROUBLESHOOTING.md](https://raw.githubusercontent.com/MarlonKegel/transcript-toolkit/main/docs/TROUBLESHOOTING.md): Errors and what to do about them
+- [docs/examples/osf/README.md](https://raw.githubusercontent.com/MarlonKegel/transcript-toolkit/main/docs/examples/osf/README.md): A real worked example (the OSF oral history archive)

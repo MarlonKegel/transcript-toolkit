@@ -38,7 +38,9 @@ where = ["src"]
 [tool.setuptools.package-data]
 transcript_toolkit = [
     "defaults/*.yaml",
+    "defaults/*.md",
     "defaults/prompts/*",
+    "defaults/prompts/prompt_addendums/*",
     "defaults/locations/*",
     "defaults/scaffold/*",
     "defaults/scaffold/advanced/*",

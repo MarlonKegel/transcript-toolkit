@@ -13,6 +13,8 @@ from . import __version__
 from .errors import ToolkitError
 
 
+DEFAULT_DOCS_FILENAME = "transcript-toolkit-docs.md"
+
 SET_HELP = ("which topic set to use — the name of your topic spreadsheet in topics/ "
             "(topics/collection.xlsx -> --set collection). Required: there is no default.")
 
@@ -50,6 +52,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--reset-prompt", metavar="NAME", default=None,
                    help="restore one prompt in the current workspace to the packaged default")
     p.set_defaults(func=cmd_init)
+
+    p = sub.add_parser("docs", parents=[common],
+                       help="save the full documentation to a file, to ask an AI about it")
+    p.add_argument("--out", metavar="FILE", default=None,
+                   help=f"where to write it (default: ./{DEFAULT_DOCS_FILENAME})")
+    p.add_argument("--print", dest="to_stdout", action="store_true",
+                   help="print to the terminal instead of writing a file")
+    p.set_defaults(func=cmd_docs)
 
     p = sub.add_parser("import", parents=[common],
                        help="parse the .docx transcripts in data/ into the paragraph dataset")
@@ -228,6 +238,12 @@ def cmd_init(args) -> None:
     print("  3. Drop your transcript .docx files into data/")
     print("  4. Run: toolkit import")
     print("\n(Run toolkit commands from inside the workspace — they find it automatically.)")
+
+
+def cmd_docs(args) -> None:
+    from .steps.docs import run_docs
+
+    run_docs(out=args.out, to_stdout=args.to_stdout)
 
 
 def cmd_import(args) -> None:

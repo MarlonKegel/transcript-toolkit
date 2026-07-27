@@ -15,6 +15,12 @@ harmless — the git line is the real failure.
 **"Not inside a toolkit workspace"** — run the command from inside your project folder (the one
 `toolkit init` created), or pass `--project /path/to/project`.
 
+**A step is stuck / hangs / stops making progress.** Press **Ctrl-C** (several times if the first
+doesn't take), then re-run the exact same command. This resolves it almost every time: the
+finished calls are cached, so the re-run only retries the ones that never came back. Usually it
+completes straight away. A call that is just slow prints `still waiting on ... (94s elapsed)`,
+and one that never returns is abandoned after 10 minutes so the run can't hang forever.
+
 **A run stopped partway (laptop slept, network dropped, you hit Ctrl-C).** Nothing is lost. Run
 the exact same command again — every completed call is cached and won't be paid for twice; it
 picks up where it stopped.
