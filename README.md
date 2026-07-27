@@ -62,5 +62,3 @@ toolkit status
 - [docs/CONFIG.md](docs/CONFIG.md) — every setting
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — when something goes wrong
 - [llms-full.txt](llms-full.txt) — all of the above in one file, for AI assistants (see above)
-- [AGENTS.md](AGENTS.md) — for coding agents working on this repo (each workspace also gets its
-  own `AGENTS.md` for agent-assisted use)
