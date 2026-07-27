@@ -253,7 +253,7 @@ Nothing is lost and nothing is paid for twice: every finished call is written to
 completes, so a re-run only redoes what was still missing. The same is true after a laptop sleep,
 a dropped network, or a crash — the fix is always "run it again".
 
-A call that is merely slow now says so (`still waiting on a gpt-5.5 call (94s elapsed)`), so
+A call that is merely slow now says so (`still waiting on a gpt-5.6-sol call (94s elapsed)`), so
 silence for more than a minute or two is the signal to interrupt.
 
 ## Run now, or run cheap? (the Batch API)
@@ -262,9 +262,9 @@ Demos always run immediately. On a **full run**, the confirmation asks how to se
 both prices worked out from your own demo:
 
 ```
-Tag 801 clip(s) with gpt-5.4 (0 already cached, 801 fresh call(s)).
-  [1] Run now       ~$3.20   results in this session
-  [2] Batch API     ~$1.60   50% cheaper, up to 24h turnaround
+Tag 801 clip(s) with gpt-5.6-luna (0 already cached, 801 fresh call(s)).
+  [1] Run now       ~$4.30   results in this session
+  [2] Batch API     ~$2.15   50% cheaper, up to 24h turnaround
   [n] Cancel
 Choose [1/2/n]
 ```
@@ -779,12 +779,12 @@ import:
   other_labels: []                # other non-narrator voices (moderators, etc.)
   strip_suffixes: [_SYNC, _final] # filename endings removed to derive the interview id
 
-clip:      { model: gpt-5.5,      reasoning: medium }
-label:     { model: gpt-5.4,      reasoning: medium, addendum: null }
-summarize: { model: gpt-5.5,      reasoning: low,    pool_sessions: true }
+clip:      { model: gpt-5.6-sol,      reasoning: medium }
+label:     { model: gpt-5.6-terra,      reasoning: medium, addendum: null }
+summarize: { model: gpt-5.6-sol,      reasoning: low,    pool_sessions: true }
 
 topics:
-  model: gpt-5.4-mini
+  model: gpt-5.6-luna
   reasoning: medium
   sets:                           # written for you when a set is first used; no default set
     collection:
@@ -793,7 +793,7 @@ topics:
       # or:  { scheme: binned, thresholds: [10, 12.5, ..., 30] }
 
 locations:
-  model: gpt-5.4-mini
+  model: gpt-5.6-luna
   reasoning: medium
   rollup: { thresholds: [10, 12.5, ..., 30] }
   relabel: {}                     # output spelling/merge fixes, e.g. {Macedonia: North Macedonia}

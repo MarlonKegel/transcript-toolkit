@@ -19,12 +19,12 @@ def test_scaffold_configs_load_for_every_step(project):
 def test_root_section_wins_over_advanced(project):
     # scaffold: clip.model in root, verbosity in advanced
     cfg = load_step_config(project, "clip")
-    assert cfg["model"] == "gpt-5.5"
+    assert cfg["model"] == "gpt-5.6-sol"
     assert cfg["verbosity"] == "low"
     # user overrides verbosity in the root section -> root wins
     project.config_path.write_text(
         project.config_path.read_text().replace(
-            "clip:\n  model: gpt-5.5", "clip:\n  verbosity: high\n  model: gpt-5.5"))
+            "clip:\n  model: gpt-5.6-sol", "clip:\n  verbosity: high\n  model: gpt-5.6-sol"))
     assert load_step_config(project, "clip")["verbosity"] == "high"
 
 

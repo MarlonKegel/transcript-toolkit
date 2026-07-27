@@ -155,7 +155,7 @@ def test_full_run_after_demo_reuses_cache(project):
     clips_cols = {"interview_id", "clip_id", "start_paragraph_idx", "end_paragraph_idx",
                   "n_paragraphs", "total_words", "start_ts", "end_ts", "duration_seconds"}
     assert set(df.columns) == clips_cols | {"label", "batch_idx", "model", "reasoning_effort"}
-    assert (df["model"] == "gpt-5.4").all()               # the LABEL model, not the clip model
+    assert (df["model"] == "gpt-5.6-terra").all()         # the LABEL model, not the clip model
     # Batch-local clip numbers mapped back to the right global clips.
     for r in df.itertuples():
         assert r.label.startswith(f"Clip starting at {r.start_paragraph_idx} ")

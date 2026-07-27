@@ -16,7 +16,7 @@ from pathlib import Path
 
 from ..errors import ToolkitError
 
-REASONING_LEVELS = ("none", "low", "medium", "high", "xhigh")
+REASONING_LEVELS = ("none", "low", "medium", "high", "xhigh", "max")   # "max": GPT-5.6+
 VERBOSITY_LEVELS = ("low", "medium", "high")
 
 TERMINAL_OK = "completed"

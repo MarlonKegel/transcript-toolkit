@@ -20,12 +20,12 @@ import:
   other_labels: []                # other non-narrator voices (moderators, etc.)
   strip_suffixes: [_SYNC, _final] # filename endings removed to derive the interview id
 
-clip:      { model: gpt-5.5,      reasoning: medium }
-label:     { model: gpt-5.4,      reasoning: medium, addendum: null }
-summarize: { model: gpt-5.5,      reasoning: low,    pool_sessions: true }
+clip:      { model: gpt-5.6-sol,      reasoning: medium }
+label:     { model: gpt-5.6-terra,      reasoning: medium, addendum: null }
+summarize: { model: gpt-5.6-sol,      reasoning: low,    pool_sessions: true }
 
 topics:
-  model: gpt-5.4-mini
+  model: gpt-5.6-luna
   reasoning: medium
   sets:                           # written for you when a set is first used; no default set
     collection:
@@ -34,7 +34,7 @@ topics:
       # or:  { scheme: binned, thresholds: [10, 12.5, ..., 30] }
 
 locations:
-  model: gpt-5.4-mini
+  model: gpt-5.6-luna
   reasoning: medium
   rollup: { thresholds: [10, 12.5, ..., 30] }
   relabel: {}                     # output spelling/merge fixes, e.g. {Macedonia: North Macedonia}

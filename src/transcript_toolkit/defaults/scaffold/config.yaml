@@ -22,12 +22,12 @@ import:
 
 # --- clip: split each interview into clips -------------------------------------------------------
 clip:
-  model: gpt-5.5
+  model: gpt-5.6-sol
   reasoning: medium                # none | low | medium | high | xhigh
 
 # --- label: one-line label per clip --------------------------------------------------------------
 label:
-  model: gpt-5.4
+  model: gpt-5.6-terra
   reasoning: medium
   # Optional project-specific consistency rules appended to the label prompt
   # (e.g. "always write OSF, never Open Society Foundations"). Path relative to the workspace.
@@ -35,13 +35,13 @@ label:
 
 # --- summarize: one "scope and content" abstract per interview -----------------------------------
 summarize:
-  model: gpt-5.5
+  model: gpt-5.6-sol
   reasoning: low
   pool_sessions: true              # true: one summary per narrator (multi-session interviews pooled)
 
 # --- topics: score every clip against your topic list(s) -----------------------------------------
 topics:
-  model: gpt-5.4-mini
+  model: gpt-5.6-luna
   reasoning: medium
   # You do NOT need to fill `sets` in by hand. Put your topic list in topics/ as a .csv or
   # .xlsx — the filename is the set name — and run `toolkit topics tag --set <name> --demo`.
@@ -60,7 +60,7 @@ topics:
 
 # --- locations: tag clips to countries and regions ------------------------------------------------
 locations:
-  model: gpt-5.4-mini
+  model: gpt-5.6-luna
   reasoning: medium
   # Region -> interview rollup bars (rarest band first), same idea as binned topics.
   rollup:

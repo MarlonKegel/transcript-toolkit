@@ -95,3 +95,40 @@ def test_unknown_model_reported_not_crashed(project, capsys):
 def test_no_cache_says_nothing_ran(project, capsys):
     run_cost(project)
     assert "nothing has run" in capsys.readouterr().out
+
+
+# --- pricing table ---------------------------------------------------------------------------
+
+def test_pricing_matches_published_rates():
+    """Pinned to https://developers.openai.com/api/docs/pricing (checked 2026-07-27). If OpenAI
+    reprices, this fails and defaults/pricing.yaml is the one place to fix."""
+    from transcript_toolkit.core.cost import pricing
+    expected = {                     # model: (input, cached, output) per 1M tokens, standard
+        "gpt-5.6-sol":   (5.00, 0.50, 30.00),
+        "gpt-5.6-terra": (2.50, 0.25, 15.00),
+        "gpt-5.6-luna":  (1.00, 0.10, 6.00),
+        "gpt-5.5":       (5.00, 0.50, 30.00),
+        "gpt-5.4":       (2.50, 0.25, 15.00),
+        "gpt-5.4-mini":  (0.75, 0.075, 4.50),
+        "gpt-5.4-nano":  (0.20, 0.02, 1.25),
+    }
+    table = pricing()
+    for model, (inp, cached, out) in expected.items():
+        rates = table[model]["standard"]
+        assert (rates["input"], rates["cached"], rates["output"]) == (inp, cached, out), model
+        batch = table[model]["batch"]        # the Batch API tier is exactly half of standard
+        assert (batch["input"], batch["cached"], batch["output"]) == (inp / 2, cached / 2, out / 2), model
+
+
+def test_every_default_model_is_priced():
+    """A model in the shipped config with no pricing entry would break cost estimation at the
+    confirmation prompt — i.e. right when someone is about to spend money."""
+    import yaml
+    from transcript_toolkit.core.cost import pricing
+    from importlib import resources
+    cfg = yaml.safe_load(
+        (resources.files("transcript_toolkit") / "defaults" / "scaffold" / "config.yaml").read_text())
+    table = pricing()
+    used = {v["model"] for v in cfg.values() if isinstance(v, dict) and "model" in v}
+    assert used, "no models found in the scaffold config"
+    assert used <= set(table), f"unpriced model(s): {sorted(used - set(table))}"

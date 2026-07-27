@@ -1,6 +1,23 @@
 # USD per 1M tokens, standard + 50%-off Batch API tiers. Reasoning tokens are billed at the
 # OUTPUT rate and are already counted inside output_tokens (reported separately, never added
 # on top). Update here when OpenAI prices change — no code changes needed.
+#
+# Verified against https://developers.openai.com/api/docs/pricing on 2026-07-27. The 5.4/5.5
+# prices below were already current — that generation has not been repriced. Older models stay
+# listed so `toolkit cost` can still price runs that were made with them.
+
+# --- GPT-5.6 — the current defaults ---------------------------------------------------------
+gpt-5.6-sol:
+  standard: { input: 5.00, cached: 0.50, output: 30.0 }
+  batch:    { input: 2.50, cached: 0.25, output: 15.0 }
+gpt-5.6-terra:
+  standard: { input: 2.50, cached: 0.25, output: 15.0 }
+  batch:    { input: 1.25, cached: 0.125, output: 7.50 }
+gpt-5.6-luna:
+  standard: { input: 1.00, cached: 0.10, output: 6.00 }
+  batch:    { input: 0.50, cached: 0.05, output: 3.00 }
+
+# --- GPT-5.5 / GPT-5.4 — previous generation ------------------------------------------------
 gpt-5.5:
   standard: { input: 5.00, cached: 0.50, output: 30.0 }
   batch:    { input: 2.50, cached: 0.25, output: 15.0 }
