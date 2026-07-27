@@ -227,7 +227,7 @@ def _run_units(project: Project, cfg: dict, instructions: str, fingerprint: str,
         parsed, usage = call_llm(client, model, reasoning, verbosity, schema,
                                  instructions, u["text"], prompt_cache_key_str,
                                  poll_interval_s=float(cfg.get("poll_interval_s", 4)),
-                                 max_total_wait_s=float(cfg.get("max_total_wait_s", 1800)))
+                                 max_total_wait_s=float(cfg.get("max_total_wait_s", 600)))
         summary = (parsed.get("summary") or "").strip()
         record = _record(u, ck, fingerprint, summary, usage, cfg)
         appender.append(record)

@@ -76,8 +76,13 @@ def _retry(fn, *, what: str, max_retries: int = 6, base_backoff: float = 4.0):
 
 def call_llm(client, model, reasoning, verbosity, schema, instructions, user_content,
              prompt_cache_key_str, poll_interval_s: float = 4.0,
-             max_total_wait_s: float = 1800.0) -> tuple[dict, dict]:
-    """Background-mode structured-output call + polling. Returns (parsed_json, usage_dict)."""
+             max_total_wait_s: float = 600.0, heartbeat_after_s: float = 90.0,
+             heartbeat_every_s: float = 60.0) -> tuple[dict, dict]:
+    """Background-mode structured-output call + polling. Returns (parsed_json, usage_dict).
+
+    A call that takes unusually long says so (heartbeat) instead of looking frozen, and one that
+    never returns gives up rather than blocking the whole run: every finished call is already in
+    the cache, so re-running the command retries only what is missing."""
     resp = _retry(lambda: client.responses.create(
         model=model, instructions=instructions, input=user_content,
         reasoning={"effort": reasoning}, text={"verbosity": verbosity, "format": schema},
@@ -86,10 +91,18 @@ def call_llm(client, model, reasoning, verbosity, schema, instructions, user_con
     response_id = resp.id
 
     t0 = time.monotonic()
+    next_beat = heartbeat_after_s
     while resp.status not in (TERMINAL_OK, *TERMINAL_BAD):
-        if time.monotonic() - t0 > max_total_wait_s:
-            raise RuntimeError(f"Polling exceeded {max_total_wait_s}s for {response_id}; "
-                               f"last status={resp.status}")
+        elapsed = time.monotonic() - t0
+        if elapsed > max_total_wait_s:
+            raise RuntimeError(
+                f"No response after {elapsed:.0f}s (status={resp.status}, id={response_id}). "
+                f"Giving up on this call so the run doesn't hang — every call that DID finish is "
+                f"cached, so re-running the same command retries only the unfinished ones.")
+        if elapsed >= next_beat:                 # a slow call announces itself; silence != frozen
+            print(f"    still waiting on a {model} call ({elapsed:.0f}s elapsed, "
+                  f"status={resp.status})", flush=True)
+            next_beat = elapsed + heartbeat_every_s
         time.sleep(poll_interval_s)
         resp = _retry(lambda: client.responses.retrieve(response_id), what="retrieve")
 

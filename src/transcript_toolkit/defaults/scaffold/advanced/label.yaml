@@ -3,8 +3,8 @@
 prompt: label_clips.md            # in prompts/
 verbosity: low
 batch_threshold_tokens: 10000     # consecutive clips are batched per call up to this budget
-max_workers: 8
+max_workers: 12
 poll_interval_s: 4
-max_total_wait_s: 1800
+max_total_wait_s: 600          # give up on one stuck call; re-run resumes free
 batch_poll_interval_s: 30       # --batch: how often to check the Batch API job
 batch_max_total_wait_s: 86400   # --batch: give up polling after this; re-run to resume

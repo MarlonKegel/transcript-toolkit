@@ -322,3 +322,42 @@ def test_batch_transport_fills_cache_and_builds_deliverable(project, monkeypatch
     assert records and all(r.get("api") == "batch" for r in records)
     # custom_ids are per interview+group, so results map back to the right grouped call
     assert {r["interview_id"] for r in records} == set(df["interview_id"])
+
+
+def test_demo_chain_works_without_a_full_clip_run(tmp_path, monkeypatch, capsys):
+    """Each step can be demoed and reviewed in turn: `clip --demo` then `label --demo`, with no
+    full (corpus-wide) clip run in between. Demo runs still write no deliverables."""
+    project = init_project(str(tmp_path / "ws2"))
+    for name in ["Fake_Alpha_20240101_session1_SYNC.docx", "Fake, Beta_SYNC.docx"]:
+        shutil.copy(FIXTURES / name, project.data_dir / name)
+    run_import(project)
+    monkeypatch.setattr(clip_run, "call_llm", fake_clip_llm)
+    monkeypatch.setattr(clip_run, "openai_client", lambda root: object())
+    monkeypatch.setattr(label_run, "call_llm",
+                        lambda *a, **k: ({"labels": labels_for(a[6])}, USAGE))
+    monkeypatch.setattr(label_run, "openai_client", lambda root: object())
+    draw_interview_sample(project, explicit=["fake_beta"])
+
+    clip_run.run_clip(project, demo=True)
+    assert not (project.outputs_dir / "clips" / "clips.parquet").exists()   # no deliverable
+    assert (project.demo_dir / "clips.parquet").exists()                   # but the demo tables
+
+    df = run_label(project, demo=True)                                      # would have failed before
+    assert sorted(df["interview_id"].unique()) == ["fake_beta"]
+    out = capsys.readouterr().out
+    assert "using the 2 clips from your `toolkit clip --demo` run" in out
+    assert "has not been run on the full corpus yet" in out
+    assert not out_path(project).exists()                                   # still no deliverable
+
+
+def test_full_label_run_still_requires_a_full_clip_run(tmp_path, monkeypatch):
+    """The demo fallback is for demos only — a full run must not silently label demo clips."""
+    project = init_project(str(tmp_path / "ws3"))
+    shutil.copy(FIXTURES / "Fake, Beta_SYNC.docx", project.data_dir / "Fake, Beta_SYNC.docx")
+    run_import(project)
+    monkeypatch.setattr(clip_run, "call_llm", fake_clip_llm)
+    monkeypatch.setattr(clip_run, "openai_client", lambda root: object())
+    draw_interview_sample(project, explicit=["fake_beta"])
+    clip_run.run_clip(project, demo=True)
+    with pytest.raises(ToolkitError, match="Run `toolkit clip` first"):
+        run_label(project, yes=True, skip_demo_check=True)

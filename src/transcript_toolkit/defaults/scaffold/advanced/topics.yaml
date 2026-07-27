@@ -3,12 +3,12 @@
 prompt: tag_topics.md             # in prompts/
 justify_prompt: prompt_addendums/justify_topics.md   # appended for demo runs (per-topic justifications)
 verbosity: low
-max_workers: 8
+max_workers: 12
 score_values: [0, 1, 2]           # relevance scale: 0 does not / 1 could / 2 does belong
 justify_min_score: 1              # justification expected for scores >= this
 demo_n_clips: 50                  # clips tagged by `toolkit topics tag --demo`
 demo_seed: 0
 poll_interval_s: 4
-max_total_wait_s: 1800
+max_total_wait_s: 600          # give up on one stuck call; re-run resumes free
 batch_poll_interval_s: 30       # --batch: how often to check the Batch API job
 batch_max_total_wait_s: 86400   # --batch: give up polling after this; re-run to resume

@@ -28,7 +28,8 @@ from ...core.console import choose_transport, reveal
 from ...core.llm import build_schema, call_llm, check_levels, openai_client
 from ...core.render import format_paragraph_full
 from ...core.sampling import load_interview_sample
-from ...core.tables import load_clips, load_paragraphs, merge_subset, paragraphs_by_interview, write_deliverable
+from ...core.tables import (load_clips, load_paragraphs, load_paragraphs_clipped,
+                            merge_subset, paragraphs_by_interview, write_deliverable)
 from ...errors import ToolkitError
 from ...project import Project
 from ...state import check_demo_gate, record_demo, record_full
@@ -226,7 +227,7 @@ def _label_interview(iid: str, plan, cache: dict, cache_lock: Lock, appender: Js
             raw, usage = call_llm(client, model, reasoning, verbosity, schema,
                                   instructions, user_content, prompt_cache_key_str,
                                   poll_interval_s=float(cfg.get("poll_interval_s", 4)),
-                                  max_total_wait_s=float(cfg.get("max_total_wait_s", 1800)))
+                                  max_total_wait_s=float(cfg.get("max_total_wait_s", 600)))
             parsed = BatchLabels.model_validate(raw)
             record = _record(iid, batch, ck, fingerprint, parsed, usage, cfg)
             appender.append(record)
@@ -262,11 +263,8 @@ def run_label(project: Project, demo: bool = False, interviews: list[str] | None
     if demo and interviews:
         raise ToolkitError("--demo and --interview are mutually exclusive.")
     cfg, instructions, fingerprint = _context(project)
-    clips_df = load_clips(project)
+    clips_df = load_clips(project, allow_demo=demo)
     paragraphs_df = load_paragraphs(project)
-    paras_clipped_path = project.outputs_dir / "clips" / "paragraphs_clipped.parquet"
-    if not paras_clipped_path.exists():
-        raise ToolkitError(f"{paras_clipped_path} not found. Run `toolkit clip` first.")
     available = sorted(clips_df["interview_id"].unique())
 
     if demo:
@@ -353,7 +351,7 @@ def run_label(project: Project, demo: bool = False, interviews: list[str] | None
         assert deliver["label"].notna().all(), "internal error: unmapped clip in delivered table"
         assert (deliver["label"].str.strip() != "").all(), "internal error: empty label in delivered table"
 
-    paras_clipped = pd.read_parquet(paras_clipped_path)
+    paras_clipped = load_paragraphs_clipped(project, allow_demo=demo)
     diag_dir = write_annotated(project, ok, paras_clipped, clips_df, label_by_id)
 
     if demo:

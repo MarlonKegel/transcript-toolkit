@@ -162,7 +162,7 @@ def run_locations_tag(project: Project, demo: bool = False, sample_n: int | None
     schema = build_schema(build_location_model(regions, justify=justify), "clip_locations")
     prompt_cache_key_str = cache_key(model, reasoning, verbosity, instructions)  # stable across clips
 
-    clips_df = load_clips(project)
+    clips_df = load_clips(project, allow_demo=demo)
     para_by_interview = paragraphs_by_interview(load_paragraphs(project))
 
     if demo:
@@ -295,7 +295,7 @@ def _run_units(project: Project, cfg: dict, instructions: str, fingerprint: str,
         parsed, usage = call_llm(client, model, reasoning, verbosity, schema,
                                  instructions, u["user_content"], prompt_cache_key_str,
                                  poll_interval_s=float(cfg.get("poll_interval_s", 4)),
-                                 max_total_wait_s=float(cfg.get("max_total_wait_s", 1800)))
+                                 max_total_wait_s=float(cfg.get("max_total_wait_s", 600)))
         record = _record(u, fingerprint, parsed, usage, cfg)
         appender.append(record)
         with lock:

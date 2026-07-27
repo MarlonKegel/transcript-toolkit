@@ -142,7 +142,7 @@ def run_topics_tag(project: Project, set_name: str | None = None, demo: bool = F
     sset = tset.name
     model, reasoning, verbosity = cfg["model"], cfg["reasoning"], cfg["verbosity"]
 
-    clips_df = load_clips(project)
+    clips_df = load_clips(project, allow_demo=demo)
     para_by_interview = paragraphs_by_interview(load_paragraphs(project))
 
     if demo:
@@ -294,7 +294,7 @@ def _run_clips(project: Project, cfg: dict, tset: TopicSet, sset: str, use_justi
             parsed, usage = call_llm(client, model, reasoning, verbosity, schema,
                                      instructions, user_content, prompt_cache_key_str,
                                      poll_interval_s=float(cfg.get("poll_interval_s", 4)),
-                                     max_total_wait_s=float(cfg.get("max_total_wait_s", 1800)))
+                                     max_total_wait_s=float(cfg.get("max_total_wait_s", 600)))
             record = _record(cid, iid, ck, fingerprint, sset, parsed, usage, cfg)
             appender.append(record)
             with lock:

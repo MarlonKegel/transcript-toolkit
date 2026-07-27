@@ -58,6 +58,11 @@ class Project:
     def cache_dir(self) -> Path: return self.toolkit_dir / "cache"
     @property
     def demo_sample_path(self) -> Path: return self.toolkit_dir / "demo_sample.txt"
+    @property
+    def demo_dir(self) -> Path:
+        """Where a demo run parks the tables the NEXT step's demo needs. Kept out of outputs/,
+        which stays production-only, so a later step can be demoed before the corpus is run."""
+        return self.toolkit_dir / "demo"
 
     @property
     def paragraphs_path(self) -> Path: return self.data_dir / "paragraphs.parquet"

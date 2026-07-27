@@ -413,10 +413,22 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     try:
         args.func(args)
-        return 0
     except ToolkitError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
+    except KeyboardInterrupt:               # Ctrl-C on a stuck call is a documented recovery
+        print("\nInterrupted. Finished calls are cached — re-run the same command to continue "
+              "from where it stopped.", file=sys.stderr)
+        return 130
+    _print_update_notice()
+    return 0
+
+
+def _print_update_notice() -> None:
+    """Shown last, after a command's own output, so it is the thing left on screen. Best-effort
+    and cached for a day — see core/update.py."""
+    from .core.update import print_update_notice
+    print_update_notice()
 
 
 if __name__ == "__main__":

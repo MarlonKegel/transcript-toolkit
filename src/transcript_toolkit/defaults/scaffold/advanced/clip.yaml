@@ -4,6 +4,6 @@ prompt: clip_interview.md         # in prompts/ (edit the prompt there, not this
 verbosity: low                    # low | medium | high
 chunk_threshold_tokens: 20000     # interviews estimated above this are split into chunks
 overlap_paragraphs: 20            # chunk seam overlap; half locked context, half re-decided
-max_workers: 8                    # interviews processed in parallel
+max_workers: 12                    # interviews processed in parallel
 poll_interval_s: 4
-max_total_wait_s: 1800
+max_total_wait_s: 600          # give up on one stuck call; re-run resumes free

@@ -28,7 +28,8 @@ from ...core.console import confirm_or_abort, reveal
 from ...core.llm import build_schema, call_llm, check_levels, openai_client
 from ...core.render import format_paragraph_full
 from ...core.sampling import load_interview_sample
-from ...core.tables import load_paragraphs, merge_subset, write_deliverable
+from ...core.tables import (load_paragraphs, merge_subset, write_deliverable,
+                            write_demo_tables)
 from ...errors import ToolkitError
 from ...project import Project
 from ...state import check_demo_gate, record_demo, record_full
@@ -314,7 +315,7 @@ def _segment_interview(interview_id: str, df_interview: pd.DataFrame, cache: dic
             parsed, usage = call_llm(client, model, reasoning, verbosity, schema,
                                      instructions, user_content, prompt_cache_key_str,
                                      poll_interval_s=float(cfg.get("poll_interval_s", 4)),
-                                     max_total_wait_s=float(cfg.get("max_total_wait_s", 1800)))
+                                     max_total_wait_s=float(cfg.get("max_total_wait_s", 600)))
             seg = ChunkSegmentation.model_validate(parsed)
             record = {
                 "cache_key": ck, "fingerprint": fingerprint,
@@ -526,6 +527,7 @@ def run_clip(project: Project, demo: bool = False, interviews: list[str] | None 
                 f"{len(failed)} demo interview(s) failed clip validation: "
                 f"{', '.join(iid for iid, _ in failed)}. Details in {log_path}. "
                 f"Demo not recorded; adjust config/prompts and re-run `toolkit clip --demo`.")
+        write_demo_tables(project, clips_df, paras_df)   # lets `label/topics/locations --demo` run
         record_demo(project, STEP, fingerprint, units=keys, diag=str(diag_dir))
         print(f"\nDemo review files: open {diag_dir}/index.html")
         print("Review them; adjust config.yaml / prompts/ and re-demo if needed. "
