@@ -85,34 +85,64 @@ def read(rel: str) -> str:
     return (ROOT / rel).read_text().rstrip()
 
 
-def _walk_parsers(parser, prefix: str = "toolkit"):
-    """(command line, parser) for the whole subcommand tree, depth first."""
+def _walk_parsers(parser, prefix: str = "toolkit", summary: str = ""):
+    """(command line, one-line purpose, parser) for the whole subcommand tree, depth first.
+    A subcommand's purpose is registered on its PARENT, so it is carried down here."""
     import argparse
-    yield prefix, parser
+    yield prefix, summary, parser
     for action in parser._actions:
         if isinstance(action, argparse._SubParsersAction):
+            helps = {c.dest: c.help for c in action._choices_actions}
             seen = set()
             for name, sub in action.choices.items():
                 if id(sub) in seen:                  # skip aliases pointing at the same parser
                     continue
                 seen.add(id(sub))
-                yield from _walk_parsers(sub, f"{prefix} {name}")
+                yield from _walk_parsers(sub, f"{prefix} {name}", helps.get(name, ""))
+
+
+def _flag_lines(parser) -> list[str]:
+    """One line per option: the flags, their metavar, and the help text.
+
+    Rendered here rather than via parser.format_help() on purpose — argparse wraps to the
+    terminal width and its layout shifts between Python versions, which made the checked-in
+    bundle differ between a laptop and CI. This depends on nothing but the parser itself."""
+    import argparse
+
+    lines = []
+    for action in parser._actions:
+        if isinstance(action, (argparse._HelpAction, argparse._SubParsersAction)):
+            continue
+        help_text = " ".join((action.help or "").split()).replace("%%", "%")
+        if not action.option_strings:                            # a positional
+            lines.append(f"  {action.dest} (positional) — {help_text}")
+            continue
+        flags = ", ".join(action.option_strings)
+        metavar = ""
+        if action.nargs != 0 and not isinstance(action, argparse._StoreConstAction):
+            metavar = f" {action.metavar or action.dest.upper()}"
+        lines.append(f"  {flags}{metavar} — {help_text}")
+    return lines
 
 
 def build_cli_reference() -> str:
-    """Every command's --help, straight from argparse.
+    """Every command and flag, read off the argparse parser.
 
-    Generated rather than written, so it can never disagree with the actual CLI — which is what
-    an assistant gets wrong most often (inventing a flag, or denying a real one exists)."""
-    import os
-    os.environ["COLUMNS"] = "96"                     # pin wrapping so the output is reproducible
+    Generated rather than written, so it cannot disagree with the actual CLI — inventing a flag,
+    or denying that a real one exists, is the mistake assistants make most often here."""
     sys.path.insert(0, str(ROOT / "src"))
     from transcript_toolkit.cli import build_parser
 
     parts = ["=" * 96, "# COMPLETE COMMAND REFERENCE (generated from the CLI)",
-             "# Every command and flag the toolkit accepts. Nothing else exists.", "=" * 96, ""]
-    for line, parser in _walk_parsers(build_parser()):
-        parts += [f"$ {line} --help", "", parser.format_help().rstrip(), "", "-" * 96, ""]
+             "# Every command and every flag the toolkit accepts. If it is not here, it does not",
+             "# exist — do not infer flags from other tools.", "=" * 96, ""]
+    for line, summary, parser in _walk_parsers(build_parser()):
+        desc = " ".join((summary or parser.description or "").split())
+        parts.append(f"$ {line}")
+        if desc:
+            parts.append(f"  {desc}")
+        parts += _flag_lines(parser) or ["  (no options)"]
+        parts.append("")
     return "\n".join(parts).rstrip() + "\n"
 
 

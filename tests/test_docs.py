@@ -25,9 +25,9 @@ def test_bundle_carries_the_generated_command_reference():
     """Every command and flag, taken from argparse itself. Generated rather than written, so it
     cannot drift from the CLI — inventing or denying a flag is the mistake assistants make most."""
     text = bundle_text()
-    for cmd in ("$ toolkit sample --help", "$ toolkit topics tag --help",
-                "$ toolkit locations survey --help", "$ toolkit clip preview --help"):
-        assert cmd in text, cmd
+    for cmd in ("$ toolkit sample", "$ toolkit topics tag",
+                "$ toolkit locations survey", "$ toolkit clip preview"):
+        assert f"\n{cmd}\n" in text, cmd
     assert "--interviews IDS" in text                  # the flag an assistant claimed didn't exist
     assert "--no-batch" in text and "--skip-demo-check" in text
 
