@@ -5,10 +5,10 @@
 > Read AGENTS.md first for repo conventions. File:line references were verified against
 > commit `c0e7d29` (v0.1.8, 256 tests green).
 >
-> **Status: phases A–D built** (commit `a6534d1`, 344 tests green). Phase E — merging to main,
-> rewriting SETUP.md, the LICENSE decision, and the colleague cold-start test — is deliberately
-> not done: it needs the Mac checklist in §9 and Marlon's sign-off. See §14 for what was built
-> and where it departs from this plan.
+> **Status: phases A–D built and reviewed** (branch `app`, 361 tests green, CI green).
+> Phase E — merging to main, rewriting SETUP.md, the LICENSE decision, and the colleague
+> cold-start test — is deliberately not done: it needs the Mac checklist in §9 and Marlon's
+> sign-off. See §14 for what was built, §15 for what the review round found and fixed.
 
 ## 0. What is already decided and proven
 
@@ -479,3 +479,69 @@ through a real pty and answers it.
    Mac test, not precede it.
 3. **LICENSE** (decision 12) and **exact pins** (decision 5).
 4. **Merge to main** — and only then resume version-bump-per-push.
+
+## 15. The review round
+
+Four reviewers went over the built code (process machinery, the non-technical user's journey,
+safety of a local server holding transcripts, and the tests). They found six bugs that would
+all have reached a user, and about a dozen smaller things. Everything below is fixed on the
+branch, with a test for each.
+
+**Bugs**
+
+1. **The log printed itself twice.** `Job.since()` answered "nothing new" with the whole
+   buffer, and a page redraws for things that add no output — a question arriving, a run
+   ending — so the finish of every run duplicated its own history. Past ~2500 lines the
+   duplicate also pushed the real beginning out of the pane.
+2. **Dropping files did nothing.** Both upload handlers used a NiceGUI event API that does not
+   exist in the pinned version; the uploader turned green and no file was written. This is the
+   first thing anyone does. Tests now drive NiceGUI's own upload machinery, so a version bump
+   cannot break it quietly again.
+3. **Pages never refreshed after a run.** The review pages a demo had just written were never
+   linked, because the page had been built before they existed — and the app suppresses the
+   CLI's own auto-open. The demo-first loop broke exactly at "now read it".
+4. **The dashboard misjudged locations.** It looked for a file `locations map` writes, not
+   `locations tag`, so after a full locations run it still said "Next: run locations". Now
+   read from the run each step records in state.json.
+5. **Topics review links pointed at filenames no step writes** (and would have listed every
+   set's pages at once). Each step now names its own review pages in `content.py`.
+6. **Configured-but-not-discovered topic sets vanished** from the picker — `available_sets`
+   was handed the root config instead of its `topics` section.
+
+**Things that were true but shouldn't have been**
+
+- **Stop did not stop.** Every step queues the whole corpus up front, and
+  `with ThreadPoolExecutor(...)` drains the queue before letting Ctrl-C through — minutes of
+  further paid calls after clicking Stop, then a SIGKILL. New `core/parallel.worker_pool`
+  cancels what has not started. This fixes Ctrl-C in the terminal too, not just the app.
+- **The launcher swallowed every startup failure.** A double-click just did nothing, with the
+  reason in a log file. It now waits for the server to answer and shows the log's tail in a
+  dialog if it never does. (Writing the test found a second bug: `mkdir` was inside the group
+  being redirected, so the log could not be created.)
+- **A spawn failure wedged the app** — a job stuck in "running" forever, no way out but killing
+  the server from a terminal. The realistic trigger is a project folder renamed in Finder.
+- **The local server answered to any hostname** (DNS rebinding: a page elsewhere could become
+  same-origin and read the review pages, which are the transcripts) and **could be framed**
+  (two clicks on an invisible frame = an approved corpus run). Both closed.
+- **Quitting was unconditional**, so a launcher double-clicked out of habit after an update
+  would kill a live run; and the version check was two-way, so an old copy could evict a newer
+  server.
+- **Declining at the cost prompt was reported as a failure.** It is now "cancelled".
+- **A crash with no ToolkitError showed an empty red box.** Now the last lines and a copy
+  button — this is the likeliest first failure (a bad API key surfaces this way).
+- **`toolkit sample` was reachable only by failing first**, guaranteeing that a new user's
+  first click ended in red. It is now step 0 on the clip and label pages when missing.
+- **An unrecognised question hung invisibly** (`toolkit update` can ask one). Unfinished output
+  that goes quiet is now shown with a text box to answer it.
+- Uploads silently overwrote existing transcripts and topic lists; `.env` was written 0644;
+  run times were shown in UTC as if local; "units" and "corpus" appeared in the interface;
+  `map`/`rollup` were buried in a collapsed "other things" list although they are required
+  steps; the export path ignored a renamed output file; the health endpoint published the
+  workspace path for no reader.
+
+**Test count: 256 before the app, 361 now.** The additions worth knowing about: the confirmation
+prompt is driven through a real pty against the real `choose_transport`; a run is proven to
+survive leaving the page and coming back; uploads go through NiceGUI's own event path; the
+host and framing rules are checked against a real server on a real socket.
+
+Still not verified by anything: the Mac checklist in §9. That is the remaining work.
