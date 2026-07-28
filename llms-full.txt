@@ -991,6 +991,14 @@ $ toolkit init
   dir (positional) — directory to create
   --reset-prompt NAME — restore one prompt in the current workspace to the packaged default
 
+$ toolkit app
+  open the toolkit's window in your browser (the point-and-click app)
+  --project DIR — workspace directory (default: walk up from the current directory)
+  --port PORT — port to serve on (default 8377)
+  --no-browser — start the server without opening a browser window
+  --from-launcher — ==SUPPRESS==
+  --install-launcher — create the double-clickable app in your Applications folder (macOS)
+
 $ toolkit update
   install the latest version of the toolkit
   --project DIR — workspace directory (default: walk up from the current directory)

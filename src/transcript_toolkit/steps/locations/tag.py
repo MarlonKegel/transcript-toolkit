@@ -152,7 +152,7 @@ def _context(project: Project, justify: bool):
 
 def run_locations_tag(project: Project, demo: bool = False, sample_n: int | None = None,
                       seed: int | None = None, interviews: list[str] | None = None,
-                      justify: bool | None = None, batch: bool = False, yes: bool = False,
+                      justify: bool | None = None, batch: bool | None = None, yes: bool = False,
                       skip_demo_check: bool = False) -> pd.DataFrame:
     if demo and (sample_n or interviews):
         raise ToolkitError("--demo cannot be combined with --sample or --interview.")

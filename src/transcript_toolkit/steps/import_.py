@@ -112,6 +112,49 @@ def timestamp_regimes(df: pd.DataFrame) -> list[dict]:
     return rows
 
 
+def speaker_role_rows(df: pd.DataFrame) -> list[dict]:
+    """Paragraph counts per (role, speaker label) — the table that shows at a glance whether
+    the interviewer labels in config.yaml matched what is actually in the transcripts."""
+    roles = (df.groupby(["speaker_role", "speaker_label"]).size()
+               .reset_index(name="n").sort_values(["speaker_role", "n"], ascending=[True, False]))
+    return [{"speaker_role": r.speaker_role, "speaker_label": r.speaker_label, "n": int(r.n)}
+            for r in roles.itertuples()]
+
+
+def narrator_groups(interview_ids, session_regex: str) -> dict[str, list[str]]:
+    """{narrator: [interview ids]} — which session files count as one person."""
+    groups: dict[str, list[str]] = {}
+    for iid in interview_ids:
+        groups.setdefault(narrator_key(iid, session_regex), []).append(iid)
+    return groups
+
+
+def dataset_summary(project: Project) -> dict:
+    """The same tables `toolkit import` prints, rebuilt from the saved dataset.
+
+    For readers that arrive after the fact (the app's import page) rather than watching the
+    run: everything here comes from data/paragraphs.parquet, so it stays true for as long as
+    that file is the current one.
+    """
+    if not project.paragraphs_path.exists():
+        raise ToolkitError("Nothing imported yet in this workspace.")
+    cfg = load_step_config(project, "import")
+    df = pd.read_parquet(project.paragraphs_path)
+    ids = sorted(df["interview_id"].unique())
+    groups = narrator_groups(ids, cfg["session_regex"])
+    regimes = timestamp_regimes(df)
+    return {
+        "n_transcripts": len(ids),
+        "n_paragraphs": int(len(df)),
+        "n_narrators": len(groups),
+        "roles": speaker_role_rows(df),
+        "regimes": regimes,
+        "flagged": [{"interview_id": r["interview_id"], "detail": _regime_label(r)}
+                    for r in regimes if not r["ok"]],
+        "multi_session": {k: sorted(v) for k, v in sorted(groups.items()) if len(v) > 1},
+    }
+
+
 def _regime_label(r: dict) -> str:
     if r["coverage"] <= 0.0:
         return f"timestamps on speaker turns only (0 of {r['n_cont']} continuation paragraphs timed)"
@@ -139,18 +182,14 @@ def _write_log(path: Path, flagged: list[dict], orphan_lines: list[str],
 def _print_summary(df: pd.DataFrame, ids: dict[str, Path], session_regex: str,
                    regimes: list[dict], orphan_lines: list[str], note_lines: list[str],
                    warn_path: Path) -> None:
-    narrators: dict[str, list[str]] = {}
-    for iid in ids:
-        narrators.setdefault(narrator_key(iid, session_regex), []).append(iid)
+    narrators = narrator_groups(ids, session_regex)
 
     print(f"Imported {len(ids)} transcripts -> {len(df):,} paragraphs, "
           f"{len(narrators)} narrators.")
 
     print("\nSpeaker roles (check that interviewer labels are configured right):")
-    roles = (df.groupby(["speaker_role", "speaker_label"]).size()
-               .reset_index(name="n").sort_values(["speaker_role", "n"], ascending=[True, False]))
-    for r in roles.itertuples():
-        print(f"  {r.speaker_role:<12} {r.speaker_label:<24} {r.n:>6} paragraphs")
+    for r in speaker_role_rows(df):
+        print(f"  {r['speaker_role']:<12} {r['speaker_label']:<24} {r['n']:>6} paragraphs")
 
     # Timestamps: the toolkit expects one per paragraph; warn when a transcript is per-turn-only.
     flagged = [r for r in regimes if not r["ok"]]

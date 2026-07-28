@@ -1,0 +1,199 @@
+"""The page shell and the run panel — the two things every page is built out of."""
+from __future__ import annotations
+
+from contextlib import contextmanager
+from typing import Callable
+
+from nicegui import ui
+
+from ...errors import ToolkitError
+from .. import content, jobs
+from ..context import CONTEXT
+
+PRIMARY = "#3b4bb8"
+NAV = [("/", "Home"), ("/workspace", "Workspace"),
+       *[(f"/step/{s.slug}", s.title) for s in content.STEPS],
+       ("/export", "Export"), ("/settings", "Settings")]
+
+STATE_LOOK = {
+    jobs.RUNNING: ("play_circle", "text-primary", "running"),
+    jobs.WAITING: ("help", "text-orange-600", "waiting for you"),
+    jobs.SUCCEEDED: ("check_circle", "text-green-600", "finished"),
+    jobs.FAILED: ("error", "text-red-600", "failed"),
+    jobs.STOPPED: ("stop_circle", "text-gray-500", "stopped"),
+}
+
+
+def guard(e: Exception) -> None:
+    """Show a failure the way the toolkit does: its own words, no traceback."""
+    ui.notify(str(e), type="negative", multi_line=True, close_button="OK",
+              classes="max-w-xl whitespace-pre-line")
+
+
+@contextmanager
+def shell(active: str = "", *, needs_workspace: bool = True):
+    """Header, navigation, and the centred column pages draw into."""
+    ui.colors(primary=PRIMARY)
+    project = CONTEXT.project
+    if needs_workspace and project is None:
+        ui.navigate.to("/workspace")
+
+    with ui.header().classes("items-center justify-between px-4 py-2"):
+        with ui.row().classes("items-center gap-3"):
+            ui.icon("subject", size="1.6rem")
+            ui.label("Transcript Toolkit").classes("text-lg font-medium")
+        if project is not None:
+            with ui.row().classes("items-center gap-2 opacity-90"):
+                ui.icon("folder_open", size="1.1rem")
+                ui.label(project.root.name).classes("text-sm")
+
+    with ui.row().classes("w-full max-w-5xl mx-auto px-4 pt-4 gap-1 flex-wrap"):
+        for href, title in NAV:
+            classes = "text-sm px-3 py-1 rounded no-underline"
+            classes += " bg-primary text-white" if href == active else " text-primary"
+            ui.link(title, href).classes(classes)
+
+    with ui.column().classes("w-full max-w-5xl mx-auto p-4 gap-4") as body:
+        _running_banner(active)
+        yield body
+
+
+def _running_banner(active: str) -> None:
+    """On every page: what is running, if anything, and where to watch it."""
+    holder = ui.row().classes("w-full")
+
+    def tick() -> None:
+        job = CONTEXT.jobs.current
+        show = job is not None and job.live and job.href != active
+        holder.clear()
+        holder.set_visibility(bool(show))
+        if not show:
+            return
+        with holder:
+            with ui.card().classes("w-full bg-blue-50 dark:bg-blue-900/30 py-2"):
+                with ui.row().classes("items-center gap-3"):
+                    ui.spinner(size="1.2rem")
+                    ui.label(f"{job.title} is {STATE_LOOK[job.state][2]}").classes("text-sm")
+                    ui.link("watch it", job.href).classes("text-sm")
+
+    ui.timer(1.0, tick)
+
+
+def status_chip(text: str, colour: str) -> None:
+    ui.chip(text, color=colour, text_color="white").props("dense square").classes("text-xs")
+
+
+def section(title: str, blurb: str = "") -> None:
+    ui.label(title).classes("text-xl font-medium mt-2")
+    if blurb:
+        ui.label(blurb).classes("text-sm opacity-70 -mt-1")
+
+
+def run_panel(*, page_href: str, on_fix: Callable[[str], None] | None = None) -> None:
+    """The live view of whatever is running: the command, its output as it appears, the
+    question it is waiting on, and what to do when it fails.
+
+    It reads the job off the server, so it is the same panel whether the run started a second
+    ago in this tab or an hour ago in a tab that has since been closed.
+    """
+    seen = {"id": None, "revision": -1, "lines": 0}
+
+    with ui.card().classes("w-full") as card:
+        header = ui.row().classes("items-center gap-2 w-full")
+        command = ui.code("", language="bash").classes("w-full text-xs")
+        log = ui.log(max_lines=jobs.MAX_LOG_LINES).classes(
+            "w-full h-80 text-xs font-mono bg-gray-900 text-gray-100 rounded p-2")
+        prompt_area = ui.column().classes("w-full gap-2")
+        error_area = ui.column().classes("w-full gap-2")
+
+    def redraw(job: jobs.Job) -> None:
+        icon, colour, word = STATE_LOOK[job.state]
+        header.clear()
+        with header:
+            ui.icon(icon).classes(colour)
+            ui.label(f"{job.title} — {word}").classes("font-medium")
+            ui.space()
+            ui.label(f"{job.duration:.0f}s").classes("text-xs opacity-60")
+            if job.live:
+                ui.button("Stop", icon="stop", on_click=_stop, color="negative") \
+                    .props("outline dense").tooltip(
+                        "Safe to stop: every finished call is saved, so running this again "
+                        "carries on from where it stopped.")
+        command.content = f"$ {job.command}"
+
+        prompt_area.clear()
+        if job.state == jobs.WAITING:
+            with prompt_area:
+                with ui.card().classes("w-full bg-orange-50 dark:bg-orange-900/30"):
+                    ui.label(job.prompt.strip()).classes("font-medium")
+                    ui.label("Answer above from the run itself — the figures are the "
+                             "toolkit's own.").classes("text-xs opacity-70")
+                    with ui.row().classes("gap-2 flex-wrap"):
+                        for answer in job.answers() or ():
+                            ui.button(answer.label,
+                                      on_click=lambda _, a=answer: _answer(a.send)) \
+                                .props(f"color={answer.tone or 'primary'} dense")
+
+        error_area.clear()
+        if job.state == jobs.FAILED and job.error:
+            with error_area:
+                with ui.card().classes("w-full bg-red-50 dark:bg-red-900/30"):
+                    ui.label("It stopped with this:").classes("text-xs opacity-70")
+                    ui.label(job.error).classes("whitespace-pre-line text-sm")
+                    fix = content.fix_for(job.error)
+                    if fix and on_fix:
+                        label = ("Draw the demo sample" if fix == "sample" else "Run the demo")
+                        ui.button(label, icon="play_arrow",
+                                  on_click=lambda _, f=fix: on_fix(f)).props("dense")
+        elif job.state == jobs.STOPPED:
+            with error_area:
+                ui.label("Stopped. Every call that finished is saved — running this again "
+                         "picks up where it left off.").classes("text-sm opacity-80")
+
+    def tick() -> None:
+        job = CONTEXT.jobs.current
+        card.set_visibility(job is not None)
+        if job is None:
+            return
+        if seen["id"] != job.id:
+            log.clear()
+            seen.update(id=job.id, revision=-1, lines=0)
+        if job.revision == seen["revision"]:
+            return
+        for line in job.since(seen["lines"]):
+            log.push(line)
+        seen["lines"] = job.emitted
+        seen["revision"] = job.revision
+        redraw(job)
+
+    async def _stop() -> None:
+        try:
+            await CONTEXT.jobs.stop()
+        except ToolkitError as e:
+            guard(e)
+
+    def _answer(text: str) -> None:
+        try:
+            CONTEXT.jobs.answer(text)
+        except ToolkitError as e:
+            guard(e)
+
+    card.set_visibility(False)
+    ui.timer(0.4, tick)
+
+
+async def launch(title: str, argv: list[str], href: str = "/") -> None:
+    """Start a command in the open workspace, or say why not."""
+    try:
+        await CONTEXT.jobs.start(title, argv, CONTEXT.require_project().root, href=href)
+    except ToolkitError as e:
+        guard(e)
+
+
+async def launch_global(title: str, argv: list[str], href: str = "/") -> None:
+    """Start a command that is about the installation, not about one project."""
+    from pathlib import Path
+    try:
+        await CONTEXT.jobs.start(title, argv, Path.home(), href=href, with_project=False)
+    except ToolkitError as e:
+        guard(e)

@@ -10,6 +10,7 @@ import argparse
 import sys
 
 from . import __version__
+from .app import DEFAULT_PORT
 from .errors import ToolkitError
 
 
@@ -52,6 +53,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--reset-prompt", metavar="NAME", default=None,
                    help="restore one prompt in the current workspace to the packaged default")
     p.set_defaults(func=cmd_init)
+
+    p = sub.add_parser("app", parents=[common],
+                       help="open the toolkit's window in your browser (the point-and-click app)")
+    p.add_argument("--port", type=int, default=None,
+                   help=f"port to serve on (default {DEFAULT_PORT})")
+    p.add_argument("--no-browser", dest="open_browser", action="store_false",
+                   help="start the server without opening a browser window")
+    p.add_argument("--from-launcher", action="store_true",
+                   help=argparse.SUPPRESS)          # set by the generated Mac launcher app
+    p.add_argument("--install-launcher", action="store_true",
+                   help="create the double-clickable app in your Applications folder (macOS)")
+    p.set_defaults(func=cmd_app)
 
     p = sub.add_parser("update", parents=[common], aliases=["upgrade"],
                        help="install the latest version of the toolkit")
@@ -242,6 +255,24 @@ def cmd_init(args) -> None:
     print("  3. Drop your transcript .docx files into data/")
     print("  4. Run: toolkit import")
     print("\n(Run toolkit commands from inside the workspace — they find it automatically.)")
+
+
+def cmd_app(args) -> None:
+    port = args.port or DEFAULT_PORT
+
+    if args.install_launcher:
+        from .app.launcher import install_launcher
+
+        path = install_launcher(port=None if port == DEFAULT_PORT else port)
+        print(f"Created {path}")
+        print("\nOpen your Applications folder, double-click it, and drag it to the Dock if you\n"
+              "want it there. From then on that is how you start the toolkit.")
+        return
+
+    from .app.server import serve
+
+    serve(project=getattr(args, "project", None), port=port,
+          open_browser=args.open_browser, from_launcher=args.from_launcher)
 
 
 def cmd_update(args) -> None:

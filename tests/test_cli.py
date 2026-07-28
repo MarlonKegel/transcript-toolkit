@@ -6,13 +6,13 @@ from transcript_toolkit.cli import build_parser
 
 # every command path in the CLI, as argv prefixes
 COMMANDS = [
-    [], ["init"], ["update"], ["docs"], ["import"], ["sample"],
+    [], ["init"], ["app"], ["update"], ["docs"], ["import"], ["sample"],
     ["clip"], ["clip", "annotate"], ["clip", "preview"],
     ["label"], ["label", "annotate"], ["label", "preview"],
     ["summarize"], ["summarize", "annotate"],
-    ["topics", "tag"], ["topics", "rollup"], ["topics", "thresholds"],
+    ["topics"], ["topics", "tag"], ["topics", "rollup"], ["topics", "thresholds"],
     ["topics", "annotate"], ["topics", "preview"],
-    ["locations", "tag"], ["locations", "map"], ["locations", "rollup"],
+    ["locations"], ["locations", "tag"], ["locations", "map"], ["locations", "rollup"],
     ["locations", "thresholds"], ["locations", "annotate"], ["locations", "survey"],
     ["locations", "preview"],
     ["export"], ["cost"], ["status"],
@@ -38,6 +38,26 @@ def test_batchable_steps_take_batch_flag(argv):
     assert parser.parse_args([*argv, "--batch"]).batch is True
     assert parser.parse_args([*argv, "--no-batch"]).batch is False
     assert parser.parse_args(argv).batch is None          # unset -> ask at the prompt
+
+
+def test_every_command_is_covered_here():
+    """COMMANDS is written out by hand so the --help test can name each one; this keeps it
+    honest when a command is added."""
+    import argparse
+
+    def walk(parser, prefix=()):
+        yield list(prefix)
+        for action in parser._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                seen = set()
+                for name, sub in action.choices.items():
+                    if id(sub) not in seen:          # aliases point at the same parser
+                        seen.add(id(sub))
+                        yield from walk(sub, (*prefix, name))
+
+    real = {tuple(c) for c in walk(build_parser())}
+    listed = {tuple(c) for c in COMMANDS}
+    assert real - listed == set(), f"not covered by test_help_renders: {sorted(real - listed)}"
 
 
 def test_update_has_an_upgrade_alias():
