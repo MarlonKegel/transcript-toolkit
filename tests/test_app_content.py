@@ -136,3 +136,93 @@ def test_missing_sample_offers_the_sample_button(tmp_path):
 
 def test_unremarkable_errors_offer_no_button():
     assert content.fix_for("No .docx transcripts found under data/") is None
+
+
+# --- what the pages read out of a workspace -------------------------------------------------
+
+def test_review_pages_are_the_files_the_steps_really_write(tmp_path):
+    """Every step names its review pages differently, and topics writes one set per topic list.
+    Getting this wrong shows either no link at all or a page of nonsense links."""
+    from transcript_toolkit.app.pages.step import diag_pages
+    from transcript_toolkit.project import init_project
+
+    project = init_project(str(tmp_path / "ws"))
+    written = {
+        "clip/index.html": "clip",
+        "label/index.html": "label",
+        "summarize/summaries.html": "summarize",
+        "topics/collection_index.html": "topics",
+        "locations/locations.html": "locations",
+    }
+    for rel in written:
+        path = project.diags_dir / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("<h1>x</h1>")
+
+    for slug in ("clip", "label", "summarize", "topics", "locations"):
+        step = content.BY_SLUG[slug]
+        pages = diag_pages(project, step, "collection")
+        assert pages, f"{slug}: no review page found"
+        for _, url in pages:
+            assert (project.diags_dir / url.removeprefix("/diags/")).exists()
+
+    # and a set the user has not tagged yet must not borrow another set's pages
+    assert diag_pages(project, content.BY_SLUG["topics"], "other") == []
+
+
+def test_a_topic_set_that_lives_only_in_the_config_is_still_offered(tmp_path, monkeypatch):
+    """`available_sets` reads the topics section, not the whole file. Handing it the root
+    config drops every set whose spreadsheet is not sitting in topics/ under its own name."""
+    from transcript_toolkit.app.context import AppContext
+    from transcript_toolkit.project import init_project
+
+    project = init_project(str(tmp_path / "ws"))
+    (project.topics_dir / "moved.csv").write_text("name,description\nA,B\n")
+    project.config_path.write_text(
+        project.config_path.read_text().replace(
+            "sets: {}", "sets:\n    collection:\n      file: topics/moved.csv"))
+
+    context = AppContext()
+    context.project = project
+    assert context.topic_sets() == ["collection", "moved"]
+
+
+def test_quitting_is_refused_while_something_is_running(monkeypatch):
+    from transcript_toolkit.app import server
+    from transcript_toolkit.app.context import CONTEXT
+
+    assert server.refuse_quit_reason() is None
+    monkeypatch.setattr(type(CONTEXT.jobs), "busy", property(lambda self: True))
+    monkeypatch.setattr(CONTEXT.jobs, "current",
+                        type("J", (), {"title": "Label — full run"})())
+    assert "Label — full run" in server.refuse_quit_reason()
+
+
+def test_the_dashboard_counts_a_step_done_when_the_step_says_so(tmp_path, monkeypatch):
+    """`locations tag` records its own full run, but the file `toolkit status` counts as the
+    locations deliverable is written by `locations map`, one command later. Judging by the
+    file alone would keep telling someone to re-run the step they just paid for."""
+    from transcript_toolkit.app.context import CONTEXT
+    from transcript_toolkit.app.pages.home import _ran_fully, next_action
+    from transcript_toolkit.project import init_project
+
+    project = init_project(str(tmp_path / "ws"))
+    (project.topics_dir / "main.csv").write_text("name,description\nA,B\n")
+    (project.root / ".env").write_text("OPENAI_API_KEY=sk-x\n")
+    (project.data_dir / "a.docx").write_text("x")
+    monkeypatch.setattr(CONTEXT, "project", project)
+
+    done = {"full": {"at": "2026-07-28T10:00:00+00:00"}}
+    status = {"imported": True, "docx_files": 1, "deliverables": ["clips"],
+              "steps": {"clip": done, "label": done, "summarize": done,
+                        "topics:main": done, "locations": done}}
+
+    for step in content.STEPS:
+        assert _ran_fully(status, step, "main"), step.slug
+    # locations counts as done from its own record, though `map` has not run and so the
+    # locations deliverable is not on disk
+    assert "locations" not in status["deliverables"]
+    assert next_action(status, project)[2] == "/export"
+
+    status["steps"].pop("locations")
+    assert next_action(status, project)[2] == "/step/locations"

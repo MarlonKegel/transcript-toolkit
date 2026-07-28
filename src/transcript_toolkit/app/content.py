@@ -21,6 +21,13 @@ class Action:
 
 
 @dataclass(frozen=True)
+class Review:
+    """A page a step writes for you to read. `{set}` is filled in for per-set steps."""
+    filename: str
+    title: str
+
+
+@dataclass(frozen=True)
 class Step:
     """One pipeline step with a page of its own."""
     key: str                        # state.json step key (topics is per-set: "topics:<set>")
@@ -29,12 +36,15 @@ class Step:
     blurb: str
     argv: tuple[str, ...]           # the run command, e.g. ("topics", "tag")
     order: int                      # pipeline position, for the dashboard
-    demo: bool = True               # has a --demo mode
+    unit: str = "interviews"        # what a run counts, in words, for "35 interviews"
     batch: bool = False             # can go to the Batch API
     per_set: bool = False           # needs --set (topics)
+    needs_sample: bool = False      # its demo runs on the `toolkit sample` interviews
     deliverable: str = ""           # name in gather_status()["deliverables"]
     needs: tuple[str, ...] = ()     # deliverables that must exist first
-    followups: tuple[Action, ...] = field(default_factory=tuple)
+    reviews: tuple[Review, ...] = field(default_factory=tuple)
+    sequels: tuple[Action, ...] = field(default_factory=tuple)      # part of the flow
+    followups: tuple[Action, ...] = field(default_factory=tuple)    # occasional extras
 
 
 SAMPLE = Action(
@@ -54,7 +64,8 @@ STEPS: tuple[Step, ...] = (
     Step(
         key="clip", slug="clip", title="Clip", order=1,
         blurb="Split each interview into topically coherent clips.",
-        argv=("clip",), deliverable="clips",
+        argv=("clip",), deliverable="clips", needs_sample=True,
+        reviews=(Review("index.html", "Open the review pages"),),
         followups=(
             Action("annotate", "Re-render review pages",
                    "Rebuild the per-interview review pages from the saved clips (no API calls).",
@@ -68,6 +79,7 @@ STEPS: tuple[Step, ...] = (
         key="label", slug="label", title="Label", order=2,
         blurb="Write a one-line label for every clip.",
         argv=("label",), batch=True, deliverable="labels", needs=("clips",),
+        needs_sample=True, reviews=(Review("index.html", "Open the review pages"),),
         followups=(
             Action("annotate", "Re-render review pages",
                    "Rebuild the per-interview review pages from the saved labels (no API calls).",
@@ -81,6 +93,8 @@ STEPS: tuple[Step, ...] = (
         key="summarize", slug="summarize", title="Summarize", order=3,
         blurb="Write a 'scope and content' abstract for each interview.",
         argv=("summarize",), batch=True, deliverable="summaries",
+        reviews=(Review("summaries.html", "Open the summaries"),
+                 Review("demo_summaries.html", "Open the demo summaries")),
         followups=(
             Action("annotate", "Re-render review page",
                    "Rebuild the review page from the saved summaries (no API calls).",
@@ -92,10 +106,16 @@ STEPS: tuple[Step, ...] = (
         blurb="Score every clip against your own topic list, then roll the scores up to "
               "interview-level tags.",
         argv=("topics", "tag"), batch=True, per_set=True, deliverable="topics", needs=("clips",),
-        followups=(
-            Action("rollup", "Roll up to interviews",
-                   "Turn clip scores into one set of tags per interview.",
+        unit="clips",
+        reviews=(Review("{set}_index.html", "Open the review pages"),
+                 Review("{set}_demo.html", "Open the demo page")),
+        sequels=(
+            Action("rollup", "Roll up to interview tags",
+                   "Turn the per-clip scores into one set of tags per interview. Run this "
+                   "after tagging the whole collection.",
                    ("topics", "rollup"), needs_set=True),
+        ),
+        followups=(
             Action("thresholds", "Threshold decision aid",
                    "Compare rollup thresholds side by side to choose one (no API calls).",
                    ("topics", "thresholds"), needs_set=True),
@@ -108,13 +128,17 @@ STEPS: tuple[Step, ...] = (
         key="locations", slug="locations", title="Locations", order=5,
         blurb="Tag clips with the countries and regions they talk about.",
         argv=("locations", "tag"), batch=True, deliverable="locations", needs=("clips",),
-        followups=(
-            Action("map", "Map regions to countries",
-                   "Expand region tags into countries and apply the label canon.",
+        unit="clips", reviews=(Review("locations.html", "Open the review page"),),
+        sequels=(
+            Action("map", "Expand regions into countries",
+                   "Turn each region tag into the countries it covers, and settle on one "
+                   "spelling per place. Run this after tagging the whole collection.",
                    ("locations", "map")),
-            Action("rollup", "Roll up to interviews",
-                   "Turn clip tags into one set of places per interview.",
+            Action("rollup", "Roll up to interview places",
+                   "Turn the per-clip places into one set per interview.",
                    ("locations", "rollup")),
+        ),
+        followups=(
             Action("thresholds", "Threshold decision aid",
                    "Compare rollup schemes side by side to choose one (no API calls).",
                    ("locations", "thresholds")),
@@ -217,6 +241,15 @@ def answers_for(prompt: str) -> tuple[Answer, ...] | None:
 NO_SAMPLE_MARKER = "No demo sample drawn yet"
 NO_DEMO_MARKER = "No demo run recorded for"
 STALE_DEMO_MARKER = "is stale: the prompt, model, or settings have changed"
+
+
+# What the CLI says when the user answers "no" at a confirmation prompt (core/console.py).
+CANCELLED_MARKER = "Aborted."
+
+
+def is_cancellation(error_text: str) -> bool:
+    """Whether a failed run was simply declined at the prompt."""
+    return error_text.strip() == CANCELLED_MARKER
 
 
 def fix_for(error_text: str) -> str | None:

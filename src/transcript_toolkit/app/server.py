@@ -17,6 +17,7 @@ from pathlib import Path
 
 from fastapi import HTTPException, Request
 from fastapi.responses import FileResponse
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .. import __version__
 from ..errors import ToolkitError
@@ -56,6 +57,12 @@ def _ask_to_quit(port: int) -> None:
                                      headers={QUIT_HEADER: "1"})
     try:
         urllib.request.urlopen(request, timeout=PROBE_TIMEOUT_S).close()   # noqa: S310
+    except urllib.error.HTTPError as e:
+        if e.code == 409:               # it is in the middle of something; leave it alone
+            raise ToolkitError(
+                f"The toolkit is already running on port {port} and is in the middle of a run "
+                f"({e.read().decode('utf-8', 'replace')}).\nOpen {url(port)} and stop it there "
+                f"first — finished calls are saved either way.") from e
     except (urllib.error.URLError, TimeoutError, OSError):
         pass                # a server that dies mid-reply is exactly what we asked it to do
     deadline = time.time() + SHUTDOWN_WAIT_S
@@ -66,6 +73,22 @@ def _ask_to_quit(port: int) -> None:
     raise ToolkitError(
         f"An older copy of the toolkit is still using port {port} and did not stop when asked. "
         f"Quit it from its own window (Settings -> Quit), then try again.")
+
+
+def refuse_quit_reason() -> str | None:
+    """Why the server should not stop right now, if it should not.
+
+    A launcher double-clicked out of habit must not take down a corpus run: the server holds
+    the running command's terminal, so stopping it stops the command too.
+    """
+    if CONTEXT.jobs.busy:
+        return f"'{CONTEXT.jobs.current.title}' is still running."
+    return None
+
+
+def _older(running: str, mine: str) -> bool:
+    from ..core.update import version_tuple
+    return version_tuple(running) < version_tuple(mine)
 
 
 def _resolve_workspace(explicit: str | None):
@@ -86,14 +109,26 @@ def _resolve_workspace(explicit: str | None):
     return None
 
 
-def _register_routes() -> None:
+def _register_routes(allowed_hosts: list[str]) -> None:
     from nicegui import app
+
+    # The app answers only to itself. Without this a web page the user has open elsewhere
+    # could point a hostname at 127.0.0.1, become same-origin with the app, and read the
+    # review pages — which are the transcripts.
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
+
+    @app.middleware("http")
+    async def _no_framing(request: Request, call_next):
+        """Nothing embeds this app, so nothing may: an invisible frame over a decoy page
+        could otherwise collect the two clicks that approve a corpus run."""
+        response = await call_next(request)
+        response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+        return response
 
     @app.get("/api/health")
     def health() -> dict:                                           # noqa: D401
         """Lets a second launch recognise this server instead of starting another."""
-        return {"app": MARKER, "version": __version__, "port": CONTEXT.port,
-                "workspace": str(CONTEXT.project.root) if CONTEXT.project else None}
+        return {"app": MARKER, "version": __version__, "port": CONTEXT.port}
 
     @app.post("/api/quit")
     def quit_server(request: Request) -> dict:
@@ -102,6 +137,9 @@ def _register_routes() -> None:
         # never grants, so only the toolkit itself can ask.
         if request.headers.get(QUIT_HEADER) != "1":
             raise HTTPException(status_code=403, detail="Quit the toolkit from its own window.")
+        refusal = refuse_quit_reason()
+        if refusal:
+            raise HTTPException(status_code=409, detail=refusal)
         app.shutdown()
         return {"stopping": True}
 
@@ -117,16 +155,21 @@ def _register_routes() -> None:
         return FileResponse(target)
 
 
-def build() -> None:
+LOCAL_HOSTS = ["127.0.0.1", "localhost"]
+
+
+def build(allowed_hosts: list[str] | None = None) -> None:
     """Assemble the app: every page and every route, and nothing that starts a server.
 
-    Separate from `serve` so the tests can drive the same app the user gets.
+    Separate from `serve` so the tests can drive the same app the user gets. They reach it
+    through an in-process transport rather than a socket, which is why the host allow-list is
+    a parameter; the real one is checked against a real server in tests/test_app_pages.py.
     """
     from .pages import export, home, settings, step, workspace
 
     for page in (home, workspace, step, export, settings):
         page.register()
-    _register_routes()
+    _register_routes(allowed_hosts or LOCAL_HOSTS)
 
 
 def serve(project: str | None = None, port: int = DEFAULT_PORT, open_browser: bool = True,
@@ -134,8 +177,11 @@ def serve(project: str | None = None, port: int = DEFAULT_PORT, open_browser: bo
     """Run the app, or hand over to the copy that is already running."""
     state, data = occupant(port)
     if state == OURS:
-        if data and data.get("version") != __version__:
-            print(f"Replacing the running toolkit {data.get('version')} with {__version__}.")
+        running = (data or {}).get("version", "")
+        # Only step aside for something newer. An old copy in another terminal must not evict
+        # a server that has just been updated.
+        if running and _older(running, __version__):
+            print(f"Replacing the running toolkit {running} with {__version__}.")
             _ask_to_quit(port)
         else:
             print(f"The toolkit is already running — opening {url(port)}")

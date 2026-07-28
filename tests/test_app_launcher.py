@@ -31,7 +31,19 @@ def test_the_server_is_detached_with_its_output_redirected():
     assert script.rstrip().endswith("end run")
     body = [line for line in script.splitlines() if "do shell script" in line][0]
     assert f"> '{LOG}' 2>&1 &" in body
-    assert f"/bin/mkdir -p '{LOG.parent}'" in body
+    # the log folder is made before the redirect needs it, not inside the redirected group
+    assert body.index(f"/bin/mkdir -p '{LOG.parent}'") < body.index(f"> '{LOG}'")
+
+
+def test_the_launcher_waits_and_reports_a_server_that_never_starts():
+    """A double-click that silently does nothing is the one failure this audience cannot
+    recover from, so the applet waits for a sign of life and shows the log if none comes."""
+    script = launcher.applescript(COMMAND, LOG)
+    body = [line for line in script.splitlines() if "do shell script" in line][0]
+    assert "/api/health" in body and "transcript-toolkit" in body
+    assert f"/usr/bin/tail -15 '{LOG}' >&2" in body
+    assert "exit 1" in body
+    assert str(LOG) in script.split("display alert")[1]         # and where to read it in full
 
 
 def test_paths_are_quoted_for_the_shell():
@@ -46,7 +58,7 @@ def test_a_chosen_port_is_baked_in():
 
 def test_failure_is_shown_to_the_user_not_swallowed():
     script = launcher.applescript(COMMAND, LOG)
-    assert "on error errMsg number errNum" in script
+    assert "on error errMsg" in script
     assert "display alert" in script
 
 

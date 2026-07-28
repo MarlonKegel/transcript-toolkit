@@ -13,7 +13,7 @@ Idempotent + resumable via the per-batch cache (.toolkit/cache/label.jsonl).
 """
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from datetime import datetime, timezone
 from threading import Lock
 
@@ -26,6 +26,7 @@ from ...core.cache import JsonlAppender, cache_key, latest_records
 from ...core.config import load_step_config, require
 from ...core.console import choose_transport, reveal
 from ...core.llm import build_schema, call_llm, check_levels, openai_client
+from ...core.parallel import worker_pool
 from ...core.render import format_paragraph_full
 from ...core.sampling import load_interview_sample
 from ...core.tables import (load_clips, load_paragraphs, load_paragraphs_clipped,
@@ -322,7 +323,7 @@ def run_label(project: Project, demo: bool = False, interviews: list[str] | None
         return iid, _label_interview(iid, plans[iid], cache, lock, appender, client,
                                      cfg, instructions, fingerprint, schema)
 
-    with ThreadPoolExecutor(max_workers=int(cfg["max_workers"])) as ex:
+    with worker_pool(int(cfg["max_workers"])) as ex:
         futures = [ex.submit(work, iid) for iid in keys]
         for i, fut in enumerate(as_completed(futures), start=1):
             iid, res = fut.result()

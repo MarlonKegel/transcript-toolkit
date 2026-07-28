@@ -21,9 +21,14 @@ def workspace_page() -> None:
         if CONTEXT.project is None:
             return
         _api_key()
-        _transcripts()
-        run_panel(page_href=HREF)
-        _import_results()
+
+        @ui.refreshable
+        def body() -> None:
+            _transcripts(body.refresh)
+            _import_results()
+
+        body()
+        run_panel(on_finished=body.refresh)
 
 
 def _reopen(path: str) -> None:
@@ -129,7 +134,7 @@ def _api_key() -> None:
                  "in calls to OpenAI.").classes("text-xs opacity-60")
 
 
-def _transcripts() -> None:
+def _transcripts(refresh) -> None:
     project = CONTEXT.require_project()
     n = workspaces.transcript_count(project)
     section("Transcripts", "Word files of SYNC'd (timestamped) transcripts — one per interview, "
@@ -137,13 +142,14 @@ def _transcripts() -> None:
     with ui.card().classes("w-full"):
         ui.label(f"{n} .docx in this project" if n else "No transcripts yet.").classes("text-sm")
 
-        def receive(e) -> None:
+        async def receive(e) -> None:
             try:
-                workspaces.add_transcript(project, e.name, e.content.read())
+                workspaces.add_transcript(project, e.file.name, await e.file.read())
             except ToolkitError as err:
                 guard(err)
                 return
-            ui.notify(f"Added {e.name}", type="positive")
+            ui.notify(f"Added {e.file.name}", type="positive")
+            refresh()
 
         ui.upload(on_upload=receive, multiple=True, auto_upload=True,
                   label="Drop .docx files here").props("accept=.docx flat bordered") \

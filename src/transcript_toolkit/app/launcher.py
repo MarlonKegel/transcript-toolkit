@@ -26,6 +26,7 @@ from importlib import resources
 from pathlib import Path
 
 from ..errors import ToolkitError
+from . import DEFAULT_PORT
 
 APP_NAME = "Transcript Toolkit"
 BUNDLE_ID = "org.incite.transcript-toolkit"
@@ -61,21 +62,41 @@ def toolkit_command() -> Path:
         "then run this again.")
 
 
-def applescript(command: Path, log: Path, port: int | None = None) -> str:
-    """The launcher's whole program: start the server in the background, then quit.
+START_TIMEOUT_S = 40
 
-    Every path is single-quoted for the shell and the whole command group's output is
-    redirected — an unredirected background job would keep the launcher hanging around.
+
+def applescript(command: Path, log: Path, port: int | None = None) -> str:
+    """The launcher's whole program: start the server in the background, wait until it
+    answers, and quit — or say what went wrong.
+
+    The waiting is the important half. Backgrounding alone would make every startup failure
+    invisible: a double-click that does nothing at all, with the explanation buried in a log
+    file, is not something this app's users can recover from. So the applet asks the server
+    for a sign of life and, if none comes, shows the end of the log in a dialog.
+
+    Every path is single-quoted for the shell, and the background job's output is fully
+    redirected — otherwise the launcher would sit there waiting for a server that runs for
+    hours.
     """
     port_arg = f" --port {port}" if port else ""
-    shell = (f"{{ /bin/mkdir -p '{log.parent}'; "
-             f"'{command}' app --from-launcher{port_arg}; }} > '{log}' 2>&1 &")
+    where = f"http://127.0.0.1:{port or DEFAULT_PORT}/api/health"
+    shell = (
+        # The folder has to exist before the redirect is set up, so mkdir runs outside it.
+        f"/bin/mkdir -p '{log.parent}'; "
+        f"'{command}' app --from-launcher{port_arg} > '{log}' 2>&1 & "
+        f"n=0; while [ $n -lt {START_TIMEOUT_S} ]; do "
+        f"/usr/bin/curl -sf -m 2 '{where}' 2>/dev/null | /usr/bin/grep -q transcript-toolkit "
+        f"&& exit 0; n=$((n+1)); /bin/sleep 1; done; "
+        f"echo 'It did not start. The end of its log:' >&2; "
+        f"/usr/bin/tail -15 '{log}' >&2; exit 1"
+    )
     return (
         'on run\n'
         '\ttry\n'
         f'\t\tdo shell script "{shell}"\n'
-        '\ton error errMsg number errNum\n'
-        f'\t\tdisplay alert "{APP_NAME} could not start" message errMsg & " (" & errNum & ")"\n'
+        '\ton error errMsg\n'
+        f'\t\tdisplay alert "{APP_NAME} could not start" message errMsg & '
+        f'"\\n\\nFull log: {log}"\n'
         '\tend try\n'
         'end run\n'
     )

@@ -10,7 +10,7 @@ Idempotent + resumable via the per-call cache (.toolkit/cache/topics_{set}.jsonl
 from __future__ import annotations
 
 import json
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from datetime import datetime, timezone
 from threading import Lock
 from typing import Literal
@@ -24,6 +24,7 @@ from ...core.cache import JsonlAppender, cache_key, latest_records
 from ...core.config import load_step_config, require
 from ...core.console import choose_transport, reveal
 from ...core.llm import build_schema, call_llm, check_levels, openai_client
+from ...core.parallel import worker_pool
 from ...core.render import render_clip_plain
 from ...core.reviewdoc import document, esc
 from ...core.sampling import sample_clips_spread
@@ -303,7 +304,7 @@ def _run_clips(project: Project, cfg: dict, tset: TopicSet, sset: str, use_justi
         errs = validate_parsed(parsed, tset.ids, model_cls, justify_min, use_justify)
         return cid, parsed, from_cache, errs
 
-    with ThreadPoolExecutor(max_workers=int(cfg["max_workers"])) as ex:
+    with worker_pool(int(cfg["max_workers"])) as ex:
         futures = [ex.submit(work, row) for row in selected.itertuples()]
         for i, fut in enumerate(as_completed(futures), start=1):
             cid, parsed, from_cache, errs = fut.result()

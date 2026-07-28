@@ -7,7 +7,7 @@ the review page (diags/summarize/*.html). Idempotent + resumable via the per-cal
 """
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from datetime import datetime, timezone
 from threading import Lock
 
@@ -21,6 +21,7 @@ from ..core.config import load_step_config, require
 from ..core.console import choose_transport, reveal
 from ..core.ids import narrator_key
 from ..core.llm import build_schema, call_llm, check_levels, openai_client
+from ..core.parallel import worker_pool
 from ..core.render import render_interview
 from ..core.reviewdoc import document, esc
 from ..core.sampling import sample_keys
@@ -235,7 +236,7 @@ def _run_units(project: Project, cfg: dict, instructions: str, fingerprint: str,
             cache[ck] = record
         return u["interview_key"], summary, False
 
-    with ThreadPoolExecutor(max_workers=int(cfg["max_workers"])) as ex:
+    with worker_pool(int(cfg["max_workers"])) as ex:
         futures = [ex.submit(work, u) for u in selected]
         for i, fut in enumerate(as_completed(futures), start=1):
             key, summary, from_cache = fut.result()

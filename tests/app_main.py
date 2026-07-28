@@ -7,5 +7,7 @@ from nicegui import ui
 
 from transcript_toolkit.app.server import build
 
-build()
+# The harness talks to the app in-process as host "test", so the real allow-list
+# (which a real server enforces — see test_app_pages.py) would reject every request.
+build(allowed_hosts=["*"])
 ui.run(reload=False)

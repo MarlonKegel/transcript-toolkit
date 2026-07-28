@@ -48,21 +48,33 @@ def export_page() -> None:
                                               HREF)) \
                 .props("dense color=primary").classes("mt-2")
 
-        out = project.outputs_dir / "export.xlsx"
-        if out.exists():
+        @ui.refreshable
+        def result() -> None:
+            out = export_path(project)
+            if not out.exists():
+                return
             with ui.card().classes("w-full"):
                 ui.label("Last export").classes("text-sm font-medium")
                 ui.label(str(out)).classes("text-xs opacity-70")
                 ui.button("Show it in Finder", icon="folder_open",
                           on_click=lambda: reveal(out.parent)).props("dense flat")
 
-        run_panel(page_href=HREF)
+        result()
+        run_panel(on_finished=result.refresh)
 
 
 def configured_location_mode(project) -> str | None:
     """The workspace's configured export.locations, if it set one."""
     from ...core.config import load_root_config
     return (load_root_config(project).get("export") or {}).get("locations")
+
+
+def export_path(project):
+    """Where the spreadsheet lands — the workspace can rename it, so ask its config."""
+    from ...core.config import load_step_config
+    from ...steps.export import DEFAULT_FILENAME
+    name = load_step_config(project, "export").get("filename") or DEFAULT_FILENAME
+    return project.outputs_dir / name
 
 
 def register() -> None:

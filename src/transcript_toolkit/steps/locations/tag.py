@@ -14,7 +14,7 @@ deliverables from cache. Idempotent + resumable via .toolkit/cache/locations.jso
 """
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from datetime import datetime, timezone
 from threading import Lock
 from typing import Literal
@@ -29,6 +29,7 @@ from ...core.cache import JsonlAppender, cache_key, latest_records
 from ...core.config import load_step_config, require
 from ...core.console import choose_transport, reveal
 from ...core.llm import build_schema, call_llm, check_levels, openai_client
+from ...core.parallel import worker_pool
 from ...core.render import render_clip_plain
 from ...core.sampling import sample_clips_spread
 from ...core.tables import (load_clips, load_paragraphs, merge_subset, paragraphs_by_interview,
@@ -302,7 +303,7 @@ def _run_units(project: Project, cfg: dict, instructions: str, fingerprint: str,
             cache[u["cache_key"]] = record
         return u["clip_id"], record, False
 
-    with ThreadPoolExecutor(max_workers=int(cfg["max_workers"])) as ex:
+    with worker_pool(int(cfg["max_workers"])) as ex:
         futures = [ex.submit(work, u) for u in units]
         for i, fut in enumerate(as_completed(futures), start=1):
             cid, rec, from_cache = fut.result()

@@ -33,6 +33,7 @@ LOCATION_MODES = {
     "countries_incl_regions": "one column: direct countries plus regions mapped down to countries",
 }
 DEFAULT_LOCATION_MODE = "countries_and_regions"
+DEFAULT_FILENAME = "export.xlsx"
 
 
 def _location_mode(project: Project, override: str | None = None) -> str:
@@ -218,7 +219,7 @@ def run_export(project: Project, out: str | None = None, locations: str | None =
     if not categories_df.empty:
         _write_sheet(wb, tabs.get("categories", "Categories"), categories_df)
 
-    out_path = (project.root / out) if out else (project.outputs_dir / cfg.get("filename", "export.xlsx"))
+    out_path = (project.root / out) if out else (project.outputs_dir / cfg.get("filename", DEFAULT_FILENAME))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(out_path)
 

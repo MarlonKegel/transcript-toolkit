@@ -4,6 +4,7 @@ The pages render correctly (test_app_pages.py) and the runner works (test_app_jo
 is the join between them — that a button really starts the command it names, and that the run
 panel then shows it.
 """
+import asyncio
 import shutil
 from pathlib import Path
 
@@ -69,7 +70,7 @@ async def test_the_full_run_button_lets_the_cli_ask_about_money(user: User, open
                                                                 echo_child):
     """No --yes and no --batch: the confirmation prompt is the CLI's, and so are its figures."""
     await user.open("/step/label")
-    user.find("Run on the whole corpus").click()
+    user.find("Run on the whole collection").click()
     await settle(user)
 
     job = CONTEXT.jobs.current
@@ -159,10 +160,55 @@ async def test_a_failed_run_offers_the_step_that_was_skipped(user: User, open_wo
     """A full run with no demo behind it is refused by the CLI; the app turns that into the
     button that fixes it rather than leaving the user to read a command."""
     await user.open("/step/clip")
-    user.find("Run on the whole corpus").click()
+    user.find("Run on the whole collection").click()
     await settle(user, 6.0)
 
     job = CONTEXT.jobs.current
     assert job.state == jobs.FAILED, job.state
     await user.should_see("No demo run recorded")
     await user.should_see("Run the demo")
+
+
+def _upload_element(user: User):
+    """The page's upload box, as NiceGUI's own element."""
+    from nicegui.elements.upload import Upload
+    return list(user.find(kind=Upload).elements)[0]
+
+
+async def _drop(user: User, name: str, data: bytes) -> None:
+    """Drop a file on it exactly the way the browser does — NiceGUI's own event, its own
+    payload type. Calling a handler with a hand-made object would only prove the object."""
+    from nicegui.elements.upload_files import SmallFileUpload
+    await _upload_element(user).handle_uploads(
+        [SmallFileUpload(name=name, content_type="application/octet-stream", _data=data)])
+    await asyncio.sleep(0.3)        # the handler is async; NiceGUI runs it as a task
+
+
+@pytest.mark.asyncio
+async def test_dropping_a_transcript_puts_it_where_import_looks(user: User, open_workspace):
+    """The first thing anyone does with the app. It has to actually write the file."""
+    await user.open("/workspace")
+    await _drop(user, "Newcomer_SYNC.docx", b"pretend docx")
+    assert (open_workspace.data_dir / "Newcomer_SYNC.docx").read_bytes() == b"pretend docx"
+
+
+@pytest.mark.asyncio
+async def test_dropping_a_transcript_twice_refuses_rather_than_replaces(user: User,
+                                                                       open_workspace):
+    await user.open("/workspace")
+    await _drop(user, "Twice_SYNC.docx", b"first")
+    await _drop(user, "Twice_SYNC.docx", b"second")
+    assert (open_workspace.data_dir / "Twice_SYNC.docx").read_bytes() == b"first"
+    await user.should_see("already in this project")
+
+
+@pytest.mark.asyncio
+async def test_dropping_a_topic_list_creates_the_set(user: User, open_workspace):
+    """Uploading a topic list is the only way to make a set from inside the app."""
+    await user.open("/step/topics")
+    await user.should_see("No topic list yet")
+    await _drop(user, "collection.csv", b"name,description\nWork,About work\n")
+    assert (open_workspace.topics_dir / "collection.csv").exists()
+
+    await user.open("/step/topics")
+    await user.should_see("Run the demo")               # the set exists now

@@ -92,12 +92,12 @@ def server(workspace):
         process.kill()
 
 
-def test_health_identifies_this_app_and_version(server, workspace):
+def test_health_identifies_this_app_and_version(server):
     status, body = get(server, "/api/health")
     assert status == 200
     data = json.loads(body)
-    assert data == {"app": "transcript-toolkit", "version": __version__, "port": server,
-                    "workspace": str(workspace.root)}
+    # Nothing more: the workspace path names a person's folder and no caller needs it.
+    assert data == {"app": "transcript-toolkit", "version": __version__, "port": server}
 
 
 @pytest.mark.parametrize("path", ["/", "/workspace", "/export", "/settings",
@@ -116,7 +116,7 @@ def test_the_dashboard_names_the_next_thing_to_do(server):
 
 def test_a_step_page_offers_the_demo_first(server):
     _, body = get(server, "/step/clip")
-    assert "Run the demo" in body and "Run on the whole corpus" in body
+    assert "Run the demo" in body and "Run on the whole collection" in body
 
 
 def test_the_topics_page_explains_itself_when_there_is_no_topic_list(server):
@@ -152,6 +152,24 @@ def test_quitting_needs_the_toolkits_own_header(server):
     except urllib.error.HTTPError as e:
         assert e.code == 403
     assert get(server, "/api/health")[0] == 200          # still running
+
+
+def test_only_this_mac_can_reach_the_app(server):
+    """Without a host check, a page elsewhere could point a name at 127.0.0.1 and read the
+    review pages — which are the transcripts."""
+    request = urllib.request.Request(f"http://127.0.0.1:{server}/api/health",
+                                     headers={"Host": "somewhere-else.example"})
+    try:
+        urllib.request.urlopen(request, timeout=10)
+        pytest.fail("a request for another host was served")
+    except urllib.error.HTTPError as e:
+        assert e.code == 400
+
+
+def test_pages_refuse_to_be_framed(server):
+    """A hidden frame over a decoy page could otherwise collect the clicks that approve a run."""
+    with urllib.request.urlopen(f"http://127.0.0.1:{server}/", timeout=10) as response:
+        assert response.headers["Content-Security-Policy"] == "frame-ancestors 'none'"
 
 
 def test_a_second_start_hands_over_to_the_running_one(server, workspace):

@@ -8,6 +8,7 @@ from nicegui import app, run, ui
 from ... import __version__
 from ...core.console import reveal
 from ...errors import ToolkitError
+from .. import DEFAULT_PORT
 from ..context import CONTEXT
 from .common import guard, launch_global, run_panel, section, shell
 
@@ -20,7 +21,7 @@ def settings_page() -> None:
         _desktop_app()
         _config()
         _quit()
-        run_panel(page_href=HREF)
+        run_panel()
 
 
 def _version() -> None:
@@ -61,7 +62,7 @@ def _desktop_app() -> None:
         def install() -> None:
             from ..launcher import install_launcher
             try:
-                path = install_launcher(port=CONTEXT.port if CONTEXT.port != 8377 else None)
+                path = install_launcher(port=None if CONTEXT.port == DEFAULT_PORT else CONTEXT.port)
             except ToolkitError as e:
                 guard(e)
                 return

@@ -69,7 +69,7 @@ async def test_the_real_spend_prompt_is_recognised_and_answerable(stub_child, tm
 
 
 @pytest.mark.asyncio
-async def test_cancelling_at_the_prompt_ends_the_run(stub_child, tmp_path):
+async def test_cancelling_at_the_prompt_is_not_a_failure(stub_child, tmp_path):
     manager = jobs.JobManager()
     job = await manager.start("t", [
         "import sys\n"
@@ -83,7 +83,8 @@ async def test_cancelling_at_the_prompt_ends_the_run(stub_child, tmp_path):
     await reaches(job, jobs.WAITING)
     manager.answer("n")
     await finish(job)
-    assert job.state == jobs.FAILED and job.error == "Aborted."
+    # The CLI reports a decline the same way it reports a problem; the app must not.
+    assert job.state == jobs.CANCELLED and job.error == ""
 
 
 @pytest.mark.asyncio
@@ -148,6 +149,32 @@ async def test_answering_when_nothing_is_waiting_is_refused(stub_child, tmp_path
         manager.answer("y")
     with pytest.raises(ToolkitError, match="Nothing is running"):
         await manager.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_run_that_cannot_start_does_not_block_every_later_one(stub_child, tmp_path):
+    """If the workspace folder has gone, spawning fails. Without clearing the slot the app
+    would answer "still running" for the rest of the session."""
+    manager = jobs.JobManager()
+    with pytest.raises(ToolkitError, match="Could not start"):
+        await manager.start("t", ["print(1)"], tmp_path / "not-there", with_project=False)
+    assert not manager.busy
+
+    job = await manager.start("t", ["print('fine')"], tmp_path, with_project=False)
+    await finish(job)
+    assert job.state == jobs.SUCCEEDED
+
+
+def test_nothing_new_means_nothing_to_redraw():
+    """A page redraws for things that add no output — a question arriving, the run ending. If
+    `since` answered those with the whole buffer, the run would be printed again beneath
+    itself."""
+    job = jobs.Job(id=1, title="t", command="c", workspace=Path("/tmp"), started_at=0.0)
+    job.add_line("one")
+    job.add_line("two")
+    assert job.since(0) == ["one", "two"]
+    assert job.since(job.emitted) == []
+    assert job.since(job.emitted + 5) == []
 
 
 def test_new_lines_survive_the_buffer_filling_up():

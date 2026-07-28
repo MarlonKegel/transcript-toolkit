@@ -14,7 +14,7 @@ cache (.toolkit/cache/clip.jsonl).
 """
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from datetime import datetime, timezone
 from threading import Lock
 
@@ -26,6 +26,7 @@ from ...core.cache import JsonlAppender, cache_key, latest_records
 from ...core.config import load_step_config, require
 from ...core.console import confirm_or_abort, reveal
 from ...core.llm import build_schema, call_llm, check_levels, openai_client
+from ...core.parallel import worker_pool
 from ...core.render import format_paragraph_full
 from ...core.sampling import load_interview_sample
 from ...core.tables import (load_paragraphs, merge_subset, write_deliverable,
@@ -493,7 +494,7 @@ def run_clip(project: Project, demo: bool = False, interviews: list[str] | None 
         return iid, _segment_interview(iid, frames[iid], cache, lock, appender, client,
                                        cfg, instructions, fingerprint, schema)
 
-    with ThreadPoolExecutor(max_workers=int(cfg["max_workers"])) as ex:
+    with worker_pool(int(cfg["max_workers"])) as ex:
         futures = [ex.submit(work, iid) for iid in keys]
         for i, fut in enumerate(as_completed(futures), start=1):
             iid, res = fut.result()

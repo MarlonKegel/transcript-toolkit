@@ -138,6 +138,7 @@ def set_api_key(project: Project, key: str) -> None:
     if not replaced:
         out.append(f"{ENV_KEY}={key}")
     path.write_text("\n".join(out) + "\n")
+    path.chmod(0o600)          # a billable credential: readable by its owner and nobody else
 
 
 # --- transcripts ---------------------------------------------------------------------------
@@ -149,6 +150,9 @@ def add_transcript(project: Project, filename: str, data: bytes) -> Path:
         raise ToolkitError(f"{name} is not a .docx file. Transcripts must be Word documents.")
     project.data_dir.mkdir(parents=True, exist_ok=True)
     dest = project.data_dir / name
+    if dest.exists():
+        raise ToolkitError(f"{name} is already in this project. Remove or rename the old one "
+                           f"first — replacing a transcript silently would be worse.")
     dest.write_bytes(data)
     return dest
 

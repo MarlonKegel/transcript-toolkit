@@ -32,11 +32,13 @@ class AppContext:
 
     def topic_sets(self) -> list[str]:
         """Topic sets available in the workspace: every spreadsheet in topics/, plus anything
-        already named in config.yaml."""
+        already named in config.yaml. `available_sets` wants the topics section, not the whole
+        file — passing the root config quietly hides every configured-but-not-discovered set."""
         from ..core.config import load_root_config
         from ..steps.topics.taxonomy import available_sets
         project = self.require_project()
-        return available_sets(project, load_root_config(project))
+        topics = load_root_config(project).get("topics") or {}
+        return available_sets(project, topics)
 
 
 CONTEXT = AppContext()

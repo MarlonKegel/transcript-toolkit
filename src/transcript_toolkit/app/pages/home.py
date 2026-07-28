@@ -10,6 +10,21 @@ from ..workspaces import has_api_key, transcript_count
 from .common import guard, section, shell
 
 
+def _ran_fully(status: dict, step: content.Step, set_name: str | None) -> bool:
+    """Whether the step has been run over everything.
+
+    Read from the run the step recorded, not from a file on disk: `locations tag` records its
+    full run, but the file `toolkit status` counts as the locations deliverable is written by
+    `locations map`, one command later. Judging by the file alone would keep telling someone
+    to run the expensive step they just paid for.
+    """
+    try:
+        key = content.step_key(step, set_name)
+    except ValueError:
+        return False
+    return bool(status["steps"].get(key, {}).get("full"))
+
+
 def _step_state(status: dict, step: content.Step, set_name: str | None) -> tuple[str, str]:
     """(word, colour) for one step, read off `toolkit status`."""
     try:
@@ -17,10 +32,9 @@ def _step_state(status: dict, step: content.Step, set_name: str | None) -> tuple
     except ValueError:
         return "no topic list yet", "grey"
     record = status["steps"].get(key, {})
-    done = step.deliverable in {d.split(":")[0] for d in status["deliverables"]}
-    if record.get("full") and done:
-        return "run on the whole corpus", "green"
-    if done:
+    if record.get("full"):
+        return "run on everything", "green"
+    if step.deliverable in {d.split(":")[0] for d in status["deliverables"]}:
         return "partly run", "teal"
     if record.get("demo"):
         return "demo reviewed", "blue"
@@ -41,11 +55,19 @@ def next_action(status: dict, project) -> tuple[str, str, str]:
                 "reads.", "/workspace")
     if status.get("import_stale"):
         return ("Import again", "The transcripts changed since the last import.", "/workspace")
+    sets = _topic_sets_or_empty()
     for step in content.STEPS:
-        done = step.deliverable in {d.split(":")[0] for d in status["deliverables"]}
-        if not done:
+        set_name = sets[0] if (step.per_set and sets) else None
+        if not _ran_fully(status, step, set_name):
             return (f"Run {step.title.lower()}", step.blurb, f"/step/{step.slug}")
     return ("Build the spreadsheet", "Every step has run — export what you have.", "/export")
+
+
+def _topic_sets_or_empty() -> list[str]:
+    try:
+        return CONTEXT.topic_sets()
+    except ToolkitError:
+        return []
 
 
 def home() -> None:

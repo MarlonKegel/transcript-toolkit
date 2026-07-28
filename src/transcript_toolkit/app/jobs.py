@@ -19,6 +19,8 @@ The child gets a pseudo-terminal rather than a pipe. Two reasons, both load-bear
 from __future__ import annotations
 
 import asyncio
+import codecs
+import errno
 import os
 import pty
 import signal
@@ -37,11 +39,12 @@ from . import content
 CHILD_COMMAND = [sys.executable, "-m", "transcript_toolkit.cli"]
 
 MAX_LOG_LINES = 5000            # a corpus run prints a few thousand lines; keep the tail
-MAX_HISTORY = 10
 DRAIN_AFTER_EXIT_S = 5.0        # bounded wait for the last output after the child exits
-SIGKILL_AFTER_S = 30.0          # a step that ignores SIGINT for this long is stuck
+SIGKILL_AFTER_S = 120.0         # longer than any single call can take, so Ctrl-C gets its chance
+UNKNOWN_PROMPT_AFTER_S = 3.0    # an unfinished line this old, with nothing else arriving, is a question
 
-RUNNING, WAITING, SUCCEEDED, FAILED, STOPPED = "running", "waiting", "succeeded", "failed", "stopped"
+RUNNING, WAITING, SUCCEEDED = "running", "waiting", "succeeded"
+FAILED, STOPPED, CANCELLED = "failed", "stopped", "cancelled"
 LIVE_STATES = (RUNNING, WAITING)
 
 
@@ -62,16 +65,25 @@ class Job:
     error: str = ""                     # the CLI's own error text, when it failed
     revision: int = 0                   # bumped on every change, so a page knows to redraw
     emitted: int = 0                    # lines ever written, including ones aged out of `lines`
+    pending: str = ""                   # output with no newline yet — usually a question
+    pending_at: float = 0.0             # when that unfinished line last changed
 
     def add_line(self, line: str) -> None:
         self.lines.append(line)
         self.emitted += 1
 
     def since(self, seen: int) -> list[str]:
-        """Lines written after the caller last looked. A long run drops its oldest lines, so
-        pages count from `emitted`, not from the length of the buffer."""
+        """Lines written since the caller last looked.
+
+        Counted from `emitted` rather than from the buffer's length, because a long run drops
+        its oldest lines. Nothing new means nothing to send: a page redraws for reasons that
+        add no output (a question arriving, the run ending), and returning the buffer then
+        would print the whole run again underneath itself.
+        """
         missed = self.emitted - max(seen, 0)
-        return list(self.lines)[-missed:] if 0 < missed <= len(self.lines) else list(self.lines)
+        if missed <= 0:
+            return []
+        return list(self.lines)[-missed:] if missed <= len(self.lines) else list(self.lines)
 
     @property
     def live(self) -> bool:
@@ -88,6 +100,14 @@ class Job:
         """Buttons for the prompt it is blocked on (None when not blocked or unrecognised)."""
         return content.answers_for(self.prompt) if self.state == WAITING else None
 
+    def unanswered_question(self) -> str:
+        """An unfinished line that has sat still while nothing else arrived — something is
+        waiting for an answer the app has no button for. Rendering it (with a plain text box)
+        is the difference between a strange question and a silent hang."""
+        if not self.live or self.state == WAITING or not self.pending:
+            return ""
+        return self.pending if time.time() - self.pending_at > UNKNOWN_PROMPT_AFTER_S else ""
+
 
 class JobManager:
     """One job at a time, server-side, so a job outlives the browser tab that started it.
@@ -100,11 +120,10 @@ class JobManager:
 
     def __init__(self) -> None:
         self.current: Job | None = None
-        self.history: deque[Job] = deque(maxlen=MAX_HISTORY)
         self._next_id = 1
         self._proc: asyncio.subprocess.Process | None = None
         self._master_fd: int | None = None
-        self._pending = ""              # output not yet terminated by a newline: the prompt
+        self._decoder = None            # one decoder per job: characters can straddle reads
         self._eof = asyncio.Event()
         self._killer: asyncio.Task | None = None
 
@@ -124,8 +143,7 @@ class JobManager:
                   workspace=workspace, started_at=time.time(), href=href)
         self._next_id += 1
         self.current = job
-        self.history.appendleft(job)
-        self._pending = ""
+        self._decoder = codecs.getincrementaldecoder("utf-8")("replace")
         self._eof = asyncio.Event()
 
         full_argv = [*argv, "--project", str(workspace)] if with_project else list(argv)
@@ -136,6 +154,17 @@ class JobManager:
                 stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
                 cwd=str(workspace), env=self._child_env(),
             )
+        except OSError as e:
+            # Nothing was spawned, so nothing will ever finish this job. Clearing it matters:
+            # a job left in `running` would make the app refuse every later run as "still
+            # running" and refuse to quit, with no way out but killing the server from a
+            # terminal. The real trigger is a project folder renamed or moved in Finder.
+            os.close(master_fd)
+            self.current = None
+            raise ToolkitError(
+                f"Could not start {content.display_command(argv)}: {e}\n"
+                f"If the project folder was moved or renamed, open it again on the Workspace "
+                f"page.") from e
         finally:
             os.close(slave_fd)          # the child holds the only copy now; we read the master
 
@@ -162,30 +191,35 @@ class JobManager:
             data = os.read(fd, 65536)
         except BlockingIOError:
             return
-        except OSError:
-            data = b""      # EIO: on Linux this is how a pty reports that the child let go
+        except OSError as e:
+            if e.errno != errno.EIO:    # EIO is how a pty says the child let go; nothing else is
+                raise
+            data = b""
         if not data:
             self._close_reader()
             self._eof.set()
             return
-        self._absorb(data.decode("utf-8", "replace"))
+        self._absorb(self._decoder.decode(data))
 
     def _absorb(self, text: str) -> None:
         job = self.current
         if job is None:
             return
-        # A terminal ends lines with \r\n, and a step's progress counter may rewrite one line
-        # with a bare \r. Both become plain lines here.
-        self._pending += text.replace("\r\n", "\n").replace("\r", "\n")
-        *complete, self._pending = self._pending.split("\n")
+        # A terminal writes \r\n; normalise after appending, so a boundary falling between the
+        # two does not leave a stray blank line.
+        pending = (job.pending + text).replace("\r\n", "\n").replace("\r", "\n")
+        *complete, pending = pending.split("\n")
         for line in complete:
             job.add_line(line)
+        if pending != job.pending:
+            job.pending, job.pending_at = pending, time.time()
 
-        # `input()` writes its prompt without a newline, so an unterminated tail is either a
-        # question or output still arriving. Only a recognised question changes the state.
+        # `input()` writes its prompt without a newline, so an unfinished tail is either a
+        # question or output still arriving. Only a recognised question changes the state;
+        # an unrecognised one surfaces later through `Job.unanswered_question`.
         if job.state in LIVE_STATES:
-            if content.answers_for(self._pending):
-                job.state, job.prompt = WAITING, self._pending
+            if content.answers_for(pending):
+                job.state, job.prompt = WAITING, pending
             elif job.state == WAITING:
                 job.state, job.prompt = RUNNING, ""
         job.revision += 1
@@ -205,9 +239,9 @@ class JobManager:
         except asyncio.TimeoutError:
             pass
         self._close_reader()
-        if self._pending:
-            job.add_line(self._pending)
-            self._pending = ""
+        if job.pending:
+            job.add_line(job.pending)
+            job.pending = ""
 
         if self._killer is not None:
             self._killer.cancel()
@@ -219,17 +253,30 @@ class JobManager:
         job.state = _classify(returncode)
         if job.state == FAILED:
             job.error = _error_text(job.lines)
+            if content.is_cancellation(job.error):
+                # Declining to spend money is a decision, not a fault, even though the CLI
+                # reports it the same way it reports a problem.
+                job.state, job.error = CANCELLED, ""
         job.revision += 1
         self._proc = None
 
     # --- talking back ---------------------------------------------------------------------
     def answer(self, text: str) -> None:
-        """Type a line into the running command (the answer to its prompt)."""
-        if self._master_fd is None or self.current is None or not self.current.live:
+        """Type a line into the running command — the answer to what it asked.
+
+        Only while it is actually waiting: the panel redraws on a timer, so the buttons stay
+        clickable for a moment after the first click, and a second answer would sit in the
+        terminal's buffer and silently pre-answer the next question.
+        """
+        job = self.current
+        if self._master_fd is None or job is None or not job.live or not job.pending:
             raise ToolkitError("That command is no longer waiting for an answer.")
-        os.write(self._master_fd, (text + "\n").encode())
-        self.current.state, self.current.prompt = RUNNING, ""
-        self.current.revision += 1
+        job.state, job.prompt, job.pending = RUNNING, "", ""
+        job.revision += 1
+        try:
+            os.write(self._master_fd, (text + "\n").encode())
+        except OSError as e:
+            raise ToolkitError("That command is no longer waiting for an answer.") from e
 
     async def stop(self) -> None:
         """Ctrl-C the running command. Safe by design: every step caches each finished call,
@@ -244,9 +291,12 @@ class JobManager:
         self._killer = asyncio.create_task(self._kill_if_stuck(proc, job))
 
     async def _kill_if_stuck(self, proc: asyncio.subprocess.Process, job: Job) -> None:
+        """A last resort. A step finishes the call it is in the middle of before it can act on
+        Ctrl-C, so the wait has to be longer than one call can take."""
         await asyncio.sleep(SIGKILL_AFTER_S)
         if proc.returncode is None:
-            job.add_line(f"--- no response after {SIGKILL_AFTER_S:.0f}s, forcing it to quit ---")
+            job.add_line(f"--- still going {SIGKILL_AFTER_S:.0f}s after Ctrl-C; closing it down "
+                         f"(finished calls are still saved) ---")
             job.revision += 1
             proc.kill()
 
