@@ -108,3 +108,14 @@ async def test_the_dashboard_points_at_the_first_thing_to_do(user: User, open_wo
     await user.open("/")
     await user.should_see("Add your OpenAI key")
     await user.should_see("Clip")
+
+
+@pytest.mark.asyncio
+async def test_with_no_workspace_open_every_page_leads_to_the_workspace_page(user: User,
+                                                                            monkeypatch):
+    """First run: the app has nothing open, so wherever someone lands they are taken to the
+    page that gets them started."""
+    monkeypatch.setattr(CONTEXT, "project", None)
+    for path in ("/", "/step/clip", "/export"):
+        await user.open(path)
+        await user.should_see("Start a new project")

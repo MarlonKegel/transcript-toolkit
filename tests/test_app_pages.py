@@ -142,6 +142,18 @@ def test_the_diags_route_cannot_be_walked_out_of(server):
         assert status == 404, attempt
 
 
+def test_quitting_needs_the_toolkits_own_header(server):
+    """A web page the user happens to have open must not be able to stop a corpus run: a
+    cross-origin POST cannot carry a custom header."""
+    request = urllib.request.Request(f"http://127.0.0.1:{server}/api/quit", method="POST")
+    try:
+        urllib.request.urlopen(request, timeout=10)
+        pytest.fail("an unmarked POST was accepted")
+    except urllib.error.HTTPError as e:
+        assert e.code == 403
+    assert get(server, "/api/health")[0] == 200          # still running
+
+
 def test_a_second_start_hands_over_to_the_running_one(server, workspace):
     """Double-clicking the launcher again must not start a second server."""
     result = subprocess.run(

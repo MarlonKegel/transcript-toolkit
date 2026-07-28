@@ -15,6 +15,9 @@ import webbrowser
 from importlib import resources
 from pathlib import Path
 
+from fastapi import HTTPException, Request
+from fastapi.responses import FileResponse
+
 from .. import __version__
 from ..errors import ToolkitError
 from ..project import find_project
@@ -84,8 +87,6 @@ def _resolve_workspace(explicit: str | None):
 
 
 def _register_routes() -> None:
-    from fastapi import HTTPException, Request
-    from fastapi.responses import FileResponse
     from nicegui import app
 
     @app.get("/api/health")
