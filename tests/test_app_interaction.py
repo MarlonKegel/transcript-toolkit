@@ -119,3 +119,50 @@ async def test_with_no_workspace_open_every_page_leads_to_the_workspace_page(use
     for path in ("/", "/step/clip", "/export"):
         await user.open(path)
         await user.should_see("Start a new project")
+
+
+@pytest.mark.asyncio
+async def test_a_run_survives_the_page_being_left_and_come_back_to(user: User, open_workspace,
+                                                                  monkeypatch):
+    """The headline of the whole design: the run lives on the server, not in the tab. Close the
+    window mid-run, come back, and it is still going with its output intact."""
+    import sys
+    monkeypatch.setattr(jobs, "CHILD_COMMAND", [sys.executable, "-u", "-c", (
+        "import time\n"
+        "print('halfway through something long')\n"
+        "time.sleep(20)\n")])
+
+    await user.open("/step/clip")
+    user.find("Run the demo").click()
+    await settle(user)
+    job = CONTEXT.jobs.current
+    assert job.live
+
+    await user.open("/export")                     # wander off
+    await user.open("/step/clip")                  # and come back
+    await settle(user)
+
+    assert CONTEXT.jobs.current is job             # the same run, not a new one
+    assert job.live
+    await user.should_see("halfway through something long")
+    await user.should_see("Stop")
+
+    await CONTEXT.jobs.stop()
+    while job.live:
+        import asyncio
+        await asyncio.sleep(0.05)
+    assert job.state == jobs.STOPPED
+
+
+@pytest.mark.asyncio
+async def test_a_failed_run_offers_the_step_that_was_skipped(user: User, open_workspace):
+    """A full run with no demo behind it is refused by the CLI; the app turns that into the
+    button that fixes it rather than leaving the user to read a command."""
+    await user.open("/step/clip")
+    user.find("Run on the whole corpus").click()
+    await settle(user, 6.0)
+
+    job = CONTEXT.jobs.current
+    assert job.state == jobs.FAILED, job.state
+    await user.should_see("No demo run recorded")
+    await user.should_see("Run the demo")
