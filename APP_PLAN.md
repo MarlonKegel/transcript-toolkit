@@ -568,14 +568,30 @@ a simple toolkit icon with the company logo on it somewhere.* He wants **10 genu
 different options**, then he picks and we refine.
 
 - **Company logo: `/home/mkegel/projects/incite/brand/incite-logo.png`** (uploaded by scp
-  2026-07-29; 396×396 RGBA). It is a square signet: field `#2A3E55` (dark navy), numeral "1"
-  in `#E7DFCC` (cream) — a plain stem with a diagonal flag at the top left, no base serif.
-  Deliberately kept OUT of the public repo; only the finished app icon goes in.
-**Everything is written and waiting on one thing: the OpenAI key in
-`~/projects/incite/transcript_toolkit/.env` answers `400 billing_hard_limit_reached`.** That is
-the account's configured spend cap (platform.openai.com → Settings → Limits / Billing), not a
-rate limit and not a bad request — the call itself is well-formed. Raise the cap or add credit,
-then run the three commands below; nothing else needs deciding.
+  2026-07-29; 396×396 RGBA). It is a square signet: field `#2A3E55` (dark navy), a capital
+  letter **"I"** — for Incite — in `#E7DFCC` (cream): a plain upright bar with a 45°-cut flag
+  at the top left, no crossbars, no serifs. Deliberately kept OUT of the public repo; only the
+  finished app icon goes in.
+**Everything is written and waiting on one thing: every billable OpenAI call from this machine
+is refused.** Diagnosed 2026-07-29, and it is not the icon code:
+
+| probe | old `OPENAI_API_KEY` | new `ICON_API_KEY` |
+|---|---|---|
+| `models.list()` (free) | **OK, 143 models** | — (key has no list permission) |
+| `responses.create` gpt-5.4-mini | 429 `insufficient_quota` | 429 `insufficient_quota` |
+| `images.generate` gpt-image-2 | 400 `billing_hard_limit_reached` | 400 `billing_hard_limit_reached` |
+| `images.generate` gpt-image-1 | 400 `billing_hard_limit_reached` | 400 `billing_hard_limit_reached` |
+
+Auth is valid (the free endpoint works), so it is not the key, the key's permissions, the
+endpoint, or the model — **plain text generation is refused too**. The org's July spend was
+$57.94 of a $5,000 budget, so the block is below the org budget: most likely a **per-project
+budget** on the project both `sk-proj-` keys belong to (platform.openai.com → Settings → your
+project → Limits), or an empty prepaid credit balance (Settings → Organization → Billing),
+which is what `insufficient_quota` classically means. Clear that, then run the three commands
+below; nothing else needs deciding.
+
+**Note the mark is a capital letter "I"** (for Incite), not the numeral 1 — the prompts say so
+explicitly, since a model told "1" draws a different glyph.
 
 ```sh
 cd ~/projects/incite/brand
