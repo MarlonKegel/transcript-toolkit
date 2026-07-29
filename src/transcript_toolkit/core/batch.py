@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..errors import ToolkitError
+from .llm import billing_errors_explained
 
 ENDPOINT = "/v1/responses"
 RUNNING = ("validating", "in_progress", "finalizing")
@@ -84,6 +85,13 @@ def run_batch(client, units: list[dict], batch_dir: Path, poll_interval_s: float
     results = {custom_id: (parsed_json, usage)}; failures = [(custom_id, error_text), ...]."""
     if not units:
         return {}, []
+    with billing_errors_explained():     # submitting a batch is billable, and can be refused
+        return _run_batch(client, units, batch_dir, poll_interval_s, max_total_wait_s, metadata)
+
+
+def _run_batch(client, units: list[dict], batch_dir: Path, poll_interval_s: float,
+               max_total_wait_s: float, metadata: dict | None,
+               ) -> tuple[dict[str, tuple[dict, dict]], list[tuple[str, str]]]:
     lines = [build_request_line(u) for u in sorted(units, key=lambda u: u["custom_id"])]
     fp = hashlib.sha256("\n".join(lines).encode()).hexdigest()[:12]
     batch_dir.mkdir(parents=True, exist_ok=True)
