@@ -13,7 +13,9 @@ demo "stale"** — the next full run will ask you to demo and review again. That
 
 ```yaml
 project:
-  name: "..."                     # shown in `toolkit status` and the export
+  name: "..."                     # shown in `toolkit status`, the app and the export.
+                                  # Set by `toolkit init` from the folder name (or --name);
+                                  # edit it here to rename the project without moving it.
 
 import:
   interviewer_labels: [Q]         # speaker labels used by the interviewer

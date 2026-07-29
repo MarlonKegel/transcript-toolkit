@@ -1,7 +1,46 @@
 import pytest
 
 from transcript_toolkit.errors import ToolkitError
-from transcript_toolkit.project import find_project, init_project, reset_prompt
+from transcript_toolkit.project import (display_name, find_project, folder_name, init_project,
+                                        reset_prompt)
+
+
+# --- the project's two names -----------------------------------------------------------------
+#
+# One is typed and the other follows. A project called "My Oral History Project" in a folder
+# called `pilot2` is what made the app show a name nobody had ever entered.
+
+@pytest.mark.parametrize("name, folder", [
+    ("Anderson Family Oral History", "anderson-family-oral-history"),
+    ("  Smith/Jones: Voices, 2026  ", "smith-jones-voices-2026"),
+    ("My Oral History Project", "my-oral-history-project"),
+    ("OSF", "osf"),
+    ("a" * 3, "aaa"),
+])
+def test_a_name_becomes_a_folder_you_could_type(name, folder):
+    assert folder_name(name) == folder
+
+
+@pytest.mark.parametrize("bad", ["", "   ", "///", "...", "-", "!!!"])
+def test_a_name_with_nothing_in_it_is_refused(bad):
+    with pytest.raises(ToolkitError, match="no letters or numbers"):
+        folder_name(bad)
+
+
+@pytest.mark.parametrize("folder", ["my-archive", "anderson-family-oral-history", "osf"])
+def test_a_folder_name_survives_the_round_trip(folder):
+    assert folder_name(display_name(folder)) == folder
+
+
+def test_init_writes_the_name_into_the_config(tmp_path):
+    from transcript_toolkit.core.config import project_name
+
+    given = init_project(str(tmp_path / "anywhere"), name="Anderson Family Oral History")
+    assert project_name(given) == "Anderson Family Oral History"
+
+    # no name given: it comes from the folder, so the two still agree
+    derived = init_project(str(tmp_path / "my-archive"))
+    assert project_name(derived) == "My Archive"
 
 
 def test_init_creates_workspace(tmp_path):

@@ -55,6 +55,16 @@ toolkit init my-archive
 cd my-archive
 ```
 
+The project is then called "My Archive" wherever a name is shown. To choose the name instead
+and let the folder follow from it, give `--name`:
+
+```sh
+cd ~/Documents
+toolkit init --name "Anderson Family Oral History"    # -> anderson-family-oral-history/
+```
+
+Either way there is only ever one name to keep track of.
+
 This creates the project folder with everything in place: `config.yaml` (your settings),
 `prompts/` (editable prompt texts), `topics/` (your topic lists go here), `data/` (transcripts
 go here), `outputs/` (results appear here), `diags/` (review files appear here).

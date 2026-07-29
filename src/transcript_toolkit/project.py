@@ -87,6 +87,49 @@ def find_project(explicit: str | None = None, start: Path | None = None) -> Proj
                        "or create one with: toolkit init <dir>")
 
 
+# --- the project's two names -----------------------------------------------------------------
+#
+# A project has a name people read ("Anderson Family Oral History") and a folder it lives in
+# (`anderson-family-oral-history`). Only ever ONE of them is typed: the app asks for the name and
+# derives the folder, `toolkit init <dir>` takes the folder and derives the name. Two independent
+# names is how you end up with a folder called `pilot2` displayed everywhere as "My Oral History
+# Project".
+
+FOLDER_SAFE = "abcdefghijklmnopqrstuvwxyz0123456789-._"
+
+
+def folder_name(name: str) -> str:
+    """The folder a project called `name` lives in: lower case, spaces as dashes."""
+    slug = "".join(c if c in FOLDER_SAFE else "-"
+                   for c in name.strip().lower().replace(" ", "-"))
+    while "--" in slug:
+        slug = slug.replace("--", "-")
+    slug = slug.strip("-.")
+    if not slug:
+        raise ToolkitError(f"{name!r} has no letters or numbers in it, so there is no folder "
+                           f"name to make from it. Give the project a name you could type.")
+    return slug
+
+
+def display_name(folder: str) -> str:
+    """The name shown for a project in a folder called `folder` — the reverse of `folder_name`,
+    for workspaces made on the command line where the folder is what was typed."""
+    words = [w for w in folder.replace("_", "-").split("-") if w]
+    return " ".join(w[:1].upper() + w[1:] for w in words) or folder
+
+
+def _config_with_name(text: str, name: str) -> str:
+    """The scaffold config, with the project's name written into it."""
+    import re
+
+    new, count = re.subn(r"(?m)^(\s*name:).*$", lambda m: f"{m.group(1)} {json.dumps(name)}",
+                         text, count=1)
+    if count != 1:
+        raise ToolkitError("The packaged config.yaml template has no project name line — "
+                           "this build of the toolkit is broken; reinstall it.")
+    return new
+
+
 def _copy_tree(src: resources.abc.Traversable, dest: Path) -> list[str]:
     """Copy a packaged resource directory's files into dest (flat per directory, recursive).
     Returns the copied filenames (relative to dest)."""
@@ -101,7 +144,9 @@ def _copy_tree(src: resources.abc.Traversable, dest: Path) -> list[str]:
     return copied
 
 
-def init_project(dest: str) -> Project:
+def init_project(dest: str, name: str | None = None) -> Project:
+    """Create a workspace at `dest`. `name` is what the project is called in config.yaml and
+    everywhere it is shown; without one it is derived from the folder."""
     root = Path(dest).expanduser().resolve()
     project = Project(root)
     if project.exists():
@@ -115,7 +160,8 @@ def init_project(dest: str) -> Project:
         d.mkdir(parents=True, exist_ok=True)
 
     scaffold = _defaults() / "scaffold"
-    (project.config_path).write_bytes((scaffold / "config.yaml").read_bytes())
+    project.config_path.write_text(_config_with_name(
+        (scaffold / "config.yaml").read_text(), name or display_name(root.name)))
     _copy_tree(scaffold / "advanced", project.advanced_dir)
     _copy_tree(scaffold / "topics", project.topics_dir)
     (project.root / ".gitignore").write_bytes((scaffold / "gitignore.template").read_bytes())

@@ -11,6 +11,9 @@ toolkit sample --n 8                 # a bigger sample
 toolkit sample --seed 3              # a different draw
 ```
 
+Every demo you run from then on covers the whole sample, so a bigger sample costs
+proportionally more each time you try a step out. Five is the default for that reason.
+
 ## Choosing the interviews yourself
 
 **You do not have to accept a random draw.** Name the interviews you want:
@@ -19,9 +22,19 @@ toolkit sample --seed 3              # a different draw
 toolkit sample --interviews ramos_ana,kramer_larry,acemoglu_daron
 ```
 
+Or name the ones you care about and let the rest be drawn for you — `--n` is the size of the
+whole sample, so this gives those two plus three others:
+
+```sh
+toolkit sample --n 5 --interviews ramos_ana,kramer_larry
+```
+
 Use the interview ids exactly as `toolkit import` printed them (lowercase, underscores — the
 filename with its suffixes stripped). An unknown id fails immediately and lists the valid ones,
 so a typo can't silently give you a different sample.
+
+In the app this is the **Demo interviews** section of the workspace page: the same choice, with
+the interview list in front of you.
 
 This is worth doing when the random five aren't representative — pick a short interview and a
 long one, a single-session and a multi-session narrator, or the transcript you know is messiest.

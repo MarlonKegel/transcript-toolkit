@@ -80,6 +80,28 @@ def _running_banner(active: str) -> None:
     ui.timer(1.0, tick)
 
 
+def info(text: str) -> None:
+    """A small `i` that explains something on hover, for the things a first-time user will
+    wonder about but a regular one should not have to read every time."""
+    with ui.icon("info").classes("opacity-50 cursor-help").props("size=1rem"):
+        ui.tooltip(text).classes("max-w-sm text-xs whitespace-pre-line")
+
+
+TERMINAL_EXPLAINER = (
+    "This app is a window onto a command-line tool. Everything you click here runs the same "
+    "`toolkit` command a person would type in Terminal, on this Mac — nothing is sent anywhere "
+    "except the calls to OpenAI.\n\n"
+    "What you see below is that command's own output, exactly as Terminal would show it: the "
+    "line at the top is the command being run, and the black panel is what it printed.\n\n"
+    "You never have to open this. It is here so you can see what is happening, and so you can "
+    "copy a command out and run it yourself if you ever want to."
+)
+
+
+def explainer() -> None:
+    info(TERMINAL_EXPLAINER)
+
+
 def status_chip(text: str, colour: str) -> None:
     ui.chip(text, color=colour, text_color="white").props("dense square").classes("text-xs")
 
@@ -102,11 +124,17 @@ def run_panel(on_fix: Callable[[str], None] | None = None,
 
     with ui.card().classes("w-full") as card:
         header = ui.row().classes("items-center gap-2 w-full")
-        command = ui.code("", language="bash").classes("w-full text-xs")
-        log = ui.log(max_lines=jobs.MAX_LOG_LINES).classes(
-            "w-full h-80 text-xs font-mono bg-gray-900 text-gray-100 rounded p-2")
+        progress = ui.label().classes("text-sm")
         prompt_area = ui.column().classes("w-full gap-2")
         error_area = ui.column().classes("w-full gap-2")
+        with ui.expansion("Terminal", icon="terminal").classes("w-full"):
+            with ui.row().classes("items-center gap-1"):
+                ui.label("What the toolkit is doing on your Mac, as it does it.") \
+                    .classes("text-xs opacity-70")
+                explainer()
+            command = ui.code("", language="bash").classes("w-full text-xs")
+            log = ui.log(max_lines=jobs.MAX_LOG_LINES).classes(
+                "w-full h-80 text-xs font-mono bg-gray-900 text-gray-100 rounded p-2")
 
     def redraw(job: jobs.Job) -> None:
         icon, colour, word = STATE_LOOK[job.state]
@@ -122,6 +150,9 @@ def run_panel(on_fix: Callable[[str], None] | None = None,
                         "Safe to stop: every finished call is saved, so running this again "
                         "carries on from where it stopped.")
         command.content = f"$ {job.command}"
+        # With the terminal folded away, this is the only sign of life a run gives: its most
+        # recent line of output, in plain sight.
+        progress.set_text(_latest(job))
 
         prompt_area.clear()
         if job.state == jobs.WAITING:
@@ -209,6 +240,14 @@ def run_panel(on_fix: Callable[[str], None] | None = None,
 
     card.set_visibility(False)
     ui.timer(0.4, tick)
+
+
+def _latest(job: jobs.Job) -> str:
+    """The last thing the command said, for the one-line summary above the folded terminal."""
+    for line in reversed(list(job.lines)):
+        if line.strip():
+            return line.strip()
+    return "Starting…" if job.live else ""
 
 
 def _question_block(job: jobs.Job) -> str:

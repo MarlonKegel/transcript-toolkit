@@ -50,6 +50,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("init", parents=[common],
                        help="create a new project workspace (or restore a default prompt)")
     p.add_argument("dir", nargs="?", default=None, help="directory to create")
+    p.add_argument("--name", metavar="NAME", default=None,
+                   help="what the project is called (config.yaml project.name, shown in the app). "
+                        "Give a directory and the name is derived from it; give a name and the "
+                        "directory is derived from that.")
     p.add_argument("--reset-prompt", metavar="NAME", default=None,
                    help="restore one prompt in the current workspace to the packaged default")
     p.set_defaults(func=cmd_init)
@@ -87,7 +91,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--n", type=int, default=None, help="sample size (default 5)")
     p.add_argument("--seed", type=int, default=0, help="random seed (default 0)")
     p.add_argument("--interviews", metavar="IDS", default=None,
-                   help="comma-separated interview ids to use instead of a random draw")
+                   help="comma-separated interview ids to put in the sample. With --n, the rest "
+                        "of the sample is drawn at random from the others; without it, the "
+                        "sample is exactly these.")
     p.set_defaults(func=cmd_sample)
 
     for step, help_txt, run_fn, annotate_fn, preview_fn, preview_help in (
@@ -235,7 +241,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def cmd_init(args) -> None:
-    from .project import init_project, reset_prompt
+    from .project import folder_name, init_project, reset_prompt
 
     if args.reset_prompt is not None:
         if args.dir is not None:
@@ -243,14 +249,18 @@ def cmd_init(args) -> None:
         dest = reset_prompt(_project(args), args.reset_prompt)
         print(f"Restored default prompt: {dest}")
         return
-    if args.dir is None:
-        raise ToolkitError("Usage: toolkit init <dir>   (or: toolkit init --reset-prompt <name>)")
+    if args.dir is None and args.name is None:
+        raise ToolkitError("Usage: toolkit init <dir>   (or: toolkit init --name \"My Project\", "
+                           "or: toolkit init --reset-prompt <name>)")
     import shlex
 
-    project = init_project(args.dir)
+    # One of the two is typed and the other follows from it, so a project is never called one
+    # thing on disk and another thing on screen.
+    target = args.dir or folder_name(args.name)
+    project = init_project(target, name=args.name)
     print(f"Created workspace: {project.root}")
     print("\nNext steps:")
-    print(f"  1. Go into the workspace:  cd {shlex.quote(args.dir)}")
+    print(f"  1. Go into the workspace:  cd {shlex.quote(target)}")
     print("  2. Add your OpenAI API key to the .env file there  (on Mac: open -e .env)")
     print("  3. Drop your transcript .docx files into data/")
     print("  4. Run: toolkit import")
@@ -294,11 +304,10 @@ def cmd_import(args) -> None:
 
 
 def cmd_sample(args) -> None:
-    from .core.sampling import DEFAULT_N, draw_interview_sample
+    from .core.sampling import draw_interview_sample
 
     explicit = [s.strip() for s in args.interviews.split(",") if s.strip()] if args.interviews else None
-    sample = draw_interview_sample(_project(args), n=args.n or DEFAULT_N,
-                                   seed=args.seed, explicit=explicit)
+    sample = draw_interview_sample(_project(args), n=args.n, seed=args.seed, explicit=explicit)
     print(f"Demo sample ({len(sample)} interviews):")
     for iid in sample:
         print(f"  {iid}")

@@ -29,6 +29,11 @@ both work. The columns:
 Several topic lists? Drop in several files. `topics/collection.xlsx` and `topics/filter.csv`
 give you `--set collection` and `--set filter`, tagged independently, each with its own outputs.
 
+**In the app** this is the Topics page: write the list in the table there, or upload a
+spreadsheet. The table edits the same `topics/*.csv` file — it is checked against the rules
+above as you save it, and the first save is where you name the set. Until you name it, what you
+type is kept in `topics/example_topics.csv`, which no run will ever tag against.
+
 There is **no default set** — every `toolkit topics` command needs `--set`. Tagging a whole
 corpus against the wrong taxonomy is expensive, so the set is always named explicitly. Forget it
 and the error lists the sets you have.

@@ -18,6 +18,10 @@ class Action:
     blurb: str
     argv: tuple[str, ...]
     needs_set: bool = False
+    needs: tuple[str, ...] = ()     # deliverables it reads; without them the button is disabled
+    advanced: bool = False          # hidden under "Advanced" — most people never need it
+    explain: str = ""               # the `i` tooltip: what this is, for someone new to it
+    preview: str = ""               # renders in the app as a table: "chunks" | "batches"
 
 
 @dataclass(frozen=True)
@@ -47,12 +51,50 @@ class Step:
     followups: tuple[Action, ...] = field(default_factory=tuple)    # occasional extras
 
 
+CHUNKING_EXPLAINER = (
+    "An interview can be far longer than a model can read in one go, and quality drops well "
+    "before that limit. So a long interview is split into overlapping pieces, and each piece "
+    "is sent as its own request.\n\n"
+    "The pieces overlap: each request sees the end of the previous piece for context, but "
+    "only decides about its own part, so a clip boundary is never guessed at from half a "
+    "conversation.\n\n"
+    "Short interviews are sent whole and are not split at all. You do not have to do anything "
+    "with this — it is here so you can see what will be sent before it is."
+)
+
+BATCHING_EXPLAINER = (
+    "Labelling a clip works better when the model can see the clips on either side of it, so "
+    "clips are sent in groups rather than one at a time — an interview's clips go out as a few "
+    "requests, each carrying the clip before and after it as context.\n\n"
+    "You do not have to do anything with this. It is here so you can see how the work will be "
+    "divided up before anything is sent."
+)
+
 SAMPLE = Action(
-    slug="sample", title="Draw demo sample",
-    blurb="Pick the handful of interviews the clip and label demos run on. Drawn once, then "
+    slug="sample", title="Choose demo interviews",
+    blurb="Pick the handful of interviews the clip and label demos run on. Chosen once, then "
           "reused so demos stay comparable.",
     argv=("sample",),
 )
+
+# The app offers up to SAMPLE_MAX interviews; SAMPLE_DEFAULT_N is what the CLI draws when you
+# do not say. A test keeps the default in step with core/sampling.py — the app must not have an
+# opinion of its own about how big a demo is.
+SAMPLE_DEFAULT_N = 5
+SAMPLE_MAX_N = 10
+
+
+def sample_argv(n: int, interviews: list[str] | None = None) -> list[str]:
+    """`toolkit sample`, with a size and optionally the interviews to include.
+
+    Named interviews are always in the sample; if `n` is larger than the number named, the CLI
+    fills the rest at random (core/sampling.py). The app never does that arithmetic itself.
+    """
+    argv = [*SAMPLE.argv, "--n", str(n)]
+    if interviews:
+        argv += ["--interviews", ",".join(interviews)]
+    return argv
+
 
 IMPORT = Action(
     slug="import", title="Import transcripts",
@@ -69,10 +111,11 @@ STEPS: tuple[Step, ...] = (
         followups=(
             Action("annotate", "Re-render review pages",
                    "Rebuild the per-interview review pages from the saved clips (no API calls).",
-                   ("clip", "annotate")),
-            Action("preview", "Preview chunking",
-                   "Show how each interview will be split into chunks before any call is made.",
-                   ("clip", "preview")),
+                   ("clip", "annotate"), needs=("clips",)),
+            Action("preview", "How interviews will be split up",
+                   "See how each interview is divided before anything is sent to OpenAI.",
+                   ("clip", "preview"), advanced=True, preview="chunks",
+                   explain=CHUNKING_EXPLAINER),
         ),
     ),
     Step(
@@ -83,10 +126,11 @@ STEPS: tuple[Step, ...] = (
         followups=(
             Action("annotate", "Re-render review pages",
                    "Rebuild the per-interview review pages from the saved labels (no API calls).",
-                   ("label", "annotate")),
-            Action("preview", "Preview batching",
-                   "Show how clips will be grouped into calls before any call is made.",
-                   ("label", "preview")),
+                   ("label", "annotate"), needs=("labels",)),
+            Action("preview", "How clips will be grouped",
+                   "See how clips are grouped before anything is sent to OpenAI.",
+                   ("label", "preview"), needs=("clips",), advanced=True, preview="batches",
+                   explain=BATCHING_EXPLAINER),
         ),
     ),
     Step(
@@ -98,7 +142,7 @@ STEPS: tuple[Step, ...] = (
         followups=(
             Action("annotate", "Re-render review page",
                    "Rebuild the review page from the saved summaries (no API calls).",
-                   ("summarize", "annotate")),
+                   ("summarize", "annotate"), needs=("summaries",)),
         ),
     ),
     Step(
@@ -113,15 +157,15 @@ STEPS: tuple[Step, ...] = (
             Action("rollup", "Roll up to interview tags",
                    "Turn the per-clip scores into one set of tags per interview. Run this "
                    "after tagging the whole collection.",
-                   ("topics", "rollup"), needs_set=True),
+                   ("topics", "rollup"), needs_set=True, needs=("topics:{set}",)),
         ),
         followups=(
             Action("thresholds", "Threshold decision aid",
                    "Compare rollup thresholds side by side to choose one (no API calls).",
-                   ("topics", "thresholds"), needs_set=True),
+                   ("topics", "thresholds"), needs_set=True, needs=("topics:{set}",)),
             Action("annotate", "Re-render review pages",
                    "Rebuild the per-interview review pages from the saved tags (no API calls).",
-                   ("topics", "annotate"), needs_set=True),
+                   ("topics", "annotate"), needs_set=True, needs=("topics:{set}",)),
         ),
     ),
     Step(
@@ -133,22 +177,22 @@ STEPS: tuple[Step, ...] = (
             Action("map", "Expand regions into countries",
                    "Turn each region tag into the countries it covers, and settle on one "
                    "spelling per place. Run this after tagging the whole collection.",
-                   ("locations", "map")),
+                   ("locations", "map"), needs=("locations",)),
             Action("rollup", "Roll up to interview places",
                    "Turn the per-clip places into one set per interview.",
-                   ("locations", "rollup")),
+                   ("locations", "rollup"), needs=("locations",)),
         ),
         followups=(
             Action("thresholds", "Threshold decision aid",
                    "Compare rollup schemes side by side to choose one (no API calls).",
-                   ("locations", "thresholds")),
+                   ("locations", "thresholds"), needs=("locations",)),
             Action("annotate", "Re-render review page",
                    "Rebuild the review page from the saved tags (no API calls).",
-                   ("locations", "annotate")),
-            Action("survey", "Place-name survey (advanced)",
+                   ("locations", "annotate"), needs=("locations",)),
+            Action("survey", "Place-name survey",
                    "Offline scan of place mentions in the transcripts. Needs the optional "
                    "[survey] install; slow.",
-                   ("locations", "survey")),
+                   ("locations", "survey"), advanced=True),
         ),
     ),
 )
@@ -189,6 +233,18 @@ def action_argv(action: Action, set_name: str | None = None) -> list[str]:
             raise ValueError(f"{action.slug} needs a topic set name")
         argv += ["--set", set_name]
     return argv
+
+
+def missing_for(action: Action, deliverables: list[str], set_name: str | None = None) -> list[str]:
+    """What this action reads that is not there yet.
+
+    An action whose input does not exist can only fail, so the page disables the button and
+    says what is missing — rather than letting someone click it and read a stack of words in
+    the terminal about a step they have not run.
+    """
+    have = set(deliverables)
+    return [need.format(set=set_name or "") for need in action.needs
+            if need.format(set=set_name or "") not in have]
 
 
 def display_command(argv: list[str]) -> str:

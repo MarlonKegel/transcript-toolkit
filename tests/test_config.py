@@ -45,5 +45,11 @@ def test_require_reports_missing_keys(project):
         require({"model": None}, ["model", "reasoning"], "clip")
 
 
-def test_project_name_from_config(project):
-    assert project_name(project) == "My Oral History Project"
+def test_project_name_from_config(project, tmp_path):
+    """`init` writes the project's name into config.yaml. Given a folder and no name, the name
+    is made from the folder — the two never disagree."""
+    from transcript_toolkit.project import init_project
+
+    assert project_name(project) == "Ws"                    # the fixture's folder is `ws`
+    named = init_project(str(tmp_path / "elsewhere"), name="Anderson Family Oral History")
+    assert project_name(named) == "Anderson Family Oral History"

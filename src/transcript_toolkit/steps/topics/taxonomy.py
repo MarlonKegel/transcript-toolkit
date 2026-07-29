@@ -176,7 +176,7 @@ def slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
 
-def _read_table(path: Path) -> list[list[str]]:
+def read_table(path: Path) -> list[list[str]]:
     """Raw rows (header first) from a .csv or .xlsx — every cell stringified, deterministic."""
     suffix = path.suffix.lower()
     if suffix == ".csv":
@@ -205,13 +205,28 @@ def load_topic_set(project: Project, cfg: dict, set_name: str | None = None) -> 
     if not path.exists():
         raise ToolkitError(f"Topic set file not found: {path}")
 
-    raw = _read_table(path)
+    rows, blocks = read_topic_rows(read_table(path), path.name)
+    # TopicSet carries id and name only: the descriptions are already in taxonomy_text, which
+    # is what feeds the model and the cache key.
+    topics = [{"id": r["id"], "name": r["name"]} for r in rows]
+    return TopicSet(name=name, ids=[t["id"] for t in topics], topics=topics,
+                    taxonomy_text="\n\n".join(blocks), source=path,
+                    prompt=entry.get("prompt"))
+
+
+def read_topic_rows(raw: list[list[str]], label: str) -> tuple[list[dict], list[str]]:
+    """Validate a topic table and return ([{id, name, description}], taxonomy blocks).
+
+    Split out of `load_topic_set` so the app can check a list someone is typing against exactly
+    the rules the run will apply, and complain in exactly the same words — a topic list that the
+    editor accepted and the step then rejected would be the worst of both.
+    """
     if not raw:
-        raise ToolkitError(f"{path.name} is empty")
+        raise ToolkitError(f"{label} is empty")
     header = [h.strip().lower() for h in raw[0]]
     for col in ("name", "description"):
         if col not in header:
-            raise ToolkitError(f"{path.name} needs a {col!r} column "
+            raise ToolkitError(f"{label} needs a {col!r} column "
                                f"(found: {', '.join(h for h in header if h) or '(none)'})")
 
     topics: list[dict] = []
@@ -224,25 +239,22 @@ def load_topic_set(project: Project, cfg: dict, set_name: str | None = None) -> 
         topic_name = (row.get("name") or "").strip()
         description = (row.get("description") or "").strip()
         if not topic_name:
-            raise ToolkitError(f"{path.name} row {rownum}: empty topic name")
+            raise ToolkitError(f"{label} row {rownum}: empty topic name")
         if not description:
-            raise ToolkitError(f"{path.name} row {rownum}: empty description for topic {topic_name!r}")
+            raise ToolkitError(f"{label} row {rownum}: empty description for topic {topic_name!r}")
         tid = (row.get("id") or "").strip() or slug(topic_name)
         if not ID_RE.match(tid):
-            raise ToolkitError(f"{path.name} row {rownum}: invalid topic id {tid!r} "
+            raise ToolkitError(f"{label} row {rownum}: invalid topic id {tid!r} "
                                f"(must match ^[a-z0-9_]+$; give an explicit `id` column value)")
         if tid in seen:
-            raise ToolkitError(f"{path.name} row {rownum}: duplicate topic id {tid!r} "
+            raise ToolkitError(f"{label} row {rownum}: duplicate topic id {tid!r} "
                                f"(also produced by row {seen[tid]})")
         seen[tid] = rownum
-        topics.append({"id": tid, "name": topic_name})
+        topics.append({"id": tid, "name": topic_name, "description": description})
         blocks.append(f"## {topic_name}\n\n{description}")
     if not topics:
-        raise ToolkitError(f"{path.name} has no topic rows")
-
-    return TopicSet(name=name, ids=[t["id"] for t in topics], topics=topics,
-                    taxonomy_text="\n\n".join(blocks), source=path,
-                    prompt=entry.get("prompt"))
+        raise ToolkitError(f"{label} has no topic rows")
+    return topics, blocks
 
 
 def build_legend(topics: list[dict]) -> str:

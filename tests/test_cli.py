@@ -72,3 +72,28 @@ def test_clip_has_no_batch_flag():
     N-1's output), so its calls cannot all be submitted up front."""
     with pytest.raises(SystemExit):
         build_parser().parse_args(["clip", "--batch"])
+
+
+def test_init_takes_a_directory_or_a_name(tmp_path, capsys, monkeypatch):
+    """Either one is enough, and the other follows from it — the app asks for the name, the
+    terminal usually gives the folder."""
+    from transcript_toolkit.cli import cmd_init
+    from transcript_toolkit.core.config import project_name
+    from transcript_toolkit.project import find_project
+
+    monkeypatch.chdir(tmp_path)
+    cmd_init(build_parser().parse_args(["init", "--name", "Anderson Family Oral History"]))
+    made = find_project(str(tmp_path / "anderson-family-oral-history"))
+    assert project_name(made) == "Anderson Family Oral History"
+    assert "cd anderson-family-oral-history" in capsys.readouterr().out
+
+    cmd_init(build_parser().parse_args(["init", "my-archive"]))
+    assert project_name(find_project(str(tmp_path / "my-archive"))) == "My Archive"
+
+
+def test_init_with_neither_says_what_to_type():
+    from transcript_toolkit.cli import cmd_init
+    from transcript_toolkit.errors import ToolkitError
+
+    with pytest.raises(ToolkitError, match="Usage: toolkit init"):
+        cmd_init(build_parser().parse_args(["init"]))

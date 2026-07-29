@@ -23,6 +23,19 @@ class AppContext:
         return self.project
 
     def open(self, project: Project) -> None:
+        """Open a workspace, leaving nothing of the last one behind.
+
+        A run belongs to the project it ran in: its output must not still be sitting in the
+        terminal panel under a different project's name. Switching while something is running
+        is refused rather than orphaning it — the run holds that project's terminal.
+        """
+        if self.project is not None and self.project.root != project.root:
+            if self.jobs.busy:
+                raise ToolkitError(
+                    f"'{self.jobs.current.title}' is still running in "
+                    f"{self.project.root.name}. Wait for it to finish, or stop it, before "
+                    f"opening a different project.")
+            self.jobs.forget()
         self.project = project
 
     def status(self) -> dict:

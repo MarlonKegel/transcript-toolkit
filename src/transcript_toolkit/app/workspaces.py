@@ -14,7 +14,7 @@ from pathlib import Path
 
 from ..core.config import project_name
 from ..errors import ToolkitError
-from ..project import Project, find_project, init_project
+from ..project import Project, find_project, folder_name, init_project
 
 ENV_KEY = "OPENAI_API_KEY"
 MAX_REMEMBERED = 12
@@ -75,18 +75,25 @@ def open_workspace(path: str | Path) -> Project:
     return project
 
 
+def planned_folder(parent: str | Path, name: str) -> Path:
+    """Where a project called `name` would be created. The page shows this while you type, so
+    the folder is never a surprise."""
+    return Path(parent).expanduser() / folder_name(name)
+
+
 def create_workspace(parent: str | Path, name: str) -> Project:
-    """Make a new workspace called `name` inside `parent`."""
+    """Make a new workspace called `name` inside `parent`.
+
+    The name is the only thing typed: the folder is derived from it (`folder_name`), so the
+    project is not called one thing in Finder and another in the app.
+    """
     name = name.strip()
     if not name:
         raise ToolkitError("Give the project a name.")
-    if "/" in name or name.startswith("."):
-        raise ToolkitError(f"{name!r} cannot be a folder name — leave out '/' and don't start "
-                           f"with a dot.")
     parent_dir = Path(parent).expanduser()
     if not parent_dir.is_dir():
         raise ToolkitError(f"There is no folder at {parent_dir}. Pick one that exists.")
-    project = init_project(str(parent_dir / name))
+    project = init_project(str(parent_dir / folder_name(name)), name=name)
     remember(project)
     return project
 
@@ -151,11 +158,56 @@ def add_transcript(project: Project, filename: str, data: bytes) -> Path:
     project.data_dir.mkdir(parents=True, exist_ok=True)
     dest = project.data_dir / name
     if dest.exists():
-        raise ToolkitError(f"{name} is already in this project. Remove or rename the old one "
-                           f"first — replacing a transcript silently would be worse.")
+        raise ToolkitError(f"{name} is already in this project, so it was not added again. "
+                           f"To put a different version in its place, delete the one in "
+                           f"{project.data_dir} first.")
     dest.write_bytes(data)
     return dest
 
 
+def transcript_files(project: Project) -> list[Path]:
+    """The .docx files in the workspace, in the order import will read them. Word's own lock
+    files (`~$…`) are not transcripts."""
+    if not project.data_dir.is_dir():
+        return []
+    return sorted(p for p in project.data_dir.rglob("*.docx") if not p.name.startswith("~$"))
+
+
 def transcript_count(project: Project) -> int:
-    return sum(1 for p in project.data_dir.rglob("*.docx") if not p.name.startswith("~$"))
+    return len(transcript_files(project))
+
+
+def imported_ids(project: Project) -> set[str]:
+    """Interview ids already in the paragraph dataset."""
+    if not project.paragraphs_path.exists():
+        return set()
+    import pandas as pd
+    return set(pd.read_parquet(project.paragraphs_path, columns=["interview_id"])["interview_id"])
+
+
+def transcript_rows(project: Project) -> list[dict]:
+    """Every transcript in the workspace with the id import gives it and whether it is in the
+    dataset yet — the answer to "did my drag-and-drop work, and do I need to import again?"."""
+    from ..core.config import load_step_config
+    from ..core.ids import interview_id_from_filename
+
+    files = transcript_files(project)
+    if not files:
+        return []
+    suffixes = load_step_config(project, "import").get("strip_suffixes") or []
+    done = imported_ids(project)
+    rows = []
+    for path in files:
+        try:
+            iid = interview_id_from_filename(path, suffixes)
+        except ToolkitError:
+            iid = ""            # import will refuse it and say why; the file still shows here
+        rows.append({"filename": path.name, "interview_id": iid,
+                     "imported": bool(iid) and iid in done})
+    return rows
+
+
+def everything_imported(project: Project) -> bool:
+    """Whether every transcript in the folder is already in the dataset."""
+    rows = transcript_rows(project)
+    return bool(rows) and all(r["imported"] for r in rows)

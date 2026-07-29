@@ -149,7 +149,7 @@ def test_registration_preserves_comments(project):
     assert register_topic_set(project, "collection", "topics/collection.csv")
     after = project.config_path.read_text()
     assert sum(1 for ln in after.splitlines() if ln.strip().startswith("#")) == n_comments
-    assert "# --- locations:" in after and 'name: "My Oral History Project"' in after
+    assert "# --- locations:" in after and "name:" in after
 
 
 def test_registration_is_idempotent_and_second_set_appends(project):

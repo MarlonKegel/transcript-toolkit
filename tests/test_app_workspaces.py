@@ -20,11 +20,29 @@ def test_creating_a_workspace_scaffolds_and_remembers_it(tmp_path):
 
 
 def test_a_bad_name_is_refused_before_anything_is_written(tmp_path):
-    for name in ("", "   ", "a/b", ".hidden"):
+    for name in ("", "   ", "///", "..."):
         with pytest.raises(ToolkitError):
             workspaces.create_workspace(tmp_path, name)
     with pytest.raises(ToolkitError, match="no folder"):
         workspaces.create_workspace(tmp_path / "nope", "x")
+
+
+def test_the_name_is_typed_and_the_folder_follows_from_it(tmp_path):
+    """The whole point of the change: one name is entered, the other is derived. A project is
+    never called `pilot2` in Finder and 'My Oral History Project' on screen."""
+    from transcript_toolkit.core.config import project_name
+
+    project = workspaces.create_workspace(tmp_path, "Anderson Family Oral History")
+    assert project.root.name == "anderson-family-oral-history"
+    assert project_name(project) == "Anderson Family Oral History"
+    # and the page can say where it will land before anything is written
+    assert workspaces.planned_folder(tmp_path, "Anderson Family Oral History") == project.root
+
+
+def test_awkward_characters_in_a_name_still_make_a_sane_folder(tmp_path):
+    """A name is a name — people put slashes, commas and capitals in them."""
+    project = workspaces.create_workspace(tmp_path, "  Smith/Jones: Voices, 2026  ")
+    assert project.root.name == "smith-jones-voices-2026"
 
 
 def test_opening_a_plain_folder_fails_with_the_cli_wording(tmp_path):

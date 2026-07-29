@@ -195,3 +195,43 @@ def test_a_port_someone_else_holds_is_reported_with_the_way_out(workspace):
     assert result.returncode == 2
     assert "already used by another program" in result.stderr
     assert f"--port {port + 1}" in result.stderr
+
+
+def test_the_workspace_page_offers_browsing_instead_of_typing_a_path(server):
+    """Nobody should have to know what a path is to open their own project."""
+    _, body = get(server, "/workspace")
+    assert "Browse" in body
+    assert "Project name" in body and "Its folder will be:" in body
+
+
+def test_the_workspace_page_lists_the_transcripts_and_their_state(server, workspace):
+    _, body = get(server, "/workspace")
+    for path in workspace.data_dir.glob("*.docx"):
+        assert path.name in body
+    assert "Drop .docx files here" in body          # the instruction stays
+    assert "imported" in body
+
+
+def test_the_demo_interviews_are_chosen_on_the_workspace_page(server):
+    _, body = get(server, "/workspace")
+    assert "Demo interviews" in body
+    assert "Draw them at random" in body and "Choose the interviews myself" in body
+
+
+def test_the_terminal_is_folded_away_and_explained(server):
+    _, body = get(server, "/step/clip")
+    assert "Terminal" in body
+    assert "window onto a command-line tool" in body
+
+
+def test_chunking_is_out_of_the_way_under_advanced(server):
+    _, body = get(server, "/step/clip")
+    assert "Advanced" in body
+    assert "How interviews will be split up" in body
+    assert "far longer than a model can read in one go" in body      # the `i` explanation
+
+
+def test_a_topic_list_can_be_written_in_the_app(server):
+    _, body = get(server, "/step/topics")
+    assert "Write one here" in body and "Upload a spreadsheet" in body
+    assert "description" in body

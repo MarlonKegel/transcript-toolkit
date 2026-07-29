@@ -131,6 +131,16 @@ class JobManager:
     def busy(self) -> bool:
         return self.current is not None and self.current.live
 
+    def forget(self) -> None:
+        """Drop the finished job, so nothing is left on screen from it.
+
+        Used when the open workspace changes: output from the project you just closed, sitting
+        under the project you just opened, reads as if it belonged to the new one.
+        """
+        if self.busy:
+            raise ToolkitError(f"'{self.current.title}' is still running.")
+        self.current = None
+
     # --- starting -------------------------------------------------------------------------
     async def start(self, title: str, argv: list[str], workspace: Path,
                     href: str = "/", with_project: bool = True) -> Job:

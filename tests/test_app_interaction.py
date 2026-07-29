@@ -202,6 +202,58 @@ async def test_dropping_a_transcript_twice_refuses_rather_than_replaces(user: Us
     await user.should_see("already in this project")
 
 
+async def _drop_many(user: User, files: dict[str, bytes]) -> None:
+    """One drop of several files, the way selecting eight in Finder arrives."""
+    from nicegui.elements.upload_files import SmallFileUpload
+    await _upload_element(user).handle_uploads(
+        [SmallFileUpload(name=name, content_type="application/octet-stream", _data=data)
+         for name, data in files.items()])
+    await asyncio.sleep(0.5)
+
+
+@pytest.mark.asyncio
+async def test_dropping_eight_transcripts_at_once_keeps_and_shows_all_eight(user: User,
+                                                                            open_workspace):
+    """Dropping eight used to land most of them and then say "2 .docx in this project".
+
+    The count was read once when the section was drawn, and every file's handler separately
+    rebuilt the section it was being uploaded into, so eight concurrent redraws raced and an
+    early one won. Now one handler takes the whole drop and the list is redrawn once, after.
+    """
+    await user.open("/workspace")
+    before = {p.name for p in open_workspace.data_dir.glob("*.docx")}
+    files = {f"Person{i}_SYNC.docx": f"body {i}".encode() for i in range(8)}
+    await _drop_many(user, files)
+
+    landed = {p.name for p in open_workspace.data_dir.glob("*.docx")}
+    assert set(files) <= landed, sorted(set(files) - landed)
+    for name, data in files.items():
+        assert (open_workspace.data_dir / name).read_bytes() == data
+    # and the page says so, rather than a number from before the drop
+    await user.should_see(f"{len(before) + len(files)} transcripts in this project")
+
+
+@pytest.mark.asyncio
+async def test_the_transcript_list_shows_what_has_been_imported(user: User, open_workspace):
+    """Answering "did my drop work, and do I still need to press Import?" on the page itself."""
+    await user.open("/workspace")
+    await user.should_see("all imported")
+    await _drop_many(user, {"Newcomer_SYNC.docx": b"x"})
+    await user.open("/workspace")
+    await user.should_see("Newcomer_SYNC.docx")
+    await user.should_see("not imported yet")
+
+
+@pytest.mark.asyncio
+async def test_importing_when_there_is_nothing_new_says_so_instead_of_running(user: User,
+                                                                             open_workspace):
+    await user.open("/workspace")
+    user.find("Import").click()
+    await settle(user)
+    await user.should_see("Everything is already imported")
+    assert CONTEXT.jobs.current is None
+
+
 @pytest.mark.asyncio
 async def test_dropping_a_topic_list_creates_the_set(user: User, open_workspace):
     """Uploading a topic list is the only way to make a set from inside the app."""
