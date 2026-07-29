@@ -700,3 +700,23 @@ that is *not* ours (no matching `CFBundleIdentifier`) is left alone.
 
 Reinstalling moves the bundle, so macOS may ask once more for Documents access — expected, and
 already documented in APP.md.
+
+## 18. Feedback round 2 (2026-07-29, still the same afternoon)
+
+First, a process failure worth remembering: Marlon reported the naming change not working, and
+the reason was that **nothing had been reinstalled** — the app he was looking at predated the
+fix. The version had sat at 0.1.8 across every push, so two builds were indistinguishable from
+inside the app. Now: **bump `__version__` on every push to this branch**, and the version is
+shown in the app header. Reinstalling is also not enough on its own — the running server keeps
+serving the old code until it is quit and reopened.
+
+| What he found | What changed |
+|---|---|
+| Deleted the open project folder in Finder → every page said "config can't be found", **Settings returned a 500 with a raw `FileNotFoundError`** | `AppContext.check_still_there()` runs at the top of `shell()`, closes the project and records where it was; every page is then in the "no workspace open" state it already handles. `settings.py` guarded its `read_text()` — that unguarded call was the 500. |
+| "Can't find the config file" describes a symptom, not the problem | `load_root_config` says the folder is not there; `find_project` distinguishes *no folder at that path* from *a folder that is not a project*, and tells you to open the project folder itself rather than the one it sits in (the commonest miss with a folder picker) |
+| Wanted to be asked what happened, with "I moved or renamed it" / "I deleted it" | Exactly that, on the workspace page. Moved → the folder picker, starting in the old parent; deleted → forget it and start clean |
+| Wanted to delete a project from the app | Settings → Delete this project. Counts what goes with it, requires typing DELETE, refuses while a run is live and refuses any folder without `.toolkit/project.json`. **On macOS it moves the folder to the Trash** (osascript → Finder), so a wrong answer is recoverable |
+| Settings should be a left sidebar behind a gear, not another tab | `ui.left_drawer` built by `shell()` on every page, gear in the header's top left. `settings_body()` is the single implementation; `/settings` still resolves and opens the drawer. **The version check moved to drawer-open**: it calls GitHub, and the drawer is now built on every page — leaving it on page load would have put a network round trip behind every click |
+
+Tests 498 → 514. The two that matter most: every page is opened with the project folder deleted
+underneath it, and the recovery card's two buttons are clicked.
