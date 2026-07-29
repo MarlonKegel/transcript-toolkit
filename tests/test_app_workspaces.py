@@ -45,6 +45,41 @@ def test_awkward_characters_in_a_name_still_make_a_sane_folder(tmp_path):
     assert project.root.name == "smith-jones-voices-2026"
 
 
+def test_a_project_can_be_renamed_without_hand_editing_a_config_file(tmp_path):
+    """Every project made before the name was derived is called the same thing. Renaming is
+    the fix, and it must not be "open config.yaml in TextEdit"."""
+    from transcript_toolkit.core.config import project_name
+
+    project = workspaces.create_workspace(tmp_path, "Wrong Name")
+    n_comments = sum(1 for ln in project.config_path.read_text().splitlines()
+                     if ln.strip().startswith("#"))
+
+    workspaces.rename_project(project, "OSF test")
+    assert project_name(project) == "OSF test"
+    assert workspaces.load_registry()[0]["name"] == "OSF test"      # the recent list too
+    # config.yaml's comments ARE its documentation; a yaml round-trip would delete them
+    assert sum(1 for ln in project.config_path.read_text().splitlines()
+               if ln.strip().startswith("#")) == n_comments
+    assert project.root.name == "wrong-name"                       # the folder is left alone
+
+
+def test_renaming_only_touches_the_projects_own_name(tmp_path):
+    """A `name:` belonging to some other section must not be the one that gets rewritten."""
+    from transcript_toolkit.project import config_with_name
+
+    text = ('project:\n  name: "Old"\n\n'
+            'topics:\n  sets:\n    collection:\n      name: not-the-project\n')
+    after = config_with_name(text, "New")
+    assert 'name: "New"' in after and "name: not-the-project" in after
+    assert "Old" not in after
+
+
+def test_renaming_an_empty_name_is_refused(tmp_path):
+    project = workspaces.create_workspace(tmp_path, "Keep This")
+    with pytest.raises(ToolkitError):
+        workspaces.rename_project(project, "   ")
+
+
 def test_opening_a_plain_folder_fails_with_the_cli_wording(tmp_path):
     (tmp_path / "not-a-workspace").mkdir()
     with pytest.raises(ToolkitError, match="not a toolkit workspace"):

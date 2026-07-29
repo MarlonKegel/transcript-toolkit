@@ -7,12 +7,11 @@ from __future__ import annotations
 
 from nicegui import ui
 
-from ...core.config import project_name
 from ...errors import ToolkitError
 from .. import content, workspaces
 from ..context import CONTEXT
 from .browse import browse_button
-from .common import guard, launch, run_panel, section, shell
+from .common import guard, launch, run_panel, section, shell, shown_name
 from .sample import sample_section
 
 HREF = "/workspace"
@@ -35,6 +34,26 @@ def workspace_page() -> None:
         run_panel(on_finished=body.refresh)
 
 
+def _rename(project) -> None:
+    """Projects made before the toolkit derived the name are all called the same thing. This
+    is the one-field fix, so nobody has to be told to edit config.yaml."""
+    with ui.expansion("Rename it", icon="edit").classes("w-full"):
+        ui.label("Changes what this project is called. Its folder keeps the name it has — "
+                 "rename that in Finder if you want to.").classes("text-xs opacity-70")
+        with ui.row().classes("w-full items-end gap-2"):
+            field = ui.input("Project name", value=shown_name(project)).classes("grow")
+
+            def save() -> None:
+                try:
+                    workspaces.rename_project(project, field.value)
+                except ToolkitError as e:
+                    guard(e)
+                    return
+                ui.navigate.to(HREF)
+
+            ui.button("Save", on_click=save).props("dense")
+
+
 def _reopen(path: str) -> None:
     try:
         CONTEXT.open(workspaces.open_workspace(path))
@@ -51,8 +70,9 @@ def _open_or_create() -> None:
             ui.label("Open project").classes("text-xs uppercase opacity-60")
             # The project's name, not its folder — the folder is on the line below, where a
             # path belongs.
-            ui.label(project_name(project)).classes("text-xl font-medium")
+            ui.label(shown_name(project)).classes("text-xl font-medium")
             ui.label(str(project.root)).classes("text-xs opacity-60")
+            _rename(project)
         with ui.expansion("Open a different project", icon="folder").classes("w-full"):
             _picker()
         return

@@ -235,3 +235,16 @@ def test_a_topic_list_can_be_written_in_the_app(server):
     _, body = get(server, "/step/topics")
     assert "Write one here" in body and "Upload a spreadsheet" in body
     assert "description" in body
+
+
+def test_the_running_version_is_on_screen(server):
+    """The first question about any odd behaviour is which version is running — and after a
+    reinstall from a branch, that is exactly what nobody can tell by looking."""
+    _, body = get(server, "/")
+    assert __version__ in body
+
+
+def test_the_header_shows_the_project_name_and_its_folder(server, workspace):
+    _, body = get(server, "/workspace")
+    assert workspace.root.name in body            # the folder
+    assert "Rename it" in body                    # and a way to fix a name you did not choose

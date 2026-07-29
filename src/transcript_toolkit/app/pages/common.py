@@ -6,6 +6,8 @@ from typing import Callable
 
 from nicegui import ui
 
+from ... import __version__
+from ...core.config import project_name
 from ...errors import ToolkitError
 from .. import content, jobs
 from ..context import CONTEXT
@@ -23,6 +25,16 @@ STATE_LOOK = {
     jobs.STOPPED: ("stop_circle", "text-gray-500", "stopped"),
     jobs.CANCELLED: ("do_not_disturb_on", "text-gray-500", "cancelled"),
 }
+
+
+def shown_name(project) -> str:
+    """The project's name, for the header — which is drawn on every page including the one you
+    would go to in order to fix a config.yaml you have broken. So a config that will not parse
+    falls back to the folder name instead of blanking the app."""
+    try:
+        return project_name(project)
+    except ToolkitError:
+        return project.root.name
 
 
 def guard(e: Exception) -> None:
@@ -43,10 +55,14 @@ def shell(active: str = "", *, needs_workspace: bool = True):
         with ui.row().classes("items-center gap-3"):
             ui.icon("subject", size="1.6rem")
             ui.label("Transcript Toolkit").classes("text-lg font-medium")
+            # In plain sight because the first question about any odd behaviour is which
+            # version is running, and the answer must not require opening a terminal.
+            ui.label(__version__).classes("text-xs opacity-60")
         if project is not None:
             with ui.row().classes("items-center gap-2 opacity-90"):
                 ui.icon("folder_open", size="1.1rem")
-                ui.label(project.root.name).classes("text-sm")
+                ui.label(shown_name(project)).classes("text-sm")
+                ui.label(project.root.name).classes("text-xs opacity-60")
 
     with ui.row().classes("w-full max-w-5xl mx-auto px-4 pt-4 gap-1 flex-wrap"):
         for href, title in NAV:

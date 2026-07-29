@@ -14,7 +14,7 @@ from pathlib import Path
 
 from ..core.config import project_name
 from ..errors import ToolkitError
-from ..project import Project, find_project, folder_name, init_project
+from ..project import Project, config_with_name, find_project, folder_name, init_project
 
 ENV_KEY = "OPENAI_API_KEY"
 MAX_REMEMBERED = 12
@@ -96,6 +96,20 @@ def create_workspace(parent: str | Path, name: str) -> Project:
     project = init_project(str(parent_dir / folder_name(name)), name=name)
     remember(project)
     return project
+
+
+def rename_project(project: Project, name: str) -> None:
+    """Change what a project is called.
+
+    A project made by an older toolkit carries the template's name, which nobody typed. The
+    folder is left where it is: renaming a folder is Finder's job, and a project that has been
+    run against knows its own path in more places than this.
+    """
+    name = name.strip()
+    if not name:
+        raise ToolkitError("Give the project a name.")
+    project.config_path.write_text(config_with_name(project.config_path.read_text(), name))
+    remember(project)               # the recent list shows the name, so it has to hear about it
 
 
 def suggested_parent() -> Path:

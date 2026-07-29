@@ -118,16 +118,25 @@ def display_name(folder: str) -> str:
     return " ".join(w[:1].upper() + w[1:] for w in words) or folder
 
 
-def _config_with_name(text: str, name: str) -> str:
-    """The scaffold config, with the project's name written into it."""
-    import re
+def config_with_name(text: str, name: str) -> str:
+    """config.yaml with the project's name written into it, as text.
 
-    new, count = re.subn(r"(?m)^(\s*name:).*$", lambda m: f"{m.group(1)} {json.dumps(name)}",
-                         text, count=1)
-    if count != 1:
-        raise ToolkitError("The packaged config.yaml template has no project name line — "
-                           "this build of the toolkit is broken; reinstall it.")
-    return new
+    Edited as text, not loaded and dumped: the comments in config.yaml are the documentation of
+    every setting, and a yaml round-trip deletes all of them. Only the `name:` line inside the
+    `project:` block is touched, so a `name:` belonging to some other section is safe.
+    """
+    lines = text.splitlines()
+    inside = False
+    for i, line in enumerate(lines):
+        if line.strip() and not line[0].isspace():          # a top-level key
+            inside = line.rstrip() == "project:"
+            continue
+        if inside and line.lstrip().startswith("name:"):
+            indent = line[:len(line) - len(line.lstrip())]
+            lines[i] = f"{indent}name: {json.dumps(name)}"
+            return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+    raise ToolkitError("This project's config.yaml has no `name:` under `project:`, so there is "
+                       "nothing to rename. Add one, or set the name there by hand.")
 
 
 def _copy_tree(src: resources.abc.Traversable, dest: Path) -> list[str]:
@@ -160,7 +169,7 @@ def init_project(dest: str, name: str | None = None) -> Project:
         d.mkdir(parents=True, exist_ok=True)
 
     scaffold = _defaults() / "scaffold"
-    project.config_path.write_text(_config_with_name(
+    project.config_path.write_text(config_with_name(
         (scaffold / "config.yaml").read_text(), name or display_name(root.name)))
     _copy_tree(scaffold / "advanced", project.advanced_dir)
     _copy_tree(scaffold / "topics", project.topics_dir)
