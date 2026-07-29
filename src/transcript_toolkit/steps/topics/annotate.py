@@ -11,7 +11,8 @@ from __future__ import annotations
 import pandas as pd
 
 from ...core.config import load_step_config
-from ...core.reviewdoc import document, effective_ts, esc, para, write_index
+from ...core.reviewdoc import (BACK_LABEL, document, effective_ts, esc, para,
+                              write_index)
 from ...core.tables import load_clips, load_paragraphs
 from ...errors import ToolkitError
 from ...project import Project
@@ -37,7 +38,7 @@ def _topic_lines(clip_long: pd.DataFrame) -> str:
 
 
 def _render_interview(interview_id: str, paragraphs: pd.DataFrame, clips: pd.DataFrame,
-                      long_by_clip: dict[str, pd.DataFrame]) -> str:
+                      long_by_clip: dict[str, pd.DataFrame], set_name: str = "") -> str:
     clips = clips.sort_values("start_paragraph_idx").reset_index(drop=True)
     clip_number = {c.clip_id: i for i, c in enumerate(clips.itertuples(), start=1)}
     paragraphs = paragraphs.sort_values("paragraph_idx")
@@ -61,7 +62,8 @@ def _render_interview(interview_id: str, paragraphs: pd.DataFrame, clips: pd.Dat
         body.append(_topic_lines(long_by_clip[c.clip_id]))
         body.extend(para(int(r.paragraph_idx), effective_ts(r), r.speaker_role, r.speech) for r in block)
         body.append("</section>")
-    return document(interview_id, "\n".join(body), subtitle=subtitle)
+    return document(interview_id, "\n".join(body), subtitle=subtitle,
+                    back=(f"{set_name}_index.html", BACK_LABEL) if set_name else None)
 
 
 def annotate_topics(project: Project, set_name: str | None = None) -> None:
@@ -84,7 +86,7 @@ def annotate_topics(project: Project, set_name: str | None = None) -> None:
         sub_p = paragraphs_df[paragraphs_df["interview_id"] == iid]
         sub_c = clips_df[clips_df["interview_id"] == iid]
         sub_long = {cid: long_by_clip[cid] for cid in sub_c["clip_id"] if cid in long_by_clip}
-        html = _render_interview(iid, sub_p, sub_c, sub_long)
+        html = _render_interview(iid, sub_p, sub_c, sub_long, sset)
         path = out_dir / f"{sset}_{iid}.html"
         path.write_text(html)
         entries.append((path.name, iid, f"{len(sub_long)} tagged clips"))

@@ -11,7 +11,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from ...core.reviewdoc import document, effective_ts, esc, para, write_index
+from ...core.reviewdoc import (BACK_LABEL, document, effective_ts, esc, para,
+                              write_index)
 from ...errors import ToolkitError
 from ...project import Project
 
@@ -73,7 +74,8 @@ def render_annotated(interview_id: str, paragraphs: pd.DataFrame, clips: pd.Data
         body.append("</section>")
         i = j
 
-    return document(interview_id, "\n".join(body), subtitle=subtitle)
+    return document(interview_id, "\n".join(body), subtitle=subtitle,
+                    back=("index.html", BACK_LABEL))
 
 
 def write_annotated(project: Project, interview_ids: list[str], paras_df: pd.DataFrame,

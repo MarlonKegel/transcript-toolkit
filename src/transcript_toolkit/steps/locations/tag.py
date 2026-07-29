@@ -30,6 +30,7 @@ from ...core.config import load_step_config, require
 from ...core.console import choose_transport, reveal
 from ...core.llm import build_schema, call_llm, check_levels, openai_client
 from ...core.parallel import worker_pool
+from ...core.prompts import load_prompt
 from ...core.render import render_clip_plain
 from ...core.sampling import sample_clips_spread
 from ...core.tables import (load_clips, load_paragraphs, merge_subset, paragraphs_by_interview,
@@ -43,14 +44,6 @@ STEP = "locations"
 
 
 # --- assembly -------------------------------------------------------------------------------
-
-def load_prompt(project: Project, name: str) -> str:
-    path = project.prompts_dir / name
-    if not path.exists():
-        raise ToolkitError(f"Prompt not found: {path}. Restore the default with "
-                           f"`toolkit init --reset-prompt {name}`.")
-    return path.read_text().strip()
-
 
 def load_regions(project: Project, cfg: dict) -> list[str]:
     """The canonical region vocabulary (workspace locations/regions.yaml) — the single source of

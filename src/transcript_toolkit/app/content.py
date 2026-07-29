@@ -7,7 +7,10 @@ parser and fails if anything in this file drifts from the CLI.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+
+from ..core import sampling
 
 
 @dataclass(frozen=True)
@@ -19,9 +22,9 @@ class Action:
     argv: tuple[str, ...]
     needs_set: bool = False
     needs: tuple[str, ...] = ()     # deliverables it reads; without them the button is disabled
-    advanced: bool = False          # hidden under "Advanced" — most people never need it
     explain: str = ""               # the `i` tooltip: what this is, for someone new to it
     preview: str = ""               # renders in the app as a table: "chunks" | "batches"
+    aids: tuple["Action", ...] = ()  # decision aids shown beside this action, not after it
 
 
 @dataclass(frozen=True)
@@ -48,7 +51,8 @@ class Step:
     needs: tuple[str, ...] = ()     # deliverables that must exist first
     reviews: tuple[Review, ...] = field(default_factory=tuple)
     sequels: tuple[Action, ...] = field(default_factory=tuple)      # part of the flow
-    followups: tuple[Action, ...] = field(default_factory=tuple)    # occasional extras
+    extras: tuple[Action, ...] = field(default_factory=tuple)       # occasional, at the bottom
+    review_hint: str = ""           # what to look for in the review pages, before spending
 
 
 CHUNKING_EXPLAINER = (
@@ -77,11 +81,11 @@ SAMPLE = Action(
     argv=("sample",),
 )
 
-# The app offers up to SAMPLE_MAX interviews; SAMPLE_DEFAULT_N is what the CLI draws when you
-# do not say. A test keeps the default in step with core/sampling.py — the app must not have an
-# opinion of its own about how big a demo is.
-SAMPLE_DEFAULT_N = 5
-SAMPLE_MAX_N = 10
+# How big a demo may be is the toolkit's rule, not the app's: `toolkit sample` refuses the same
+# sizes the app will not offer, so the two cannot drift.
+SAMPLE_DEFAULT_N = sampling.DEFAULT_N
+SAMPLE_MIN_N = sampling.MIN_N
+SAMPLE_MAX_N = sampling.MAX_N
 
 
 def sample_argv(n: int, interviews: list[str] | None = None) -> list[str]:
@@ -108,14 +112,15 @@ STEPS: tuple[Step, ...] = (
         blurb="Split each interview into topically coherent clips.",
         argv=("clip",), deliverable="clips", needs_sample=True,
         reviews=(Review("index.html", "Open the review pages"),),
-        followups=(
+        review_hint="Read a few interviews through: do the clips start and end where a subject "
+                    "changes, and is anything long left in one piece that should be two?",
+        extras=(
             Action("annotate", "Re-render review pages",
                    "Rebuild the per-interview review pages from the saved clips (no API calls).",
                    ("clip", "annotate"), needs=("clips",)),
             Action("preview", "How interviews will be split up",
                    "See how each interview is divided before anything is sent to OpenAI.",
-                   ("clip", "preview"), advanced=True, preview="chunks",
-                   explain=CHUNKING_EXPLAINER),
+                   ("clip", "preview"), preview="chunks", explain=CHUNKING_EXPLAINER),
         ),
     ),
     Step(
@@ -123,13 +128,15 @@ STEPS: tuple[Step, ...] = (
         blurb="Write a one-line label for every clip.",
         argv=("label",), batch=True, deliverable="labels", needs=("clips",),
         needs_sample=True, reviews=(Review("index.html", "Open the review pages"),),
-        followups=(
+        review_hint="Check that a label says what the clip is about rather than judging it, and "
+                    "that names and spellings are written the way your project writes them.",
+        extras=(
             Action("annotate", "Re-render review pages",
                    "Rebuild the per-interview review pages from the saved labels (no API calls).",
                    ("label", "annotate"), needs=("labels",)),
             Action("preview", "How clips will be grouped",
                    "See how clips are grouped before anything is sent to OpenAI.",
-                   ("label", "preview"), needs=("clips",), advanced=True, preview="batches",
+                   ("label", "preview"), needs=("clips",), preview="batches",
                    explain=BATCHING_EXPLAINER),
         ),
     ),
@@ -137,9 +144,11 @@ STEPS: tuple[Step, ...] = (
         key="summarize", slug="summarize", title="Summarize", order=3,
         blurb="Write a 'scope and content' abstract for each interview.",
         argv=("summarize",), batch=True, deliverable="summaries",
-        reviews=(Review("summaries.html", "Open the summaries"),
-                 Review("demo_summaries.html", "Open the demo summaries")),
-        followups=(
+        reviews=(Review("demo_summaries.html", "Open the demo summaries"),
+                 Review("summaries.html", "Open the summaries")),
+        review_hint="Check the length and the register: an abstract should describe what the "
+                    "interview covers, in your catalogue's voice, without interpreting it.",
+        extras=(
             Action("annotate", "Re-render review page",
                    "Rebuild the review page from the saved summaries (no API calls).",
                    ("summarize", "annotate"), needs=("summaries",)),
@@ -151,18 +160,24 @@ STEPS: tuple[Step, ...] = (
               "interview-level tags.",
         argv=("topics", "tag"), batch=True, per_set=True, deliverable="topics", needs=("clips",),
         unit="clips",
-        reviews=(Review("{set}_index.html", "Open the review pages"),
-                 Review("{set}_demo.html", "Open the demo page")),
+        reviews=(Review("{set}_demo.html", "Open the demo page"),
+                 Review("{set}_index.html", "Open the review pages")),
+        review_hint="Read the justifications: where a score looks wrong, the topic's description "
+                    "in your topic list is usually what needs changing, not the prompt.",
         sequels=(
             Action("rollup", "Roll up to interview tags",
                    "Turn the per-clip scores into one set of tags per interview. Run this "
                    "after tagging the whole collection.",
-                   ("topics", "rollup"), needs_set=True, needs=("topics:{set}",)),
+                   ("topics", "rollup"), needs_set=True, needs=("topics:{set}",),
+                   aids=(
+                       Action("thresholds", "Compare thresholds first",
+                              "Shows what each threshold would tag, side by side, so you can "
+                              "pick one before rolling up (no API calls).",
+                              ("topics", "thresholds"), needs_set=True,
+                              needs=("topics:{set}",)),
+                   )),
         ),
-        followups=(
-            Action("thresholds", "Threshold decision aid",
-                   "Compare rollup thresholds side by side to choose one (no API calls).",
-                   ("topics", "thresholds"), needs_set=True, needs=("topics:{set}",)),
+        extras=(
             Action("annotate", "Re-render review pages",
                    "Rebuild the per-interview review pages from the saved tags (no API calls).",
                    ("topics", "annotate"), needs_set=True, needs=("topics:{set}",)),
@@ -173,6 +188,8 @@ STEPS: tuple[Step, ...] = (
         blurb="Tag clips with the countries and regions they talk about.",
         argv=("locations", "tag"), batch=True, deliverable="locations", needs=("clips",),
         unit="clips", reviews=(Review("locations.html", "Open the review page"),),
+        review_hint="Check that places the narrator only mentions in passing are not tagged as "
+                    "what the clip is about, and that spellings match across interviews.",
         sequels=(
             Action("map", "Expand regions into countries",
                    "Turn each region tag into the countries it covers, and settle on one "
@@ -180,19 +197,22 @@ STEPS: tuple[Step, ...] = (
                    ("locations", "map"), needs=("locations",)),
             Action("rollup", "Roll up to interview places",
                    "Turn the per-clip places into one set per interview.",
-                   ("locations", "rollup"), needs=("locations",)),
+                   ("locations", "rollup"), needs=("locations",),
+                   aids=(
+                       Action("thresholds", "Compare thresholds first",
+                              "Shows what each threshold would tag, side by side, so you can "
+                              "pick one before rolling up (no API calls).",
+                              ("locations", "thresholds"), needs=("locations",)),
+                   )),
         ),
-        followups=(
-            Action("thresholds", "Threshold decision aid",
-                   "Compare rollup schemes side by side to choose one (no API calls).",
-                   ("locations", "thresholds"), needs=("locations",)),
+        extras=(
             Action("annotate", "Re-render review page",
                    "Rebuild the review page from the saved tags (no API calls).",
                    ("locations", "annotate"), needs=("locations",)),
             Action("survey", "Place-name survey",
                    "Offline scan of place mentions in the transcripts. Needs the optional "
                    "[survey] install; slow.",
-                   ("locations", "survey"), advanced=True),
+                   ("locations", "survey")),
         ),
     ),
 )
@@ -245,6 +265,23 @@ def missing_for(action: Action, deliverables: list[str], set_name: str | None = 
     have = set(deliverables)
     return [need.format(set=set_name or "") for need in action.needs
             if need.format(set=set_name or "") not in have]
+
+
+# Every step prints one `  [3/12] ...` line per unit as it finishes it, so how far a run has got
+# is already on screen — this reads it back so the page can show it as a bar instead. The Batch
+# API's own polling line (`  [   42s] status=...`) deliberately does not match.
+PROGRESS_RE = re.compile(r"^\s*\[(\d+)/(\d+)\]")
+
+
+def progress_of(lines) -> tuple[int, int] | None:
+    """(units done, units in total) for the run, or None before the first one finishes."""
+    for line in reversed(list(lines)):
+        match = PROGRESS_RE.match(line)
+        if match:
+            done, total = int(match.group(1)), int(match.group(2))
+            if 0 < total and done <= total:
+                return done, total
+    return None
 
 
 def display_command(argv: list[str]) -> str:

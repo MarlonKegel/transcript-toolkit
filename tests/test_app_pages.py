@@ -24,14 +24,21 @@ FIXTURES = Path(__file__).parent / "fixtures"
 START_TIMEOUT_S = 60.0
 
 
-def app_env() -> dict:
+def app_env(home: Path | None = None) -> dict:
     """The environment the app is normally started in.
 
     NiceGUI treats PYTEST_CURRENT_TEST as "I am inside a test run" and then insists on a port
     from its own screen-test harness, so a plainly-launched app must not inherit it.
+
+    `home` moves the list of remembered projects into the test's own directory. The server runs
+    as a real subprocess, so without it these tests would write test paths into the list of
+    projects belonging to whoever ran them.
     """
     env = dict(os.environ)
     env.pop("PYTEST_CURRENT_TEST", None)
+    if home is not None:
+        env["HOME"] = str(home)
+        env["XDG_CONFIG_HOME"] = str(home / ".config")
     return env
 
 
@@ -65,12 +72,19 @@ def workspace(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
-def server(workspace):
+def fake_home(tmp_path_factory):
+    home = tmp_path_factory.mktemp("home")
+    (home / ".config").mkdir()
+    return home
+
+
+@pytest.fixture(scope="module")
+def server(workspace, fake_home):
     port = free_port()
     process = subprocess.Popen(
         [sys.executable, "-m", "transcript_toolkit.cli", "app", "--no-browser",
          "--port", str(port), "--project", str(workspace.root)],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=app_env())
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=app_env(fake_home))
     deadline = time.time() + START_TIMEOUT_S
     while time.time() < deadline:
         if process.poll() is not None:
@@ -108,15 +122,27 @@ def test_every_page_renders(server, path):
     assert "Transcript Toolkit" in body
 
 
-def test_the_dashboard_names_the_next_thing_to_do(server):
+def test_home_lists_the_projects_and_where_each_one_has_got_to(server, workspace):
+    """Home is the landing page: every project the app knows, not one project's dashboard."""
     _, body = get(server, "/")
+    assert "Your projects" in body
+    assert "steps run on everything" in body
+    assert "Start a new project" in body
+
+
+def test_the_workspace_page_names_the_next_thing_to_do(server):
+    _, body = get(server, "/workspace")
     assert "Next" in body
     assert "Add your OpenAI key" in body          # no key in a fresh workspace
 
 
-def test_a_step_page_offers_the_demo_first(server):
+def test_a_step_page_offers_only_the_demo_until_it_has_been_run(server):
+    """Running the whole collection without a reviewed demo is refused by the toolkit, so the
+    page does not offer it: the button appears once there is a demo to have read."""
     _, body = get(server, "/step/clip")
-    assert "Run the demo" in body and "Run on the whole collection" in body
+    assert "1 · Try it" in body and "Run the demo" in body
+    assert "Run it on everything" not in body
+    assert "2 · Read what came out" not in body
 
 
 def test_the_topics_page_explains_itself_when_there_is_no_topic_list(server):
@@ -172,18 +198,18 @@ def test_pages_refuse_to_be_framed(server):
         assert response.headers["Content-Security-Policy"] == "frame-ancestors 'none'"
 
 
-def test_a_second_start_hands_over_to_the_running_one(server, workspace):
+def test_a_second_start_hands_over_to_the_running_one(server, workspace, fake_home):
     """Double-clicking the launcher again must not start a second server."""
     result = subprocess.run(
         [sys.executable, "-m", "transcript_toolkit.cli", "app", "--no-browser",
          "--port", str(server), "--project", str(workspace.root)],
-        capture_output=True, text=True, timeout=60, env=app_env())
+        capture_output=True, text=True, timeout=60, env=app_env(fake_home))
     assert result.returncode == 0
     assert "already running" in result.stdout
     assert get(server, "/api/health")[0] == 200          # still the original
 
 
-def test_a_port_someone_else_holds_is_reported_with_the_way_out(workspace):
+def test_a_port_someone_else_holds_is_reported_with_the_way_out(workspace, fake_home):
     with socket.socket() as squatter:
         squatter.bind(("127.0.0.1", 0))
         squatter.listen(1)
@@ -191,15 +217,15 @@ def test_a_port_someone_else_holds_is_reported_with_the_way_out(workspace):
         result = subprocess.run(
             [sys.executable, "-m", "transcript_toolkit.cli", "app", "--no-browser",
              "--port", str(port), "--project", str(workspace.root)],
-            capture_output=True, text=True, timeout=60, env=app_env())
+            capture_output=True, text=True, timeout=60, env=app_env(fake_home))
     assert result.returncode == 2
     assert "already used by another program" in result.stderr
     assert f"--port {port + 1}" in result.stderr
 
 
-def test_the_workspace_page_offers_browsing_instead_of_typing_a_path(server):
+def test_home_offers_browsing_instead_of_typing_a_path(server):
     """Nobody should have to know what a path is to open their own project."""
-    _, body = get(server, "/workspace")
+    _, body = get(server, "/")
     assert "Browse" in body
     assert "Project name" in body and "Its folder will be:" in body
 
@@ -214,21 +240,54 @@ def test_the_workspace_page_lists_the_transcripts_and_their_state(server, worksp
 
 def test_the_demo_interviews_are_chosen_on_the_workspace_page(server):
     _, body = get(server, "/workspace")
-    assert "Demo interviews" in body
+    assert "Pick the sample of interviews for demos" in body
     assert "Draw them at random" in body and "Choose the interviews myself" in body
+    # how many comes before the choice of how to fill it
+    assert body.index("How many interviews") < body.index("Draw them at random")
+    assert "Between 3 and" in body                      # and a demo has a floor
 
 
-def test_the_terminal_is_folded_away_and_explained(server):
+def test_the_terminal_viewer_is_its_own_section_at_the_foot_of_the_page(server):
     _, body = get(server, "/step/clip")
-    assert "Terminal" in body
+    assert "Terminal Viewer" in body
     assert "window onto a command-line tool" in body
+    # and it is the last thing on the page, below everything that starts a command
+    assert body.index("1 · Try it") < body.index("Terminal Viewer")
 
 
-def test_chunking_is_out_of_the_way_under_advanced(server):
+def test_chunking_is_out_of_the_way_among_the_extras(server):
     _, body = get(server, "/step/clip")
-    assert "Advanced" in body
+    assert "Extra tools" in body
     assert "How interviews will be split up" in body
     assert "far longer than a model can read in one go" in body      # the `i` explanation
+
+
+def test_a_step_page_reads_in_the_order_the_work_happens(server):
+    """The complaint this shape answers: the state of a run appeared at the very bottom, below
+    the review links and every option, so it did not look like it belonged to the button that
+    had been pressed. Now the buttons come first, then their state, then the things that change
+    the step, then the terminal."""
+    _, body = get(server, "/step/clip")
+    order = ["1 · Try it", "Settings for this step", "Extra tools", "Terminal Viewer"]
+    positions = [body.index(text) for text in order]
+    assert positions == sorted(positions), order
+
+
+def test_a_step_page_carries_its_own_settings_and_its_prompt(server):
+    """Settings that belong to one step live on that step's page, and so does the prompt — which
+    had no way in at all before."""
+    _, body = get(server, "/step/clip")
+    assert "Settings for this step" in body and "The prompt for this step" in body
+    assert "Thinking effort" in body
+    # the explanation is config.yaml's own comment, not a second copy written into the app
+    assert "How much thinking the model does before it answers" in body
+
+
+def test_the_settings_drawer_holds_only_what_belongs_to_the_whole_project(server):
+    _, body = get(server, "/step/clip")
+    assert "This project" in body and "Quit the toolkit" in body
+    assert "Thinking effort" in body                     # on the page, from the step
+    assert body.count("Thinking effort") == 1            # and not also in the drawer
 
 
 def test_a_topic_list_can_be_written_in_the_app(server):
@@ -244,10 +303,17 @@ def test_the_running_version_is_on_screen(server):
     assert __version__ in body
 
 
-def test_the_header_shows_the_project_name_and_its_folder(server, workspace):
+def test_the_header_shows_the_project_name_and_the_way_back_to_the_others(server, workspace):
     _, body = get(server, "/workspace")
     assert workspace.root.name in body            # the folder
-    assert "Rename it" in body                    # and a way to fix a name you did not choose
+    assert "/app-icon.png" in body                # the real icon, not a placeholder glyph
+    assert "All your projects" in body            # what clicking it does
+    assert "Rename the project" in body           # and a way to fix a name you did not choose
+
+
+def test_the_header_icon_is_served_from_the_package(server):
+    status, _ = get(server, "/app-icon.png")
+    assert status == 200
 
 
 def test_the_version_check_does_not_run_on_every_page(server, monkeypatch):
@@ -261,4 +327,4 @@ def test_the_version_check_does_not_run_on_every_page(server, monkeypatch):
 def test_the_settings_url_still_works_and_opens_the_panel(server):
     status, body = get(server, "/settings")
     assert status == 200
-    assert "Settings are in the panel on the left" in body
+    assert "Settings are in the panel on the right" in body

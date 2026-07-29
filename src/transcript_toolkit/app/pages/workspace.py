@@ -1,38 +1,65 @@
-"""Workspace page: pick or make a project, give it a key and transcripts, import them.
+"""The workspace page: one project, from a folder of Word files to a pipeline you can run.
 
-This is the whole of what used to be a terminal session — `toolkit init`, editing a hidden
-.env in TextEdit, copying files into data/, `toolkit import` — in one page, in that order.
+Everything about the open project is here — what to do next, its transcripts, the interviews the
+demos run on, and the pipeline itself. The list of projects is Home; this is one of them.
 """
 from __future__ import annotations
 
 from nicegui import ui
 
 from ...errors import ToolkitError
-from .. import content, workspaces
+from .. import content, stage, theme, workspaces
 from ..context import CONTEXT
-from .browse import browse_button, choose_folder
-from .common import guard, launch, run_panel, section, shell, shown_name
+from .browse import choose_folder
+from .common import (guard, run_status, section, shell, shown_name, status_chip,
+                     terminal_viewer)
+from .sample import BLURB as SAMPLE_BLURB
+from .sample import TITLE as SAMPLE_TITLE
 from .sample import sample_section
+from .transcripts import transcripts_section
 
 HREF = "/workspace"
 
 
 def workspace_page() -> None:
     with shell(HREF, needs_workspace=False):
-        _gone()
-        _open_or_create()
-        if CONTEXT.project is None:
+        if CONTEXT.missing is not None:
+            _gone()
             return
-        _api_key()
+        if CONTEXT.project is None:
+            _nothing_open()
+            return
+
+        def refresh_all() -> None:
+            body.refresh()
+            rest.refresh()
 
         @ui.refreshable
         def body() -> None:
-            _transcripts(body.refresh)
-            _import_results()
-            _demo_sample(body.refresh)
+            _next_step()
+            _pipeline()
+            _api_key(refresh_all)
+            transcripts_section(refresh_all)
+            _demo_sample(refresh_all)
+
+        @ui.refreshable
+        def rest() -> None:
+            _folder()
 
         body()
-        run_panel(on_finished=body.refresh)
+        # Directly below the two things on this page that start a command — importing and
+        # picking the demo interviews — rather than at the foot of the page.
+        run_status(on_finished=refresh_all)
+        rest()
+        terminal_viewer()
+
+
+def _nothing_open() -> None:
+    section("No project open")
+    with ui.card().classes("w-full"):
+        ui.label("Pick one on the home page, or start a new one there.").classes("text-sm")
+        ui.button("Go to your projects", icon="home",
+                  on_click=lambda: ui.navigate.to("/")).props("dense")
 
 
 def _gone() -> None:
@@ -43,9 +70,7 @@ def _gone() -> None:
     guessing, and neither answer loses anything.
     """
     missing = CONTEXT.missing
-    if missing is None:
-        return
-    with ui.card().classes("w-full bg-amber-50 dark:bg-amber-900/30"):
+    with ui.card().classes(f"w-full {theme.WARN}"):
         ui.label("Your project is not where it was").classes("text-lg font-medium")
         ui.label(str(missing)).classes("text-xs font-mono opacity-70 break-all")
         ui.label("Nothing has been lost by the toolkit — it only stopped finding the folder "
@@ -64,7 +89,7 @@ def _gone() -> None:
         def deleted() -> None:
             workspaces.forget(str(missing))
             CONTEXT.close()
-            ui.navigate.to(HREF)
+            ui.navigate.to("/")
 
         with ui.row().classes("gap-2 flex-wrap"):
             ui.button("I moved or renamed it", icon="drive_file_move",
@@ -76,298 +101,131 @@ def _gone() -> None:
                 .props("dense flat")
 
 
-def _rename(project) -> None:
+def _status_and_sets() -> tuple[dict, list[str]]:
+    status = CONTEXT.status()
+    try:
+        sets = CONTEXT.topic_sets()
+    except ToolkitError:
+        sets = []
+    return status, sets
+
+
+def _next_step() -> None:
+    project = CONTEXT.require_project()
+    try:
+        status, sets = _status_and_sets()
+    except ToolkitError as e:
+        guard(e)
+        return
+    title, why, href = stage.next_action(status, project, sets)
+    with ui.card().classes("w-full bg-primary text-white"):
+        ui.label("Next").classes("text-xs uppercase opacity-70")
+        ui.label(title).classes("text-2xl font-medium")
+        ui.label(why).classes("text-sm opacity-90")
+        ui.button("Go", icon="arrow_forward", on_click=lambda: ui.navigate.to(href)) \
+            .props("outline color=white dense").classes("mt-1 self-start")
+
+
+def _pipeline() -> None:
+    try:
+        status, sets = _status_and_sets()
+    except ToolkitError as e:
+        guard(e)
+        return
+    section("The pipeline", "Each step is demo-first: try it on a few interviews, read the "
+                            "result, then run the whole corpus.")
+    with ui.column().classes("w-full gap-2"):
+        for step in content.STEPS:
+            set_name = sets[0] if (step.per_set and sets) else None
+            word, colour = stage.step_state(status, step, set_name)
+            with ui.card().classes("w-full py-3"):
+                with ui.row().classes("items-center w-full gap-3"):
+                    ui.label(str(step.order)).classes("text-sm opacity-40 w-4 text-right")
+                    with ui.column().classes("gap-0 grow"):
+                        ui.link(step.title, f"/step/{step.slug}") \
+                            .classes("text-base font-medium no-underline")
+                        ui.label(step.blurb).classes("text-xs opacity-70")
+                    status_chip(word, colour)
+
+
+def _rename(project, refresh) -> None:
     """Projects made before the toolkit derived the name are all called the same thing. This
     is the one-field fix, so nobody has to be told to edit config.yaml."""
-    with ui.expansion("Rename it", icon="edit").classes("w-full"):
-        ui.label("Changes what this project is called. Its folder keeps the name it has — "
-                 "rename that in Finder if you want to.").classes("text-xs opacity-70")
-        with ui.row().classes("w-full items-end gap-2"):
-            field = ui.input("Project name", value=shown_name(project)).classes("grow")
-
-            def save() -> None:
-                try:
-                    workspaces.rename_project(project, field.value)
-                except ToolkitError as e:
-                    guard(e)
-                    return
-                ui.navigate.to(HREF)
-
-            ui.button("Save", on_click=save).props("dense")
-
-
-def _reopen(path: str) -> None:
-    try:
-        CONTEXT.open(workspaces.open_workspace(path))
-    except ToolkitError as e:
-        guard(e)
-        return
-    ui.navigate.to(HREF)
-
-
-def _open_or_create() -> None:
-    project = CONTEXT.project
-    if project is not None:
-        with ui.card().classes("w-full"):
-            ui.label("Open project").classes("text-xs uppercase opacity-60")
-            # The project's name, not its folder — the folder is on the line below, where a
-            # path belongs.
-            ui.label(shown_name(project)).classes("text-xl font-medium")
-            ui.label(str(project.root)).classes("text-xs opacity-60")
-            _rename(project)
-        with ui.expansion("Open a different project", icon="folder").classes("w-full"):
-            _picker()
-        return
-
-    section("Open a project", "A project is one folder holding a set of transcripts and "
-                              "everything the toolkit makes from them.")
-    _picker()
-
-
-def _picker() -> None:
-    recents = []
-    try:
-        recents = workspaces.load_registry()
-    except ToolkitError as e:
-        guard(e)
-
-    if recents:
-        with ui.card().classes("w-full"):
-            ui.label("Recent").classes("text-xs uppercase opacity-60")
-            for entry in recents:
-                with ui.row().classes("items-center w-full gap-2"):
-                    with ui.column().classes("gap-0 grow"):
-                        ui.label(entry.get("name") or entry["path"]).classes("text-sm font-medium")
-                        ui.label(entry["path"]).classes("text-xs opacity-60")
-                    ui.button("Open", on_click=lambda _, p=entry["path"]: _reopen(p)) \
-                        .props("dense flat")
-                    ui.button(icon="close", on_click=lambda _, p=entry["path"]: _forget(p)) \
-                        .props("dense flat round").tooltip("Remove from this list "
-                                                           "(the folder is left alone)")
-
-    with ui.card().classes("w-full"):
-        ui.label("Open a project already on this Mac").classes("text-xs uppercase opacity-60")
-        with ui.row().classes("w-full items-end gap-2 flex-wrap"):
-            path = ui.input("Project folder",
-                            placeholder=str(workspaces.suggested_parent() / "my-archive")) \
-                .classes("grow min-w-64")
-            browse_button(path, title="Find your project folder",
-                          hint="Project folders are marked. Open the one you want and use it.")
-            ui.button("Open", icon="folder_open",
-                      on_click=lambda: _reopen(path.value)).props("dense")
-
-    with ui.card().classes("w-full"):
-        ui.label("Start a new project").classes("text-xs uppercase opacity-60")
-        name = ui.input("Project name", value="My Oral History Project").classes("w-full")
-        with ui.row().classes("w-full items-end gap-2 flex-wrap"):
-            parent = ui.input("Inside this folder", value=str(workspaces.suggested_parent())) \
-                .classes("grow min-w-64")
-            browse_button(parent, title="Where should the project folder go?",
-                          hint="A new folder is made inside the one you choose.")
-        where = ui.label().classes("text-xs opacity-60 break-all")
-
-        def preview() -> None:
-            """Show the folder the name will produce, so it is never a surprise later."""
-            try:
-                where.set_text(f"Its folder will be: {workspaces.planned_folder(parent.value, name.value)}")
-            except ToolkitError as e:
-                where.set_text(str(e))
-
-        name.on_value_change(preview)
-        parent.on_value_change(preview)
-        preview()
-
-        def create() -> None:
-            try:
-                CONTEXT.open(workspaces.create_workspace(parent.value, name.value))
-            except ToolkitError as e:
-                guard(e)
-                return
-            ui.navigate.to(HREF)
-
-        ui.button("Create", icon="add", on_click=create).props("dense")
-
-
-def _forget(path: str) -> None:
-    workspaces.forget(path)
-    ui.navigate.to(HREF)
-
-
-def _api_key() -> None:
-    project = CONTEXT.require_project()
-    section("OpenAI key")
-    with ui.card().classes("w-full"):
-        if workspaces.has_api_key(project):
-            with ui.row().classes("items-center gap-2"):
-                ui.icon("check_circle").classes("text-green-600")
-                ui.label("A key is saved in this project.").classes("text-sm")
-            ui.label("Runs are billed to whoever owns it. Replace it below if it changes.") \
-                .classes("text-xs opacity-70")
-        else:
-            ui.label("No key yet — nothing can run without one. Ask whoever administers your "
-                     "team's OpenAI account for one.").classes("text-sm")
-        field = ui.input("Paste a key", password=True, placeholder="sk-...").classes("w-full")
+    with ui.row().classes("w-full items-end gap-2"):
+        field = ui.input("Project name", value=shown_name(project)).classes("grow")
 
         def save() -> None:
             try:
-                workspaces.set_api_key(project, field.value)
+                workspaces.rename_project(project, field.value)
             except ToolkitError as e:
                 guard(e)
                 return
-            ui.navigate.to(HREF)
+            refresh()
 
-        ui.button("Save key", icon="key", on_click=save).props("dense")
-        ui.label("It is stored in this project's .env file and never leaves your Mac except "
-                 "in calls to OpenAI.").classes("text-xs opacity-60")
+        ui.button("Save", on_click=save).props("dense")
 
 
-def _transcripts(refresh) -> None:
+def _api_key(refresh) -> None:
+    """The key lives with the project, and nothing runs without it — so it is on the page that
+    gets a project started, not behind the gear with the settings."""
     project = CONTEXT.require_project()
-    section("Transcripts", "Word files of SYNC'd (timestamped) transcripts — one per interview, "
-                           "or one per session.")
-    with ui.card().classes("w-full"):
-
-        @ui.refreshable
-        def listing() -> None:
-            """What is in the folder, and whether import has read it yet."""
-            rows = workspaces.transcript_rows(project)
-            if not rows:
-                ui.label("No transcripts yet — drop them in below.").classes("text-sm")
-                return
-            waiting = [r for r in rows if not r["imported"]]
-            ui.label(f"{len(rows)} transcript{'s' if len(rows) != 1 else ''} in this project"
-                     + (f", {len(waiting)} not imported yet" if waiting else ", all imported")) \
-                .classes("text-sm font-medium")
-            with ui.column().classes("w-full gap-0 max-h-72 overflow-auto"):
-                for row in rows:
-                    done = row["imported"]
-                    with ui.row().classes("items-center gap-2 w-full py-0.5"):
-                        ui.icon("check_circle" if done else "schedule") \
-                            .classes("text-green-600" if done else "text-amber-600") \
-                            .props("size=1rem")
-                        ui.label(row["filename"]).classes(
-                            "text-xs font-mono " + ("" if done else "font-medium"))
-                        ui.space()
-                        ui.label("imported" if done else "not imported yet") \
-                            .classes("text-xs " + ("opacity-60" if done
-                                                   else "text-amber-700 dark:text-amber-400"))
-
-        listing()
-
-        # The upload box is built once and never rebuilt by an upload: refreshing the part of
-        # the page that holds it while files are still arriving is what used to drop most of a
-        # multi-file drop on the floor. Only the list above is redrawn.
-        async def receive(e) -> None:
-            added, refused = [], []
-            for upload in e.files:
-                try:
-                    workspaces.add_transcript(project, upload.name, await upload.read())
-                    added.append(upload.name)
-                except ToolkitError as err:
-                    refused.append(str(err))
-            listing.refresh()
-            if added:
-                ui.notify(f"Added {len(added)} transcript{'s' if len(added) != 1 else ''}."
-                          + (" Click Import to read them in." if added else ""),
-                          type="positive")
-            for message in refused:
-                guard(ToolkitError(message))
-
-        ui.upload(on_multi_upload=receive, multiple=True, auto_upload=True,
-                  label="Drop .docx files here").props("accept=.docx flat bordered") \
-            .classes("w-full")
-        ui.label(f"They are copied into {project.data_dir}").classes("text-xs opacity-60")
-
-        with ui.row().classes("gap-2 items-center mt-2"):
-            ui.button("Import", icon="play_arrow", on_click=_import_click).props("dense")
-            ui.label("Reads the .docx files into the dataset every step works from. "
-                     "Run it again whenever you add or change a transcript.") \
-                .classes("text-xs opacity-70 max-w-lg")
-
-
-async def _import_click() -> None:
-    """Import, unless there is nothing new to import — in which case say so instead of running
-    a command that would look like it did nothing."""
-    project = CONTEXT.require_project()
-    if not workspaces.transcript_rows(project):
-        guard(ToolkitError("There are no transcripts to import yet. Drop your .docx files in "
-                           "the box above first."))
+    if workspaces.has_api_key(project):
+        with ui.expansion("OpenAI key — saved", icon="key").classes("w-full"):
+            ui.label("Runs are billed to whoever owns it. Replace it below if it changes.") \
+                .classes("text-xs opacity-70")
+            _key_field(project, refresh)
         return
-    if workspaces.everything_imported(project):
-        _already_imported_dialog()
-        return
-    await launch("Import", list(content.IMPORT.argv), HREF)
+    section("OpenAI key")
+    with ui.card().classes(f"w-full {theme.WARN}"):
+        ui.label("No key yet — nothing can run without one.").classes("text-sm font-medium")
+        ui.label("Ask whoever administers your team's OpenAI account for one.") \
+            .classes("text-xs opacity-80")
+        _key_field(project, refresh)
 
 
-def _already_imported_dialog() -> None:
-    with ui.dialog() as dialog, ui.card().classes("max-w-md"):
-        ui.label("Everything is already imported").classes("text-lg font-medium")
-        ui.label("All the transcripts in this project have been read in. To add more, drop "
-                 "them in the box above and then click Import again.").classes("text-sm")
-        ui.label("If you edited a transcript that is already here, import it again to pick up "
-                 "the change.").classes("text-xs opacity-70")
-        with ui.row().classes("w-full justify-end gap-2"):
-            ui.button("OK", on_click=dialog.close).props("flat dense")
+def _key_field(project, refresh) -> None:
+    field = ui.input("Paste a key", password=True, placeholder="sk-...").classes("w-full")
 
-            async def anyway() -> None:
-                dialog.close()
-                await launch("Import", list(content.IMPORT.argv), HREF)
+    def save() -> None:
+        try:
+            workspaces.set_api_key(project, field.value)
+        except ToolkitError as e:
+            guard(e)
+            return
+        refresh()
 
-            ui.button("Import again anyway", on_click=anyway).props("dense")
-    dialog.open()
-
-
-def _import_results() -> None:
-    from ...steps.import_ import dataset_summary
-
-    project = CONTEXT.require_project()
-    if not project.paragraphs_path.exists():
-        return
-    try:
-        summary = dataset_summary(project)
-    except ToolkitError as e:
-        guard(e)
-        return
-
-    section("What was imported", "Check the speaker roles: if an interviewer shows up as "
-                                 "narrator, fix interviewer_labels in config.yaml and import again.")
-    with ui.card().classes("w-full"):
-        ui.label(f"{summary['n_transcripts']} transcripts · {summary['n_paragraphs']:,} "
-                 f"paragraphs · {summary['n_narrators']} narrators").classes("text-sm font-medium")
-
-        ui.table(columns=[{"name": "speaker_role", "label": "Role", "field": "speaker_role",
-                           "align": "left"},
-                          {"name": "speaker_label", "label": "As written in the transcript",
-                           "field": "speaker_label", "align": "left"},
-                          {"name": "n", "label": "Paragraphs", "field": "n", "align": "right"}],
-                 rows=summary["roles"], row_key="speaker_label").props("dense flat").classes("w-full")
-
-        if summary["flagged"]:
-            with ui.card().classes("w-full bg-amber-50 dark:bg-amber-900/30"):
-                ui.label(f"{len(summary['flagged'])} of {len(summary['regimes'])} transcripts "
-                         f"are timestamped only on speaker turns, not on every paragraph.") \
-                    .classes("text-sm")
-                ui.label("The pipeline still runs; clip start and end times are just coarser "
-                         "for those.").classes("text-xs opacity-70")
-                for row in summary["flagged"]:
-                    ui.label(f"{row['interview_id']} — {row['detail']}").classes("text-xs")
-        else:
-            ui.label("Every paragraph carries its own timestamp.").classes("text-xs opacity-70")
-
-        if summary["multi_session"]:
-            ui.label("Multi-session narrators (their sessions are pooled for summaries and "
-                     "interview tags):").classes("text-sm mt-2")
-            for narrator, sessions in summary["multi_session"].items():
-                ui.label(f"{narrator} ← {', '.join(sessions)}").classes("text-xs opacity-80")
+    ui.button("Save key", icon="key", on_click=save).props("dense")
+    ui.label("It is stored in this project's .env file and never leaves your Mac except "
+             "in calls to OpenAI.").classes("text-xs opacity-60")
 
 
 def _demo_sample(refresh) -> None:
     """The demo interviews live here, with the project — every step's demo uses them."""
     if not CONTEXT.require_project().paragraphs_path.exists():
         return
-    section("Demo interviews", "Trying a step out runs it on these interviews only. The same "
-                               "few are used by every step, so what you read is comparable.")
+    section(SAMPLE_TITLE, SAMPLE_BLURB)
     sample_section(HREF, refresh)
+
+
+def _folder() -> None:
+    from ...core.console import reveal
+
+    project = CONTEXT.require_project()
+    with ui.expansion("This project's folder", icon="folder_open").classes("w-full"):
+        ui.label(str(project.root)).classes("text-xs font-mono opacity-70 break-all")
+        ui.label("Everything the toolkit makes is in here: results in outputs/, review pages in "
+                 "diags/, settings in config.yaml.").classes("text-xs opacity-70")
+        with ui.row().classes("gap-2 items-center"):
+            ui.button("Show in Finder", icon="folder_open",
+                      on_click=lambda: reveal(project.root)).props("dense flat")
+        ui.label("Rename the project").classes("text-sm font-medium mt-2")
+        ui.label("Changes what it is called. Its folder keeps the name it has — rename that in "
+                 "Finder if you want to.").classes("text-xs opacity-70")
+
+        def refresh() -> None:
+            ui.navigate.to(HREF)
+
+        _rename(project, refresh)
 
 
 def register() -> None:

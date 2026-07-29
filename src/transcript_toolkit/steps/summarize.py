@@ -22,6 +22,7 @@ from ..core.console import choose_transport, reveal
 from ..core.ids import narrator_key
 from ..core.llm import build_schema, call_llm, check_levels, openai_client
 from ..core.parallel import worker_pool
+from ..core.prompts import load_prompt
 from ..core.render import render_interview
 from ..core.reviewdoc import document, esc
 from ..core.sampling import sample_keys
@@ -34,14 +35,6 @@ STEP = "summarize"
 
 
 # --- assembly -------------------------------------------------------------------------------
-
-def load_prompt(project: Project, name: str) -> str:
-    path = project.prompts_dir / name
-    if not path.exists():
-        raise ToolkitError(f"Prompt not found: {path}. Restore the default with "
-                           f"`toolkit init --reset-prompt {name}`.")
-    return path.read_text().strip()
-
 
 def build_units(paragraphs_df: pd.DataFrame, pool_sessions: bool, session_regex: str) -> list[dict]:
     """Group paragraphs into interview units: one per narrator (sessions pooled, in id order)

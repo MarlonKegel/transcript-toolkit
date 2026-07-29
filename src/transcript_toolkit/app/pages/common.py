@@ -1,4 +1,4 @@
-"""The page shell and the run panel — the two things every page is built out of."""
+"""The page shell, the status panel and the terminal viewer — what every page is built out of."""
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -9,24 +9,26 @@ from nicegui import ui
 from ... import __version__
 from ...core.config import project_name
 from ...errors import ToolkitError
-from .. import content, jobs
+from .. import content, jobs, theme
 from ..context import CONTEXT
 
-PRIMARY = "#3b4bb8"
-# Settings is not in here: it is the same on every page and belongs behind the gear, not in the
-# row of places you go in order.
-NAV = [("/", "Home"), ("/workspace", "Workspace"),
+# Home is not in here: it is the list of projects, and you get to it from the icon in the
+# corner. Settings is not in here either — it is the same on every page and belongs behind the
+# gear, not in the row of places you go in order.
+NAV = [("/workspace", "Workspace"),
        *[(f"/step/{s.slug}", s.title) for s in content.STEPS],
        ("/export", "Export")]
 
 STATE_LOOK = {
     jobs.RUNNING: ("play_circle", "text-primary", "running"),
-    jobs.WAITING: ("help", "text-orange-600", "waiting for you"),
-    jobs.SUCCEEDED: ("check_circle", "text-green-600", "finished"),
-    jobs.FAILED: ("error", "text-red-600", "failed"),
-    jobs.STOPPED: ("stop_circle", "text-gray-500", "stopped"),
-    jobs.CANCELLED: ("do_not_disturb_on", "text-gray-500", "cancelled"),
+    jobs.WAITING: ("help", "tk-caution", "waiting for you"),
+    jobs.SUCCEEDED: ("check_circle", "tk-good", "finished"),
+    jobs.FAILED: ("error", "tk-bad", "failed"),
+    jobs.STOPPED: ("stop_circle", "opacity-60", "stopped"),
+    jobs.CANCELLED: ("do_not_disturb_on", "opacity-60", "cancelled"),
 }
+
+ICON_URL = "/app-icon.png"
 
 
 def shown_name(project) -> str:
@@ -48,30 +50,33 @@ def guard(e: Exception) -> None:
 @contextmanager
 def shell(active: str = "", *, needs_workspace: bool = True, settings_open: bool = False):
     """Header, navigation, the settings drawer, and the centred column pages draw into."""
-    ui.colors(primary=PRIMARY)
+    theme.apply()
     # Before anything reads a file out of it: the folder may have been renamed or thrown away
     # in Finder since the page was last drawn.
     CONTEXT.check_still_there()
     project = CONTEXT.project
     if needs_workspace and project is None:
-        ui.navigate.to("/workspace")
+        ui.navigate.to("/")
 
     drawer = _settings_drawer(active, settings_open)
 
-    with ui.header().classes("items-center justify-between px-4 py-2"):
-        with ui.row().classes("items-center gap-3"):
+    with ui.header().classes("items-center px-4 py-2 gap-2"):
+        with ui.row().classes("items-center gap-2 flex-1 min-w-0"):
+            with ui.link(target="/").classes("no-underline flex items-center gap-2") \
+                    .tooltip("All your projects"):
+                ui.image(ICON_URL).classes("w-7 h-7 rounded")
+                ui.label("Transcript Toolkit").classes("text-lg font-medium text-white")
+                # In plain sight because the first question about any odd behaviour is which
+                # version is running, and the answer must not require opening a terminal.
+                ui.label(__version__).classes("text-xs opacity-60 text-white")
+        centre = ui.row().classes("items-center gap-2 justify-center flex-1 min-w-0")
+        if project is not None:
+            with centre:
+                ui.icon("folder_open", size="1.1rem")
+                ui.label(shown_name(project)).classes("text-sm font-medium truncate")
+        with ui.row().classes("items-center justify-end flex-1"):
             ui.button(icon="settings", on_click=drawer.toggle) \
                 .props("flat round dense color=white").tooltip("Settings")
-            ui.icon("subject", size="1.6rem")
-            ui.label("Transcript Toolkit").classes("text-lg font-medium")
-            # In plain sight because the first question about any odd behaviour is which
-            # version is running, and the answer must not require opening a terminal.
-            ui.label(__version__).classes("text-xs opacity-60")
-        if project is not None:
-            with ui.row().classes("items-center gap-2 opacity-90"):
-                ui.icon("folder_open", size="1.1rem")
-                ui.label(shown_name(project)).classes("text-sm")
-                ui.label(project.root.name).classes("text-xs opacity-60")
 
     with ui.row().classes("w-full max-w-5xl mx-auto px-4 pt-4 gap-1 flex-wrap"):
         for href, title in NAV:
@@ -89,7 +94,7 @@ def _settings_drawer(active: str, opened: bool):
     project rather than a place in the pipeline, so it does not belong in the row above."""
     from .settings import settings_body
 
-    drawer = ui.left_drawer(value=opened, bordered=True).props("width=460 overlay")
+    drawer = ui.right_drawer(value=opened, bordered=True).props("width=460 overlay")
     with drawer:
         with ui.row().classes("items-center w-full"):
             ui.label("Settings").classes("text-lg font-medium")
@@ -125,7 +130,7 @@ def _running_banner(active: str) -> None:
         if not show:
             return
         with holder:
-            with ui.card().classes("w-full bg-blue-50 dark:bg-blue-900/30 py-2"):
+            with ui.card().classes(f"w-full {theme.NOTE} py-2"):
                 with ui.row().classes("items-center gap-3"):
                     ui.spinner(size="1.2rem")
                     ui.label(f"{job.title} is {STATE_LOOK[job.state][2]}").classes("text-sm")
@@ -141,54 +146,33 @@ def info(text: str) -> None:
         ui.tooltip(text).classes("max-w-sm text-xs whitespace-pre-line")
 
 
-TERMINAL_EXPLAINER = (
-    "This app is a window onto a command-line tool. Everything you click here runs the same "
-    "`toolkit` command a person would type in Terminal, on this Mac — nothing is sent anywhere "
-    "except the calls to OpenAI.\n\n"
-    "What you see below is that command's own output, exactly as Terminal would show it: the "
-    "line at the top is the command being run, and the black panel is what it printed.\n\n"
-    "You never have to open this. It is here so you can see what is happening, and so you can "
-    "copy a command out and run it yourself if you ever want to."
-)
-
-
-def explainer() -> None:
-    info(TERMINAL_EXPLAINER)
-
-
-def status_chip(text: str, colour: str) -> None:
-    ui.chip(text, color=colour, text_color="white").props("dense square").classes("text-xs")
-
-
 def section(title: str, blurb: str = "") -> None:
     ui.label(title).classes("text-xl font-medium mt-2")
     if blurb:
         ui.label(blurb).classes("text-sm opacity-70 -mt-1")
 
 
-def run_panel(on_fix: Callable[[str], None] | None = None,
-              on_finished: Callable[[], None] | None = None) -> None:
-    """The live view of whatever is running: the command, its output as it appears, the
-    question it is waiting on, and what to do when it fails.
+def status_chip(text: str, colour: str) -> None:
+    ui.chip(text, color=colour, text_color="white").props("dense square").classes("text-xs")
+
+
+# --- the run status panel ------------------------------------------------------------------
+
+def run_status(on_fix: Callable[[str], None] | None = None,
+               on_finished: Callable[[], None] | None = None, unit: str = "") -> None:
+    """What the command that was just started is doing, drawn where it was started from.
 
     It reads the job off the server, so it is the same panel whether the run started a second
-    ago in this tab or an hour ago in a tab that has since been closed.
+    ago in this tab or an hour ago in a tab that has since been closed. Its output is not here:
+    that is the Terminal Viewer at the foot of the page.
     """
-    seen = {"id": None, "revision": -1, "lines": 0, "finished": None}
+    seen = {"id": None, "revision": -1, "finished": None}
 
     with ui.card().classes("w-full") as card:
         header = ui.row().classes("items-center gap-2 w-full")
-        progress = ui.label().classes("text-sm")
+        progress_area = ui.column().classes("w-full gap-1")
         prompt_area = ui.column().classes("w-full gap-2")
         error_area = ui.column().classes("w-full gap-2")
-        with ui.expansion("Terminal", icon="terminal").classes("w-full"):
-            with ui.row().classes("items-center gap-1"):
-                ui.label("What the toolkit is doing on your Mac, as it does it.") \
-                    .classes("text-xs opacity-70")
-                explainer()
-            command = ui.code("", language="bash").classes("w-full text-xs")
-            log = ui.log(max_lines=jobs.MAX_LOG_LINES).classes(
-                "w-full h-80 text-xs font-mono bg-gray-900 text-gray-100 rounded p-2")
 
     def redraw(job: jobs.Job) -> None:
         icon, colour, word = STATE_LOOK[job.state]
@@ -203,14 +187,15 @@ def run_panel(on_fix: Callable[[str], None] | None = None,
                     .props("outline dense").tooltip(
                         "Safe to stop: every finished call is saved, so running this again "
                         "carries on from where it stopped.")
-        command.content = f"$ {job.command}"
-        # With the terminal folded away, this is the only sign of life a run gives: its most
-        # recent line of output, in plain sight.
-        progress.set_text(_latest(job))
+
+        progress_area.clear()
+        if job.live:
+            with progress_area:
+                _progress(job, unit)
 
         prompt_area.clear()
         if job.state == jobs.WAITING:
-            with prompt_area, ui.card().classes("w-full bg-orange-50 dark:bg-orange-900/30"):
+            with prompt_area, ui.card().classes(f"w-full {theme.WARN}"):
                 ui.label("The toolkit is asking before it spends anything:") \
                     .classes("text-xs opacity-70")
                 # Its own words and its own figures, lifted from the run itself, so nothing
@@ -222,7 +207,7 @@ def run_panel(on_fix: Callable[[str], None] | None = None,
                                   on_click=lambda _, a=answer: _answer(a.send)) \
                             .props(f"color={answer.tone or 'primary'} dense")
         elif job.unanswered_question():
-            with prompt_area, ui.card().classes("w-full bg-orange-50 dark:bg-orange-900/30"):
+            with prompt_area, ui.card().classes(f"w-full {theme.WARN}"):
                 ui.label("It is waiting for an answer:").classes("text-xs opacity-70")
                 ui.label(job.unanswered_question()).classes("font-mono text-sm")
                 reply = ui.input("Type your answer").classes("w-full")
@@ -230,18 +215,18 @@ def run_panel(on_fix: Callable[[str], None] | None = None,
 
         error_area.clear()
         if job.state == jobs.FAILED and job.error:
-            with error_area, ui.card().classes("w-full bg-red-50 dark:bg-red-900/30"):
+            with error_area, ui.card().classes(f"w-full {theme.FAIL}"):
                 ui.label("It stopped with this:").classes("text-xs opacity-70")
                 ui.label(job.error).classes("whitespace-pre-line text-sm")
                 fix = content.fix_for(job.error)
                 if fix and on_fix:
-                    label = "Draw the demo sample" if fix == "sample" else "Run the demo"
+                    label = "Pick the demo interviews" if fix == "sample" else "Run the demo"
                     ui.button(label, icon="play_arrow",
                               on_click=lambda _, f=fix: on_fix(f)).props("dense")
         elif job.state == jobs.FAILED:
-            # No message means the toolkit did not stop on purpose. Give the user the tail of
-            # the log and a way to send it on, rather than a red box with nothing in it.
-            with error_area, ui.card().classes("w-full bg-red-50 dark:bg-red-900/30"):
+            # No message means the toolkit did not stop of its own accord. Give the user the
+            # tail of the log and a way to send it on, rather than a red box with nothing in it.
+            with error_area, ui.card().classes(f"w-full {theme.FAIL}"):
                 ui.label("It stopped unexpectedly. These are its last lines — send them to "
                          "whoever looks after the toolkit.").classes("text-sm")
                 tail = "\n".join(list(job.lines)[-20:])
@@ -262,15 +247,10 @@ def run_panel(on_fix: Callable[[str], None] | None = None,
         if job is None:
             return
         if seen["id"] != job.id:
-            log.clear()
-            seen.update(id=job.id, revision=-1, lines=0)
-        if job.revision == seen["revision"] and not job.unanswered_question():
-            return
-        for line in job.since(seen["lines"]):
-            log.push(line)
-        seen["lines"] = job.emitted
-        seen["revision"] = job.revision
-        redraw(job)
+            seen.update(id=job.id, revision=-1)
+        if job.revision != seen["revision"] or job.live or job.unanswered_question():
+            seen["revision"] = job.revision
+            redraw(job)
         if not job.live and seen["finished"] != job.id:
             seen["finished"] = job.id
             if on_finished:                     # the page's own sections are now out of date
@@ -296,12 +276,102 @@ def run_panel(on_fix: Callable[[str], None] | None = None,
     ui.timer(0.4, tick)
 
 
+def _progress(job: jobs.Job, unit: str) -> None:
+    """How far the run has got. Every step counts off the work it does, so this is the run's own
+    count read back — not an estimate made here."""
+    counted = content.progress_of(job.lines)
+    if counted:
+        done, total = counted
+        ui.linear_progress(value=done / total, show_value=False, size="10px") \
+            .props("rounded color=primary")
+        ui.label(f"{done} of {total} {unit or 'done'}".rstrip()).classes("text-xs opacity-70")
+    else:
+        with ui.row().classes("items-center gap-2"):
+            ui.spinner(size="1rem")
+            ui.label("Starting…").classes("text-xs opacity-70")
+    latest = _latest(job)
+    if latest:
+        ui.label(latest).classes("text-xs opacity-60 font-mono truncate w-full")
+
+
+def inline_state(title: str) -> None:
+    """A one-line live state for a Run button further down a page, so a click there is visibly
+    answered without scrolling to the panel at the top."""
+    holder = ui.row().classes("items-center gap-2")
+
+    def tick() -> None:
+        job = CONTEXT.jobs.current
+        show = job is not None and job.title == title
+        holder.clear()
+        holder.set_visibility(bool(show))
+        if not show:
+            return
+        icon, colour, word = STATE_LOOK[job.state]
+        with holder:
+            ui.icon(icon).classes(colour).props("size=1rem")
+            ui.label(f"{word} · {job.duration:.0f}s").classes("text-xs opacity-70")
+
+    holder.set_visibility(False)
+    ui.timer(0.5, tick)
+
+
+# --- the terminal viewer -------------------------------------------------------------------
+
+TERMINAL_EXPLAINER = (
+    "This app is a window onto a command-line tool. Everything you click here runs the same "
+    "`toolkit` command a person would type in Terminal, on this Mac — nothing is sent anywhere "
+    "except the calls to OpenAI.\n\n"
+    "What you see below is that command's own output, exactly as Terminal would show it: the "
+    "line at the top is the command being run, and the dark panel is what it printed.\n\n"
+    "You never have to read this. It is here so you can see what is happening, and so you can "
+    "copy a command out and run it yourself if you ever want to."
+)
+
+
+def explainer() -> None:
+    info(TERMINAL_EXPLAINER)
+
+
+def terminal_viewer() -> None:
+    """The last section of every page that can run something: the command, and its output as it
+    appears. Separate from the status panel, which sits next to the button that started it."""
+    seen = {"id": None, "lines": 0}
+
+    with ui.row().classes("items-center gap-2 mt-4"):
+        ui.label("Terminal Viewer").classes("text-xl font-medium")
+        explainer()
+    ui.label("What the toolkit is doing on your Mac, as it does it.").classes("text-sm opacity-70")
+    with ui.card().classes("w-full"):
+        idle = ui.label("Nothing has run yet in this project.").classes("text-sm opacity-60")
+        command = ui.code("", language="bash").classes("w-full text-xs")
+        log = ui.log(max_lines=jobs.MAX_LOG_LINES).classes(
+            "w-full h-72 text-xs font-mono rounded p-2 tk-terminal")
+
+    def tick() -> None:
+        job = CONTEXT.jobs.current
+        idle.set_visibility(job is None)
+        command.set_visibility(job is not None)
+        log.set_visibility(job is not None)
+        if job is None:
+            return
+        if seen["id"] != job.id:
+            log.clear()
+            seen.update(id=job.id, lines=0)
+            command.content = f"$ {job.command}"
+        for line in job.since(seen["lines"]):
+            log.push(line)
+        seen["lines"] = job.emitted
+
+    tick()
+    ui.timer(0.4, tick)
+
+
 def _latest(job: jobs.Job) -> str:
-    """The last thing the command said, for the one-line summary above the folded terminal."""
+    """The last thing the command said — a sign of life while it is still going."""
     for line in reversed(list(job.lines)):
         if line.strip():
             return line.strip()
-    return "Starting…" if job.live else ""
+    return ""
 
 
 def _question_block(job: jobs.Job) -> str:

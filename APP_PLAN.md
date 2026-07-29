@@ -782,3 +782,39 @@ This round is larger than 1 and 2 combined and is mostly **structural** — a ne
 and Workspace merged, the step page resequenced around demo-then-full, prompts editable in the
 app, and `config.yaml` replaced by real controls split between the sidebar (project/app-wide) and
 each step's own page (step-specific). Expect it to need its own plan rather than a fix list.
+
+## 20. Feedback round 3 — triage and what was built (2026-07-29, evening)
+
+§19 is Marlon's own words. This is the item-by-item answer, with the standing UI-vs-CLI call in
+the last column. Alongside it he asked for the app's colours to be the icon's colours.
+
+It was planned as one change rather than a list, because several items decide each other: where
+step settings live depends on the step page's new shape, and the Home page needs a per-project
+"stage" that nothing computed before.
+
+| # | What he asked for | What changed | CLI? |
+|---|---|---|---|
+| 1 | Header: gear top **right**, project name centred, wordmark + version left, the real icon, clicking it goes Home | `pages/common.shell` — three flex zones; `ui.image("/app-icon.png")`, served from the package by `server.py` so the header and the Dock icon can never be different pictures. The drawer became a `right_drawer`. | **yes** — two CLI messages said "the gear in the top left corner"; both now say right |
+| 2 | Merge Home + Workspace; a real Home listing every project and its stage, with project creation | `pages/home.py` is now the project list (name, folder, transcripts, "3 of 5 steps run on everything", the next thing to do, Open) plus open-by-path and create. `pages/workspace.py` is one project: next action, the pipeline, key, transcripts, demo sample, folder. New `app/stage.py` holds `ran_fully` / `step_state` / `next_action` / `summary`, which both pages read. | UI only, **but** `server._resolve_workspace` now remembers whatever it opens, so a project given with `--project` or walked up to appears on Home |
+| 3 | The transcript list appeared twice; one combined, scrolling table, 10–15 rows | `pages/transcripts.py` — one row per transcript: imported state, filename, narrator (+ session count), paragraphs, a timestamp warning where the transcript is turn-timed only. Scrolls inside itself at `theme.LIST_HEIGHT`. The aggregate speaker-role table (the check that catches a misconfigured interviewer label) is folded under it as *Who the speakers are*. | **shared data**: `steps/import_.interview_rows()` — a dataset question, so it lives with the step, not in `app/` |
+| 4 | Demo section renamed; "how many" above the random/pick choice; never fewer than 3; list what was picked; make the list editable (remove / add one / add x random, 3–10) | `pages/sample.py` — *Pick the sample of interviews for demos*; size first with the bounds spelled out; the picked interviews listed one per line, each with an ×; "add this many at random"; "or add a particular interview". Every edit runs `toolkit sample` with the interviews it should end up with, so the app never writes the sample file itself. | **yes** — `core/sampling.MIN_N`/`MAX_N` (3/10), enforced by `cli.cmd_sample` and read by the app, so typing the command meets the same rule |
+| 5 | Show progress while a step runs, not buried at the bottom | Every step already prints `  [3/12] …` per unit; `content.progress_of()` reads that back and `common._progress` draws it as a bar with "7 of 12 clips". The Batch API's own `[  42s] status=…` line deliberately does not match. | no change — the app reads the count the CLI already prints |
+| 6 | Terminal viewer its own bottom section headed "Terminal Viewer", separate from the status, which should sit by the button that started it | `run_panel` split into `run_status` (state, progress, the CLI's question, errors, Stop) and `terminal_viewer` (heading, command, output, always visible). Every page places `run_status` immediately below the buttons that start something, and the viewer last. `inline_state(title)` answers a click on a Run button further down a page. **A successful run no longer echoes the CLI's last line** — that is where "Then run `toolkit clip` for the full corpus" was coming from. | UI only |
+| 7 | Dislikes "Other things this step can do"; frequent things on the page, niche ones in a bottom section | `Step.followups` → `Step.extras`, drawn at the foot of the page as **Extra tools** ("nothing here is needed for a normal run"). The `advanced` flag is gone. The threshold aid was not niche — it is the decision made *while* rolling up — so `Action.aids` puts it beside the rollup button. | UI only |
+| 8 | Don't show "Run it on everything" from the start: Try it → a big review button → then adjust-and-redemo **or** run everything | The step page is `1 · Try it` → `1 · The demo has run` / `2 · Read what came out` (review buttons + what to look for, per step) → `3 · Then one of these` (*Not right yet?* / *Happy with it?*). Only one demo button exists at a time. | UI only — the toolkit already refuses a full run without a current demo; the app now stops offering what would be refused |
+| 9 | No way to view or edit the prompts | `pages/prompts.py` — the step's own prompt file, editable, with *Put the original back*. New `core/prompts.py` answers "which file does this step read?" (a topic list may bring its own), so the app names no prompt files. | **yes** — `toolkit status` now prints each step's prompt file and how to restore one |
+| 10 | The settings page should not be a YAML editor: use the comments as explanations, real controls | `core/settings.py` — a schema of the blessed settings, `explanations()` reading each key's comment out of config.yaml, and `set_value()`/`save()` editing the file in place. Write → re-read → verify only the named keys changed, else refuse and keep the user's file. `pages/settings_form.py` renders toggles, selects, chip lists, number lists, key→value rows and the rollup composite. The scaffold's config.yaml gained a comment for every blessed key. | **yes in effect** — the app writes exactly what a person would type, comments and all; `docs/CONFIG.md` documents the two conventions this relies on |
+| 11 | Project/app-wide settings in the sidebar, step-specific on the step's page | Drawer: project name, version, desktop app, files, delete, quit. Step pages: model, thinking effort, and each step's own keys (topics also gets its topic list's rollup rule). Import has no page of its own, so its settings are on the workspace page beside Import; export's are on the export page. | UI only |
+| 12 | The review tab needs a back arrow to the interview list | `core/reviewdoc.document(back=…)` → `← All interviews` above the title on every per-interview page (clip, label, topics — topics points at its own set's index). | **yes** — the pages are the toolkit's own artifacts, so a terminal user gets it too |
+| 13 | The app's colours should be the icon's colours | `app/theme.py` — navy `#2A3E55` and cream `#E7DFCC`, light and dark, with `tk-note` / `tk-warn` / `tk-fail` panels replacing the Tailwind blue/amber/red. `core/reviewdoc` CSS retuned to match. | **yes** for the review pages |
+
+**One deliberate reading of item 11.** The OpenAI key stayed on the workspace page rather than
+going into the sidebar with the project-wide settings. It is a credential and the first thing a
+new project needs, not a tunable; it collapses to one line once set, so it does not clutter.
+
+Tests 524 → 590 (+1 skipped). New: `test_settings.py` (the config writer, every setting kind, and
+that a hand-reindented file is left alone), `test_review_pages.py`, `test_app_progress_and_prompts.py`.
+`tests/test_app_pages.py` now runs its server with its own HOME, so it stops writing test paths
+into the developer's list of projects.
+
+Nothing here changed a prompt text, a taxonomy text or a cache key.

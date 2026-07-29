@@ -14,6 +14,12 @@ toolkit sample --seed 3              # a different draw
 Every demo you run from then on covers the whole sample, so a bigger sample costs
 proportionally more each time you try a step out. Five is the default for that reason.
 
+**Between 3 and 10.** Fewer than three does not show enough to judge a prompt by; more than ten
+costs more than it tells you, since every step's demo is run several times over. Both ends are
+refused with the reason. (To process a chosen few interviews for real rather than as a demo, use
+`toolkit clip --interview <id>` instead.) A collection of fewer than three interviews is the one
+exception: then the sample is all of them.
+
 ## Choosing the interviews yourself
 
 **You do not have to accept a random draw.** Name the interviews you want:
@@ -33,8 +39,11 @@ Use the interview ids exactly as `toolkit import` printed them (lowercase, under
 filename with its suffixes stripped). An unknown id fails immediately and lists the valid ones,
 so a typo can't silently give you a different sample.
 
-In the app this is the **Demo interviews** section of the workspace page: the same choice, with
-the interview list in front of you.
+In the app this is **Pick the sample of interviews for demos** on the workspace page: the same
+choice, with the interview list in front of you. It asks how many first, then whether to draw
+them or choose them; afterwards it lists the ones it picked, and each can be taken out, swapped
+for a particular interview, or topped up with a few more at random — every one of those runs
+`toolkit sample` with the interviews it should end up with.
 
 This is worth doing when the random five aren't representative — pick a short interview and a
 long one, a single-session and a multi-session narrator, or the transcript you know is messiest.

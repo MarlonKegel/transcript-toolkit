@@ -155,6 +155,36 @@ def dataset_summary(project: Project) -> dict:
     }
 
 
+def interview_rows(project: Project) -> list[dict]:
+    """One row per interview in the dataset: how much of it there is, whose it is, and whether
+    every paragraph carries its own timestamp.
+
+    The per-interview view of the same facts `dataset_summary` aggregates. Nothing prints this;
+    it is here rather than in the app because it is a question about the dataset.
+    """
+    if not project.paragraphs_path.exists():
+        return []
+    cfg = load_step_config(project, "import")
+    df = pd.read_parquet(project.paragraphs_path)
+    regimes = {r["interview_id"]: r for r in timestamp_regimes(df)}
+    groups = narrator_groups(sorted(df["interview_id"].unique()), cfg["session_regex"])
+    narrator_of = {iid: key for key, ids in groups.items() for iid in ids}
+    rows = []
+    for iid, g in df.groupby("interview_id", sort=True):
+        regime = regimes[iid]
+        narrator = narrator_of[iid]
+        rows.append({
+            "interview_id": iid,
+            "narrator": narrator,
+            "sessions": len(groups[narrator]),
+            "paragraphs": int(len(g)),
+            "words": int(g["word_count"].sum()),
+            "timestamps": "every paragraph" if regime["ok"] else _regime_label(regime),
+            "timestamps_ok": bool(regime["ok"]),
+        })
+    return rows
+
+
 def _regime_label(r: dict) -> str:
     if r["coverage"] <= 0.0:
         return f"timestamps on speaker turns only (0 of {r['n_cont']} continuation paragraphs timed)"

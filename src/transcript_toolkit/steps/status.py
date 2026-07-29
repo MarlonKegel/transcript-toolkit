@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 
 from ..core.config import load_root_config, project_name
+from ..core.prompts import prompt_files
 from ..project import Project
 from ..state import load_state
 
@@ -44,6 +45,7 @@ def gather_status(project: Project) -> dict:
         **_corpus(project),
         "steps": load_state(project)["steps"],
         "deliverables": _deliverables(project),
+        "prompts": prompt_files(project),
     }
 
 
@@ -67,5 +69,10 @@ def run_status(project: Project, as_json: bool = False) -> None:
             full_txt = (f"full {full['at'][:10]} ({full['model']}, {full['n_units']})"
                         if full else "no full run")
             print(f"  {step_key:<16} {demo_txt:<20} {full_txt}")
+
+    print("\nPrompts (edit these in prompts/, or restore one with "
+          "`toolkit init --reset-prompt NAME`):")
+    for step, name in info["prompts"].items():
+        print(f"  {step:<16} prompts/{name}")
 
     print(f"\nExport would include: {', '.join(info['deliverables']) or '(nothing yet — run some steps)'}")

@@ -1,8 +1,11 @@
-"""Settings: the installation, the desktop app, this project's config file, and quitting.
+"""Settings: the project as a whole, the installation, and quitting.
 
-Drawn into the drawer behind the gear (see common.shell), so it is one click away from
-wherever somebody is rather than a place they have to navigate to and come back from. The
-`/settings` URL still works and opens the same drawer.
+Drawn into the drawer behind the gear (see common.shell), so it is one click away from wherever
+somebody is rather than a place they have to navigate to and come back from. The `/settings` URL
+still works and opens the same drawer.
+
+Only what belongs to the whole project or to the app is here. A setting that belongs to one step
+is on that step's page, next to the button that uses it.
 """
 from __future__ import annotations
 
@@ -11,10 +14,12 @@ import sys
 from nicegui import app, run, ui
 
 from ... import __version__
+from ...core import settings as config_settings
 from ...core.console import reveal
 from ...errors import ToolkitError
 from .. import DEFAULT_PORT, workspaces
 from ..context import CONTEXT
+from .settings_form import settings_form
 
 HREF = "/settings"
 
@@ -23,8 +28,8 @@ def settings_page() -> None:
     from .common import shell
 
     with shell(HREF, needs_workspace=False, settings_open=True):
-        ui.label("Settings are in the panel on the left.").classes("text-sm opacity-70")
-        ui.label("You can open it from any page with the gear in the top left corner.") \
+        ui.label("Settings are in the panel on the right.").classes("text-sm opacity-70")
+        ui.label("You can open it from any page with the gear in the top right corner.") \
             .classes("text-xs opacity-60")
 
 
@@ -36,9 +41,10 @@ def settings_body(active: str = "/"):
     page, and the version check is a call to GitHub — doing that on every page load would put
     a network round trip behind every click in the app.
     """
+    _project()
     on_open = _version(active)
     _desktop_app()
-    _config()
+    _files()
     _delete_project()
     _quit()
     return on_open
@@ -49,6 +55,16 @@ def _card(title: str, blurb: str = ""):
     if blurb:
         ui.label(blurb).classes("text-xs opacity-70")
     return ui.card().classes("w-full")
+
+
+def _project() -> None:
+    if CONTEXT.project is None:
+        return
+    with _card("This project", "What it is called, wherever the app shows it."):
+        settings_form(config_settings.PROJECT, note=False,
+                      save_label="Save the project name")
+        ui.label("Settings that belong to one step — which model it uses, how hard it thinks — "
+                 "are on that step's own page.").classes("text-xs opacity-60")
 
 
 def _version(active: str):
@@ -77,8 +93,8 @@ def _version(active: str):
 def _desktop_app() -> None:
     if sys.platform != "darwin":
         return
-    from .common import guard
     from ..launcher import app_path, log_path
+    from .common import guard
 
     with _card("Desktop app", "A double-clickable app that starts this window."):
         exists = app_path().exists()
@@ -101,46 +117,19 @@ def _desktop_app() -> None:
         ui.label(f"Startup messages go to {log_path()}").classes("text-xs opacity-60 break-all")
 
 
-def _config() -> None:
-    from .common import guard
-
+def _files() -> None:
+    """Where the settings this app does not show are kept. Everything the toolkit reads is a file
+    in the project folder, and somebody who prefers editing them can."""
     project = CONTEXT.project
     if project is None:
         return
-    import yaml
-
-    with _card("Settings file",
-               "config.yaml holds this project's settings — which model each step uses, how "
-               "interviewer labels are spelled, and so on. The comments in it explain each one."):
-        ui.label(str(project.config_path)).classes("text-xs opacity-60 break-all")
-        try:
-            current = project.config_path.read_text()
-        except OSError as e:
-            # The folder can go away between the page being drawn and this being read.
-            guard(ToolkitError(f"Could not read {project.config_path}: {e}"))
-            return
-        editor = ui.textarea(value=current) \
-            .props("outlined autogrow input-class=font-mono").classes("w-full text-xs")
-
-        def save() -> None:
-            try:
-                yaml.safe_load(editor.value)
-            except yaml.YAMLError as e:
-                guard(ToolkitError(f"That is not valid YAML, so it was not saved:\n{e}"))
-                return
-            try:
-                project.config_path.write_text(editor.value)
-            except OSError as e:
-                guard(ToolkitError(f"Could not save {project.config_path}: {e}"))
-                return
-            ui.notify("Saved. Changing a model or a prompt makes the demos stale — the next "
-                      "full run will ask you to redo the demo first.",
-                      type="positive", multi_line=True, close_button="OK")
-
-        with ui.row().classes("gap-2"):
-            ui.button("Save", icon="save", on_click=save).props("dense")
-            ui.button("Show in Finder", icon="folder_open",
-                      on_click=lambda: reveal(project.root)).props("dense flat")
+    with _card("The project's files"):
+        ui.label("Every setting is a line in config.yaml; the rarely-needed ones are in "
+                 "advanced/. The interviews are in data/, the results in outputs/, the review "
+                 "pages in diags/.").classes("text-xs opacity-80")
+        ui.label(str(project.root)).classes("text-xs opacity-60 break-all")
+        ui.button("Show in Finder", icon="folder_open",
+                  on_click=lambda: reveal(project.root)).props("dense flat")
 
 
 CONFIRM_WORD = "DELETE"
@@ -192,7 +181,7 @@ def _confirm_delete(project) -> None:
             CONTEXT.close()
             dialog.close()
             ui.notify(f"Deleted. It is in {where}.", type="warning", close_button="OK")
-            ui.navigate.to("/workspace")
+            ui.navigate.to("/")
 
         with ui.row().classes("w-full justify-end gap-2"):
             ui.button("Cancel", on_click=dialog.close).props("flat dense")

@@ -34,7 +34,7 @@ from ...core.tables import (load_paragraphs, merge_subset, write_deliverable,
 from ...errors import ToolkitError
 from ...project import Project
 from ...state import check_demo_gate, record_demo, record_full
-from ..summarize import load_prompt
+from ...core.prompts import load_prompt
 from .annotate import write_annotated
 from .chunking import CHUNK_OVERHEAD_BASE, Chunk, chunk_paragraphs, estimate_paragraph_tokens, ts_to_seconds
 

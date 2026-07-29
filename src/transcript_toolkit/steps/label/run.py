@@ -36,7 +36,7 @@ from ...project import Project
 from ...state import check_demo_gate, record_demo, record_full
 from ..clip.chunking import estimate_paragraph_tokens
 from ..clip.run import _log_failures, effective_timestamp
-from ..summarize import load_prompt
+from ...core.prompts import load_prompt
 from .annotate import write_annotated
 from .batching import LabelBatch, batch_clips
 

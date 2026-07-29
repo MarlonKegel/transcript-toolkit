@@ -57,10 +57,29 @@ def test_an_unknown_interview_is_refused_by_name(imported):
 
 
 def test_the_app_offers_the_same_default_the_cli_draws():
-    """Two numbers that must never disagree: what the app puts in the box and what the CLI
-    uses when nobody says."""
+    """Three numbers that must never disagree: what the app puts in the box, and the sizes the
+    CLI will actually draw."""
+    from transcript_toolkit.core.sampling import MAX_N, MIN_N
     assert content.SAMPLE_DEFAULT_N == DEFAULT_N
-    assert content.SAMPLE_MAX_N > content.SAMPLE_DEFAULT_N
+    assert (content.SAMPLE_MIN_N, content.SAMPLE_MAX_N) == (MIN_N, MAX_N)
+    assert MIN_N < DEFAULT_N < MAX_N
+
+
+def test_the_sample_command_refuses_a_size_that_is_not_a_demo(imported):
+    """The app will not offer a sample outside these bounds, and neither will the command it
+    runs — so somebody typing it themselves meets the same rule."""
+    from transcript_toolkit.cli import build_parser
+
+    def draw(*argv):
+        args = build_parser().parse_args(["sample", *argv, "--project", str(imported.root)])
+        args.func(args)
+
+    with pytest.raises(ToolkitError, match="at least 3"):
+        draw("--n", "2")
+    with pytest.raises(ToolkitError, match="at most 10"):
+        draw("--n", "11")
+    draw("--n", "3")
+    assert len(imported.demo_sample_path.read_text().split()) == 3
 
 
 def test_the_sample_command_the_app_builds_is_a_real_command():
@@ -126,7 +145,7 @@ def test_an_action_with_nothing_to_read_is_reported_as_unavailable():
     """`clip annotate` re-renders the review pages from saved clips. With no clips it can only
     print an error, so the page disables it instead of letting someone find that out."""
     clip = content.BY_SLUG["clip"]
-    annotate = next(a for a in clip.followups if a.slug == "annotate")
+    annotate = next(a for a in clip.extras if a.slug == "annotate")
     assert content.missing_for(annotate, []) == ["clips"]
     assert content.missing_for(annotate, ["clips"]) == []
 
@@ -145,15 +164,28 @@ def test_every_action_that_reads_a_deliverable_declares_it():
                        ("locations", "map"), ("locations", "rollup"), ("locations", "annotate"),
                        ("locations", "thresholds"), ("label", "preview")}
     for step in content.STEPS:
-        for action in (*step.sequels, *step.followups):
-            if (step.slug, action.slug) in reads_something:
-                assert action.needs, f"{step.slug} {action.slug} declares no prerequisite"
+        for action in (*step.sequels, *step.extras):
+            for one in (action, *action.aids):
+                if (step.slug, one.slug) in reads_something:
+                    assert one.needs, f"{step.slug} {one.slug} declares no prerequisite"
 
 
 def test_the_things_nobody_needs_are_out_of_the_way():
-    """Chunking and batching explain how the step works; they are not part of doing it."""
+    """Chunking and batching explain how the step works; they are not part of doing it, so they
+    are among the extras at the foot of the page and not in the numbered flow."""
     for slug in ("clip", "label"):
-        preview = next(a for a in content.BY_SLUG[slug].followups if a.slug == "preview")
-        assert preview.advanced and preview.explain and preview.preview
-    survey = next(a for a in content.BY_SLUG["locations"].followups if a.slug == "survey")
-    assert survey.advanced
+        step = content.BY_SLUG[slug]
+        preview = next(a for a in step.extras if a.slug == "preview")
+        assert preview.explain and preview.preview
+        assert "preview" not in [a.slug for a in step.sequels]
+    locations = content.BY_SLUG["locations"]
+    assert "survey" in [a.slug for a in locations.extras]
+
+
+def test_a_threshold_aid_sits_with_the_rollup_it_informs():
+    """Picking a threshold is a decision made while rolling up, so the aid belongs beside that
+    button rather than in a list of other things the step can do."""
+    for slug in ("topics", "locations"):
+        rollup = next(a for a in content.BY_SLUG[slug].sequels if a.slug == "rollup")
+        assert [aid.slug for aid in rollup.aids] == ["thresholds"]
+        assert "thresholds" not in [a.slug for a in content.BY_SLUG[slug].extras]

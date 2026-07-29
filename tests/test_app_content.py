@@ -25,9 +25,11 @@ def test_demo_and_full_commands_are_real_commands(step):
 
 
 @ALL_STEPS
-def test_followup_commands_are_real_commands(step):
-    for action in step.followups:
+def test_every_button_on_a_step_page_is_a_real_command(step):
+    for action in (*step.sequels, *step.extras):
         parses(content.action_argv(action, set_name="fixture"))
+        for aid in action.aids:
+            parses(content.action_argv(aid, set_name="fixture"))
 
 
 def test_standalone_commands_are_real_commands():
@@ -202,8 +204,8 @@ def test_the_dashboard_counts_a_step_done_when_the_step_says_so(tmp_path, monkey
     """`locations tag` records its own full run, but the file `toolkit status` counts as the
     locations deliverable is written by `locations map`, one command later. Judging by the
     file alone would keep telling someone to re-run the step they just paid for."""
+    from transcript_toolkit.app import stage
     from transcript_toolkit.app.context import CONTEXT
-    from transcript_toolkit.app.pages.home import _ran_fully, next_action
     from transcript_toolkit.project import init_project
 
     project = init_project(str(tmp_path / "ws"))
@@ -218,11 +220,11 @@ def test_the_dashboard_counts_a_step_done_when_the_step_says_so(tmp_path, monkey
                         "topics:main": done, "locations": done}}
 
     for step in content.STEPS:
-        assert _ran_fully(status, step, "main"), step.slug
+        assert stage.ran_fully(status, step, "main"), step.slug
     # locations counts as done from its own record, though `map` has not run and so the
     # locations deliverable is not on disk
     assert "locations" not in status["deliverables"]
-    assert next_action(status, project)[2] == "/export"
+    assert stage.next_action(status, project, ["main"])[2] == "/export"
 
     status["steps"].pop("locations")
-    assert next_action(status, project)[2] == "/step/locations"
+    assert stage.next_action(status, project, ["main"])[2] == "/step/locations"

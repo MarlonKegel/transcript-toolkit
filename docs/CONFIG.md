@@ -9,6 +9,19 @@ For a given step the two are merged; a key set in `config.yaml` wins. **Changing
 that shapes an LLM call (model, reasoning, a prompt, a topic list) makes that step's previous
 demo "stale"** — the next full run will ask you to demo and review again. That's intended.
 
+**The comments in `config.yaml` are the documentation of each setting, and the app reads them.**
+It shows the comment directly above a key (plus any comment on the key's own line) as that
+setting's explanation, so rewording one here changes what the app says — there is one description
+of a setting and this file is where it lives. Two conventions follow from that: keep a comment
+directly above its key with no blank line between, and keep the two-space indentation, which is
+what lets the app change one line and leave the rest of the file — comments included — exactly as
+it was. A file that has been reindented by hand still works for every command; the app just
+declines to write to it and tells you to make the change here yourself.
+
+The app shows the settings in two places: those belonging to the whole project (its name) behind
+the gear, and those belonging to one step on that step's own page. `advanced/` is not shown in
+the app at all — those are files to edit.
+
 ## `config.yaml`
 
 ```yaml
@@ -75,7 +88,8 @@ when to stop waiting (re-running the command resumes the same job).
 Editable files, read live at run time (changing them re-stales the demo):
 
 - `prompts/*.md` — one prompt per LLM step. Restore a pristine copy with
-  `toolkit init --reset-prompt <name>`.
+  `toolkit init --reset-prompt <name>`. `toolkit status` prints which file each step reads, and
+  the app has the same file behind *The prompt for this step* on that step's page.
 - `topics/*.csv|xlsx` — your topic lists.
 - `locations/regions.yaml`, `locations/region_to_country.csv` — the location vocabulary and
   mapping.

@@ -66,11 +66,24 @@ async def test_the_demo_button_runs_the_demo_command(user: User, open_workspace,
 
 
 @pytest.mark.asyncio
+async def test_the_full_run_is_not_offered_until_a_demo_has_been_run(user: User, open_workspace):
+    """The toolkit refuses a full run without a reviewed demo, so the page does not offer one:
+    a button whose only outcome is a refusal is worse than no button."""
+    await user.open("/step/label")
+    await user.should_see("Run the demo")
+    with pytest.raises(AssertionError):
+        await user.should_see("Run it on everything")
+
+
+@pytest.mark.asyncio
 async def test_the_full_run_button_lets_the_cli_ask_about_money(user: User, open_workspace,
                                                                 echo_child):
     """No --yes and no --batch: the confirmation prompt is the CLI's, and so are its figures."""
+    from transcript_toolkit.state import record_demo
+    record_demo(open_workspace, "label", "some-fingerprint", units=["fake_beta"], diag="x.html")
+
     await user.open("/step/label")
-    user.find("Run on the whole collection").click()
+    user.find("Run it on everything").click()
     await settle(user)
 
     job = CONTEXT.jobs.current
@@ -105,10 +118,18 @@ async def test_the_workspace_page_saves_a_key(user: User, open_workspace):
 
 
 @pytest.mark.asyncio
-async def test_the_dashboard_points_at_the_first_thing_to_do(user: User, open_workspace):
-    await user.open("/")
+async def test_the_workspace_page_points_at_the_first_thing_to_do(user: User, open_workspace):
+    await user.open("/workspace")
     await user.should_see("Add your OpenAI key")
     await user.should_see("Clip")
+
+
+@pytest.mark.asyncio
+async def test_home_lists_the_projects_rather_than_one_of_them(user: User, open_workspace):
+    """Home is the landing page for all of them; one project's own page is the workspace."""
+    await user.open("/")
+    await user.should_see("Your projects")
+    await user.should_see("Start a new project")
 
 
 @pytest.mark.asyncio
@@ -157,15 +178,19 @@ async def test_a_run_survives_the_page_being_left_and_come_back_to(user: User, o
 
 @pytest.mark.asyncio
 async def test_a_failed_run_offers_the_step_that_was_skipped(user: User, open_workspace):
-    """A full run with no demo behind it is refused by the CLI; the app turns that into the
-    button that fixes it rather than leaving the user to read a command."""
+    """A full run whose demo no longer matches the settings is refused by the CLI; the app turns
+    that into the button that fixes it rather than leaving the user to read a command."""
+    from transcript_toolkit.state import record_demo
+    record_demo(open_workspace, "clip", "a-fingerprint-from-before", units=["fake_beta"],
+                diag="x.html")
+
     await user.open("/step/clip")
-    user.find("Run on the whole collection").click()
+    user.find("Run it on everything").click()
     await settle(user, 6.0)
 
     job = CONTEXT.jobs.current
     assert job.state == jobs.FAILED, job.state
-    await user.should_see("No demo run recorded")
+    await user.should_see("is stale")
     await user.should_see("Run the demo")
 
 
@@ -230,7 +255,8 @@ async def test_dropping_eight_transcripts_at_once_keeps_and_shows_all_eight(user
     for name, data in files.items():
         assert (open_workspace.data_dir / name).read_bytes() == data
     # and the page says so, rather than a number from before the drop
-    await user.should_see(f"{len(before) + len(files)} transcripts in this project")
+    await user.should_see(f"{len(before) + len(files)} transcripts")
+    await user.should_see(f"{len(files)} not imported yet")
 
 
 @pytest.mark.asyncio
@@ -293,7 +319,7 @@ async def test_a_deleted_project_offers_the_two_things_that_happened(user: User,
     user.find("I deleted it").click()
     await settle(user)
     assert CONTEXT.missing is None
-    await user.open("/workspace")
+    await user.open("/")
     await user.should_see("Start a new project")
 
 
@@ -307,3 +333,77 @@ async def test_settings_is_behind_the_gear_on_every_page(user: User, open_worksp
     await user.open("/step/clip")
     await user.should_see("Quit the toolkit")          # the drawer's content is on the page
     await user.should_see("Delete this project")
+
+
+# --- the things a step page can now change -----------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_a_setting_changed_on_a_step_page_lands_in_config_yaml(user: User, open_workspace):
+    """Settings that belong to one step are on that step's page — and saving one writes the
+    project's own config.yaml, comments and all, rather than a store of the app's own."""
+    from nicegui.elements.select import Select
+
+    await user.open("/step/clip")
+    await user.should_see("Settings for this step")
+    before = open_workspace.config_path.read_text()
+
+    reasoning = next(s for s in user.find(kind=Select).elements
+                     if "xhigh" in (s.options or []))
+    reasoning.set_value("high")
+    user.find("Save these settings").click()
+    await settle(user)
+
+    after = open_workspace.config_path.read_text()
+    assert "reasoning: high" in after
+    for line in before.splitlines():
+        if line.strip().startswith("#"):
+            assert line in after
+
+
+@pytest.mark.asyncio
+async def test_the_explanation_beside_a_setting_is_the_comment_in_the_file(user: User,
+                                                                          open_workspace):
+    """Reword the comment in config.yaml and the app says the new wording: there is one
+    description of a setting and the file is where it lives."""
+    from transcript_toolkit.core.settings import set_value
+
+    text = open_workspace.config_path.read_text().replace(
+        "# How much thinking the model does before it answers. More is slower and costs more.",
+        "# Our own note about this.", 1)
+    open_workspace.config_path.write_text(text)
+
+    await user.open("/step/clip")
+    await user.should_see("Our own note about this.")
+
+
+@pytest.mark.asyncio
+async def test_the_prompt_can_be_read_and_changed_on_the_step_page(user: User, open_workspace):
+    """There was no way into the prompts from the app at all, and they matter more than any
+    setting."""
+    from nicegui.elements.textarea import Textarea
+
+    await user.open("/step/clip")
+    await user.should_see("The prompt for this step")
+    await user.should_see("prompts/clip_interview.md")
+
+    box = next(iter(user.find(kind=Textarea).elements))
+    assert box.value.strip(), "the prompt was not loaded into the editor"
+    box.set_value(box.value + "\n\nAlways keep clips under five minutes.\n")
+    user.find("Save the prompt").click()
+    await settle(user)
+
+    assert "under five minutes" in (open_workspace.prompts_dir / "clip_interview.md").read_text()
+
+
+@pytest.mark.asyncio
+async def test_the_demo_sample_lists_every_interview_it_picked(user: User, open_workspace,
+                                                               echo_child):
+    """It used to be one line of comma-separated ids, with a status panel underneath naming just
+    one of them."""
+    from transcript_toolkit.core.sampling import draw_interview_sample
+
+    picked = draw_interview_sample(open_workspace, n=3)
+    await user.open("/workspace")
+    await user.should_see(f"Demos run on these {len(picked)} interviews")
+    for interview in picked:
+        await user.should_see(interview)

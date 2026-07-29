@@ -56,10 +56,19 @@ def _save(entries: list[dict]) -> None:
     path.write_text(json.dumps(entries[:MAX_REMEMBERED], indent=2) + "\n")
 
 
+def display_name(project: Project) -> str:
+    """What to call a project in a list. A config.yaml that will not parse is a thing to fix on
+    the project's own page, not a reason for the app to be unable to name it."""
+    try:
+        return project_name(project)
+    except ToolkitError:
+        return project.root.name
+
+
 def remember(project: Project) -> None:
     root = str(project.root)
     entries = [e for e in load_registry() if e["path"] != root]
-    entries.insert(0, {"path": root, "name": project_name(project),
+    entries.insert(0, {"path": root, "name": display_name(project),
                        "opened": datetime.now(timezone.utc).isoformat(timespec="seconds")})
     _save(entries)
 

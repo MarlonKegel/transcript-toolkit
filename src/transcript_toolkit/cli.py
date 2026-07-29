@@ -88,7 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("sample", parents=[common],
                        help="draw the demo sample of interviews used by clip/label demo runs")
-    p.add_argument("--n", type=int, default=None, help="sample size (default 5)")
+    p.add_argument("--n", type=int, default=None, help="sample size (default 5, allowed 3-10)")
     p.add_argument("--seed", type=int, default=0, help="random seed (default 0)")
     p.add_argument("--interviews", metavar="IDS", default=None,
                    help="comma-separated interview ids to put in the sample. With --n, the rest "
@@ -307,10 +307,16 @@ def cmd_import(args) -> None:
 
 
 def cmd_sample(args) -> None:
-    from .core.sampling import draw_interview_sample
+    from .core.sampling import DEFAULT_N, check_size, draw_interview_sample
+    from .core.tables import load_paragraphs
 
+    project = _project(args)
     explicit = [s.strip() for s in args.interviews.split(",") if s.strip()] if args.interviews else None
-    sample = draw_interview_sample(_project(args), n=args.n, seed=args.seed, explicit=explicit)
+    # Naming more interviews than --n asks for means you want them all, so the size to check is
+    # the larger of the two.
+    wanted = max(args.n or 0, len(explicit or [])) or DEFAULT_N
+    check_size(wanted, load_paragraphs(project)["interview_id"].nunique())
+    sample = draw_interview_sample(project, n=args.n, seed=args.seed, explicit=explicit)
     print(f"Demo sample ({len(sample)} interviews):")
     for iid in sample:
         print(f"  {iid}")

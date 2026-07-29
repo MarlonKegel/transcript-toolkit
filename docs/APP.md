@@ -47,42 +47,72 @@ up without paying twice.
 **Stopping is always safe.** Every call that has finished is saved. Stop a run halfway and run
 it again tomorrow, and it carries on from where it stopped rather than starting over.
 
-**Quit it when you are done** — the gear in the top left corner → Quit the toolkit. Also do that
+**Quit it when you are done** — the gear in the top right corner → Quit the toolkit. Also do that
 after installing an update: the copy that is already running keeps using the old version until
 you restart it.
 
-**The Terminal panel** under a run is folded away until you open it. Inside is the command
+## Finding your way around
+
+The bar across the top has three things in it. On the **left**, the toolkit's icon and the
+version you are running; clicking the icon takes you to the list of all your projects. In the
+**middle**, the project that is open. On the **right**, the gear, which opens Settings from
+wherever you are.
+
+- **Home** (the icon) is every project on this Mac, what stage each one has reached, and the
+  place to start a new one.
+- **Workspace** is the open project: what to do next, its transcripts, the interviews the demos
+  run on, and the pipeline.
+- Then **one page per step**, and **Export**.
+
+Every page that can run something ends with a **Terminal Viewer**. Inside it is the command
 being run and its output, exactly as Terminal would show it — the app is a window onto the
 command-line tool this documentation describes, and that panel is the tool itself working. You
-never have to open it. It is there so you can see what is happening, and so you can copy a
-command out and run it yourself if you ever want to. Above it, one line always shows the last
-thing the run said.
+never have to read it. It is there so you can see what is happening, and so you can copy a
+command out and run it yourself if you ever want to.
+
+While something is running, its own state — how far it has got, and a Stop button — appears
+directly under the button you pressed, not down beside the terminal.
 
 ## Working through a project
 
-The dashboard always names one next thing to do, and the pages follow the same order.
+The workspace page always names one next thing to do, and the pages follow the same order.
 
-1. **Workspace** — make a project (a folder holding one collection of transcripts and
-   everything made from them), paste your OpenAI key, drop the `.docx` files in, and import
-   them. Then choose the interviews the demos will run on. Four things worth knowing:
+1. **Workspace** — paste your OpenAI key, drop the `.docx` files in, import them, and pick the
+   interviews the demos will run on. Some things worth knowing:
 
-   - **Browse** opens a folder picker, so you never have to know or type a path — though you
-     still can.
    - **You name the project, not its folder.** "Anderson Family Oral History" gets the folder
-     `anderson-family-oral-history`; the page shows you which folder before it makes it.
-   - The transcript list shows every `.docx` in the project and whether it has been imported
-     yet, so a drag-and-drop that half worked is visible rather than something you find out
-     about three steps later.
-   - **Demo interviews** are chosen here, once, and every step's demo uses them. Take the
-     random five, or pick the ones you are actually worried about — the messy transcript, the
-     multi-session narrator — and let the rest be drawn. Five is the default; a bigger sample
-     makes every demo proportionally more expensive.
+     `anderson-family-oral-history`; Home shows you which folder before it makes it. **Browse**
+     opens a folder picker, so you never have to know or type a path — though you still can.
+   - **One list of transcripts**, showing every `.docx` in the project, whose interview it is,
+     how many paragraphs were read out of it, and whether it has been imported yet. A
+     drag-and-drop that half worked is visible here rather than something you find out about
+     three steps later. On a big collection the list scrolls inside itself, so what comes after
+     it is still on screen.
+   - **How transcripts are read** — which speaker labels are the interviewer, and which endings
+     to strip off a filename — is folded up under that list, because it is the one thing you may
+     have to correct before importing again.
+   - **Pick the sample of interviews for demos**, once: every step's demo uses the same few, so
+     what you read after the clip demo and after the label demo is about the same people. Say
+     how many first, then either let them be drawn or choose them yourself — the messy
+     transcript, the multi-session narrator. Between 3 and 10; 5 is the usual number, and a
+     bigger sample makes every demo proportionally more expensive. Afterwards the interviews
+     that were picked are listed, and you can take one out, add a particular one, or add a few
+     more at random.
 
-2. **Each step in turn** — clip, label, summarize, topics, locations. Every one works the same
-   way: run the demo first, open the review pages it writes and read them, then run the whole
-   collection. The toolkit refuses a full run until a demo it recognises has been done, and if
-   you change a prompt or a model it will ask for a fresh demo, because the old one no longer
-   tells you what you would get.
+2. **Each step in turn** — clip, label, summarize, topics, locations. Every one is the same
+   three moves:
+
+   1. **Try it** on the demo interviews. Nothing is saved to the project and it costs a small
+      fraction of the whole collection.
+   2. **Read what came out.** The step writes review pages; the page says what to look for in
+      them. They open in a tab of their own, and each interview has a link back to the list.
+   3. **Then one of these** — change the prompt or a setting and try it again, or run it on
+      everything.
+
+   Running it on everything is not offered until the demo has been run, because the toolkit
+   refuses it anyway: a full run needs a demo it recognises behind it. Change a prompt, a model
+   or a setting and it will ask for a fresh demo, because the old one no longer tells you what
+   you would get.
 
    **Topics** needs a topic list first. Write one in the app — one row per topic, a name and a
    description of what belongs under it — or upload a spreadsheet you already have. What you
@@ -93,10 +123,30 @@ The dashboard always names one next thing to do, and the pages follow the same o
 3. **Export** — one Excel file with everything produced so far. Steps that have not run are
    simply left out, so exporting early is fine; run it again later and it will have more in it.
 
-Each step page has an **Advanced** section holding the things that explain how the step works —
-how a long interview is divided up before it is sent, for instance. Nothing in there is needed
-to run anything. Buttons that read something a step has not produced yet are greyed out, and
-say what is missing when you hover them.
+At the foot of each step page, **Extra tools** holds the things that are not part of a normal
+run: rebuilding review pages from results you already have, and seeing how a long interview will
+be divided up before it is sent. Buttons that read something a step has not produced yet are
+greyed out, and say what is missing when you hover them.
+
+## Changing what a step does
+
+Two things on every step page change what comes back, and they are on that step's own page
+rather than behind the gear:
+
+- **The prompt for this step** — the instructions sent with every call. Rewording them is the
+  main way to change the result, more than any setting. It is the project's own copy, so an edit
+  here changes nothing in any other project, and *Put the original back* restores the one the
+  toolkit ships with.
+- **Settings for this step** — which model does the work, how much thinking it does, and
+  whatever else belongs to that step alone.
+
+Each setting is shown with the explanation written beside it in the project's `config.yaml`. If
+you reword a comment in that file, the app says the new wording: there is one description of a
+setting, and the file is where it lives. Saving writes back into `config.yaml` itself, comments
+and all, so a project stays a folder you can open in TextEdit.
+
+Saving either one makes that step's demo out of date, which is the point — try it again and read
+the result before running the whole collection.
 
 ## What it costs, and when it asks
 
@@ -133,15 +183,13 @@ toolkit app --install-launcher --port 8378
 
 ## Settings
 
-**The gear in the top left corner** opens Settings, from any page. It holds the things that are
-about the installation or the project as a whole rather than about a step:
+**The gear in the top right corner** opens Settings, from any page. It holds only what is about
+the whole project or the installation — a setting that belongs to one step is on that step's page:
 
+- the project's name
 - which version you have, and whether a newer one exists
 - the button that rebuilds the desktop app
-- a plain text editor for the current project's `config.yaml`. That file's comments explain
-  every setting; the editor refuses to save something that is not valid YAML rather than leave
-  you with a broken project. Changing a model or a prompt there makes the demos stale — the next
-  full run will ask you to look at a fresh demo first.
+- where the project's files are, and a button that shows the folder in Finder
 - **Delete this project**, which asks you to type DELETE and tells you how many transcripts and
   results go with it. On a Mac it moves the folder to the Trash, so a wrong answer is
   recoverable.

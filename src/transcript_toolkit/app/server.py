@@ -72,7 +72,7 @@ def _ask_to_quit(port: int) -> None:
         time.sleep(0.3)
     raise ToolkitError(
         f"An older copy of the toolkit is still using port {port} and did not stop when asked. "
-        f"Quit it from its own window (the gear in the top left corner, then Quit), "
+        f"Quit it from its own window (the gear in the top right corner, then Quit), "
         f"then try again.")
 
 
@@ -94,13 +94,19 @@ def _older(running: str, mine: str) -> bool:
 
 def _resolve_workspace(explicit: str | None):
     """Which project to open: the one asked for, the one we are standing in, or the one used
-    last. None is fine — the app then opens on the workspace page."""
+    last. None is fine — the app then opens on the list of projects."""
     from . import workspaces
 
+    def opened(project):
+        # Whatever the app opens belongs in the list of projects, however it was named — a folder
+        # given with --project or walked up to must not be missing from Home.
+        workspaces.remember(project)
+        return project
+
     if explicit:
-        return find_project(explicit)
+        return opened(find_project(explicit))
     try:
-        return find_project()                       # started from inside a workspace
+        return opened(find_project())               # started from inside a workspace
     except ToolkitError:
         pass
     for entry in workspaces.load_registry():
@@ -143,6 +149,13 @@ def _register_routes(allowed_hosts: list[str]) -> None:
             raise HTTPException(status_code=409, detail=refusal)
         app.shutdown()
         return {"stopping": True}
+
+    @app.get("/app-icon.png")
+    def app_icon() -> FileResponse:
+        """The icon in the header, served from the package — the same file the desktop app's
+        icon is built from, so the two can never show different pictures."""
+        icon = resources.files("transcript_toolkit") / "defaults" / "app" / "icon.png"
+        return FileResponse(Path(str(icon)), media_type="image/png")
 
     @app.get("/diags/{path:path}")
     def diagnostics(path: str) -> FileResponse:
@@ -208,8 +221,7 @@ def serve(project: str | None = None, port: int = DEFAULT_PORT, open_browser: bo
     # whether the app was started by the desktop icon or by hand.
     print(f"Started {'from the desktop app' if from_launcher else 'from the command line'}.")
     print(f"Transcript Toolkit {__version__} — {url(port)}\n"
-          f"Leave this running while you work. Close it from the app (the gear in the top left "
-          f"corner, then Quit), or with "
-          f"Ctrl-C here.")
+          f"Leave this running while you work. Close it from the app (the gear in the top right "
+          f"corner, then Quit), or with Ctrl-C here.")
     ui.run(host="127.0.0.1", port=port, title="Transcript Toolkit", favicon=Path(str(icon)),
            show=open_browser, reload=False, dark=None, storage_secret=None)

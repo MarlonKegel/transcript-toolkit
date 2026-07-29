@@ -6,14 +6,13 @@ from nicegui import ui
 from ...core.console import reveal
 from ...errors import ToolkitError
 from ..context import CONTEXT
-from .common import guard, launch, run_panel, section, shell
+from .common import guard, launch, run_status, section, shell, terminal_viewer
+from .settings_form import settings_form
 
 HREF = "/export"
 
 
 def export_page() -> None:
-    from ...steps.export import DEFAULT_LOCATION_MODE, LOCATION_MODES
-
     with shell(HREF):
         if CONTEXT.project is None:
             return
@@ -28,45 +27,45 @@ def export_page() -> None:
                           "Steps that haven't run are simply left out, so exporting early is "
                           "fine — run it again later and it will have more in it.")
 
-        with ui.card().classes("w-full"):
-            included = status["deliverables"]
-            if included:
-                ui.label("Will include: " + ", ".join(included)).classes("text-sm")
-            else:
-                ui.label("Nothing has been produced yet — run a step first.") \
-                    .classes("text-sm opacity-70")
-
-            configured = configured_location_mode(project) or DEFAULT_LOCATION_MODE
-            ui.label("How places should appear").classes("text-sm font-medium mt-2")
-            mode = ui.radio({k: f"{k.replace('_', ' ')} — {v}" for k, v in LOCATION_MODES.items()},
-                            value=configured).props("dense")
-            ui.label("This is the config.yaml setting; changing it here applies to this export "
-                     "only.").classes("text-xs opacity-60")
-
-            ui.button("Build the spreadsheet", icon="table_view",
-                      on_click=lambda: launch("Export", ["export", "--locations", mode.value],
-                                              HREF)) \
-                .props("dense color=primary").classes("mt-2")
+        def refresh_all() -> None:
+            build.refresh()
+            rest.refresh()
 
         @ui.refreshable
-        def result() -> None:
-            out = export_path(project)
-            if not out.exists():
-                return
+        def build() -> None:
             with ui.card().classes("w-full"):
-                ui.label("Last export").classes("text-sm font-medium")
-                ui.label(str(out)).classes("text-xs opacity-70")
-                ui.button("Show it in Finder", icon="folder_open",
-                          on_click=lambda: reveal(out.parent)).props("dense flat")
+                included = status["deliverables"]
+                if included:
+                    ui.label("Will include: " + ", ".join(included)).classes("text-sm")
+                else:
+                    ui.label("Nothing has been produced yet — run a step first.") \
+                        .classes("text-sm opacity-70")
+                ui.button("Build the spreadsheet", icon="table_view",
+                          on_click=lambda: launch("Export", ["export"], HREF)) \
+                    .props("dense color=primary").classes("mt-2")
 
-        result()
-        run_panel(on_finished=result.refresh)
+        @ui.refreshable
+        def rest() -> None:
+            _result(project)
+            section("Change how this step works")
+            with ui.expansion("Settings for this step", icon="tune").classes("w-full"):
+                settings_form("export", on_saved=refresh_all, note=False)
+
+        build()
+        run_status(on_finished=refresh_all)      # under the button that starts it
+        rest()
+        terminal_viewer()
 
 
-def configured_location_mode(project) -> str | None:
-    """The workspace's configured export.locations, if it set one."""
-    from ...core.config import load_root_config
-    return (load_root_config(project).get("export") or {}).get("locations")
+def _result(project) -> None:
+    out = export_path(project)
+    if not out.exists():
+        return
+    with ui.card().classes("w-full"):
+        ui.label("Last export").classes("text-sm font-medium")
+        ui.label(str(out)).classes("text-xs opacity-70")
+        ui.button("Show it in Finder", icon="folder_open",
+                  on_click=lambda: reveal(out.parent)).props("dense flat")
 
 
 def export_path(project):

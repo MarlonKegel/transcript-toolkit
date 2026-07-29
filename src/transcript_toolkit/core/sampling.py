@@ -14,6 +14,25 @@ from ..project import Project
 from .tables import load_paragraphs
 
 DEFAULT_N = 5
+# A demo has to be big enough to judge a prompt by and small enough to re-run without thinking
+# about the cost. `toolkit sample` holds both ends (cli.cmd_sample) and the app offers only sizes
+# inside them, so the two agree about what a demo is.
+MIN_N = 3
+MAX_N = 10
+
+
+def check_size(n: int, available: int) -> None:
+    """Refuse a demo sample too small to read anything into, or too big to be a demo."""
+    floor = min(MIN_N, available)
+    if n < floor:
+        raise ToolkitError(
+            f"A demo runs on at least {floor} interview{'s' if floor != 1 else ''}; "
+            f"{n} would not show enough to judge the results by.")
+    if n > MAX_N:
+        raise ToolkitError(
+            f"A demo runs on at most {MAX_N} interviews — every step's demo is run several "
+            f"times over, so a bigger one costs more than it tells you. To process a chosen few "
+            f"for real, use `toolkit clip --interview <id>` instead.")
 
 
 def sample_keys(keys: list[str], n: int, seed: int) -> list[str]:

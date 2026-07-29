@@ -22,9 +22,9 @@ def test_root_section_wins_over_advanced(project):
     assert cfg["model"] == "gpt-5.6-sol"
     assert cfg["verbosity"] == "low"
     # user overrides verbosity in the root section -> root wins
+    from transcript_toolkit.core.settings import set_value
     project.config_path.write_text(
-        project.config_path.read_text().replace(
-            "clip:\n  model: gpt-5.6-sol", "clip:\n  verbosity: high\n  model: gpt-5.6-sol"))
+        set_value(project.config_path.read_text(), "clip.verbosity", "high"))
     assert load_step_config(project, "clip")["verbosity"] == "high"
 
 

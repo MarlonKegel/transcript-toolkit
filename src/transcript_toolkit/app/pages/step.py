@@ -1,10 +1,14 @@
 """One page per pipeline step, all from the same template.
 
-The shape of every step is the same — try it on a few interviews, read what came out, then run
-the whole collection — so the page is the same too, and `content.py` supplies the differences.
+The shape of every step is the same, and it is the shape of the workflow: try it on a few
+interviews, read what came out, then either change something and try again or run the whole
+collection. The page shows those in that order and does not offer the last one until the demo
+has actually been run — the toolkit refuses it anyway, so a button for it would only be a
+button that fails.
 
-Everything below the buttons is rebuilt when a run finishes: a review page that did not exist
-when the page loaded is exactly the thing the user is then supposed to open.
+`content.py` supplies the differences between steps. Everything below the buttons is rebuilt
+when a run finishes: a review page that did not exist when the page loaded is exactly the thing
+the user is then supposed to open.
 """
 from __future__ import annotations
 
@@ -12,14 +16,23 @@ from pathlib import Path
 
 from nicegui import ui
 
+from ...core import settings
 from ...errors import ToolkitError
-from .. import content, topic_lists
+from .. import content, theme, topic_lists
 from ..context import CONTEXT
-from .common import guard, info, launch, run_panel, section, shell
+from .common import (guard, info, inline_state, launch, run_status, section, shell,
+                     terminal_viewer)
+from .prompts import prompt_editor
+from .sample import BLURB as SAMPLE_BLURB
 from .sample import needed_here, sample_section
+from .settings_form import settings_form
 from .topics_editor import editor
 
 SET_QUERY = "set"
+
+EXTRAS_BLURB = ("Nothing here is needed for a normal run. They rebuild review pages from results "
+                "you already have, or show how the work will be divided up before any of it is "
+                "sent.")
 
 
 def href_for(step: content.Step) -> str:
@@ -48,21 +61,29 @@ def step_page(slug: str, set: str | None = None) -> None:      # noqa: A002 - UR
 
         section(step.title, step.blurb)
 
-        @ui.refreshable
-        def body() -> None:
-            _prerequisites(step)
-            _sample(step, href, body.refresh)
-            _actions(step, set_name, href)
-            _reviews(project, step, set_name)
-            _sequels(step, set_name, href)
-            _followups(step, set_name, href)
-            if step.per_set and set_name:
-                _edit_set(step, project, set_name)
-            _advanced(step, set_name, href)
+        def refresh_all() -> None:
+            actions.refresh()
+            rest.refresh()
 
-        body()
-        run_panel(on_fix=lambda kind: _fix(kind, step, set_name, href),
-                  on_finished=body.refresh)
+        @ui.refreshable
+        def actions() -> None:
+            _prerequisites(step)
+            _sample(step, href, refresh_all)
+            _flow(project, step, set_name, href)
+
+        @ui.refreshable
+        def rest() -> None:
+            _sequels(step, set_name, href)
+            _tuning(project, step, set_name, refresh_all)
+            _extras(step, set_name, href)
+
+        actions()
+        # The status of what was just started, immediately below the buttons that start it. Its
+        # output is at the foot of the page, under its own heading.
+        run_status(on_fix=lambda kind: _fix(kind, step, set_name, href),
+                   on_finished=refresh_all, unit=step.unit)
+        rest()
+        terminal_viewer()
 
 
 def _fix(kind: str, step: content.Step, set_name: str | None, href: str) -> None:
@@ -150,7 +171,7 @@ def _edit_set(step: content.Step, project, set_name: str) -> None:
     entry = ((load_root_config(project).get("topics") or {}).get("sets") or {}).get(set_name) or {}
     path = (project.root / entry["file"]) if entry.get("file") else \
         topic_lists.set_path(project, set_name)
-    with ui.expansion("Edit this topic list", icon="edit").classes("w-full"):
+    with ui.expansion("The topic list itself", icon="list_alt").classes("w-full"):
         if path.suffix.lower() != ".csv" or not path.exists():
             ui.label(f"'{set_name}' is kept in {path.name}, which is not edited here. Change it "
                      f"in Excel, or upload a replacement under a new name.") \
@@ -159,7 +180,8 @@ def _edit_set(step: content.Step, project, set_name: str) -> None:
         ui.label("Changing a topic list changes what the tags mean, so the next full run will "
                  "ask you to try it out and review it again first.") \
             .classes("text-xs opacity-70 max-w-2xl")
-        editor(set_name, path, lambda _: ui.navigate.to(f"{href_for(step)}?{SET_QUERY}={set_name}"))
+        editor(set_name, path,
+               lambda _: ui.navigate.to(f"{href_for(step)}?{SET_QUERY}={set_name}"))
 
 
 def _status() -> dict:
@@ -175,13 +197,13 @@ def _prerequisites(step: content.Step) -> None:
     status = _status()
     have = {d.split(":")[0] for d in status["deliverables"]}
     if not status["imported"]:
-        with ui.card().classes("w-full bg-amber-50 dark:bg-amber-900/30"):
+        with ui.card().classes(f"w-full {theme.WARN}"):
             ui.label("Import the transcripts first.").classes("text-sm font-medium")
             ui.link("Go to the workspace page", "/workspace").classes("text-sm")
         return
     missing = [n for n in step.needs if n not in have]
     if missing:
-        with ui.card().classes("w-full bg-amber-50 dark:bg-amber-900/30"):
+        with ui.card().classes(f"w-full {theme.WARN}"):
             ui.label(f"This step reads the {', '.join(missing)} from an earlier step. You can "
                      f"still run its demo — a demo of the previous step is enough for that.") \
                 .classes("text-sm")
@@ -193,40 +215,92 @@ def _sample(step: content.Step, href: str, refresh) -> None:
     belongs to the project, so this is the workspace page's section, borrowed."""
     if not step.needs_sample or not needed_here(step):
         return
-    with ui.card().classes("w-full bg-blue-50 dark:bg-blue-900/30"):
-        ui.label("You have not chosen the demo interviews yet.").classes("text-sm font-medium")
-        ui.label("Choose them before you try this step out — every step's demo runs on the "
-                 "same few interviews, so what you read is comparable.") \
-            .classes("text-xs opacity-80 max-w-2xl")
+    with ui.card().classes(f"w-full {theme.NOTE}"):
+        ui.label("You have not picked the demo interviews yet.").classes("text-sm font-medium")
+        ui.label(SAMPLE_BLURB).classes("text-xs opacity-80 max-w-2xl")
         ui.link("They can also be changed on the workspace page.", "/workspace") \
             .classes("text-xs")
     sample_section(href, refresh)
 
 
-def _actions(step: content.Step, set_name: str | None, href: str) -> None:
+# --- the three things a step page is for ---------------------------------------------------
+
+def _flow(project, step: content.Step, set_name: str | None, href: str) -> None:
     record = _status()["steps"].get(content.step_key(step, set_name), {})
     demo, full = record.get("demo"), record.get("full")
 
+    _try_it(step, set_name, href, demo)
+    if not demo:
+        return
+    _read_it(project, step, set_name)
+    _then(step, set_name, href, full)
+
+
+def _try_it(step: content.Step, set_name: str | None, href: str, demo: dict | None) -> None:
+    """Step one, in its two states: the invitation to try it, and the record that it was tried.
+
+    Only one button on the page runs a demo at a time — before there is one it is here, and after
+    there is one it is at the bottom of the fork in step three, where the choice actually is.
+    """
     with ui.card().classes("w-full"):
+        if demo:
+            ui.label("1 · The demo has run").classes("text-sm font-medium")
+            units = len(demo.get("units") or ())
+            ui.label(f"On {units} {step.unit} · {_when(demo['at'])}"
+                     if units else _when(demo["at"])).classes("text-xs opacity-70")
+            return
+        ui.label("1 · Try it").classes("text-sm font-medium")
+        ui.label(f"Runs on a few {step.unit} only and writes review pages. Nothing is saved to "
+                 f"the project, and it costs a small fraction of the whole collection.") \
+            .classes("text-xs opacity-70 max-w-2xl")
+        ui.button("Run the demo", icon="science",
+                  on_click=lambda: launch(f"{step.title} — demo",
+                                          content.run_argv(step, demo=True,
+                                                           set_name=set_name), href)) \
+            .props("dense color=primary")
+
+
+def _read_it(project, step: content.Step, set_name: str | None) -> None:
+    pages = diag_pages(project, step, set_name)
+    with ui.card().classes("w-full"):
+        ui.label("2 · Read what came out").classes("text-sm font-medium")
+        if step.review_hint:
+            ui.label(step.review_hint).classes("text-xs opacity-70 max-w-2xl")
+        if not pages:
+            ui.label("The demo has not left a review page yet — the Terminal Viewer at the foot "
+                     "of this page says what happened.").classes("text-sm opacity-70")
+            return
+        ui.label("This is the part to do before spending anything on the whole collection.") \
+            .classes("text-xs opacity-60")
+        with ui.row().classes("gap-3 flex-wrap"):
+            for i, (title, url) in enumerate(pages):
+                ui.button(title, icon="open_in_new",
+                          on_click=lambda _, u=url: ui.navigate.to(u, new_tab=True)) \
+                    .props("dense" + (" color=primary" if i == 0 else " outline"))
+
+
+def _then(step: content.Step, set_name: str | None, href: str, full: dict | None) -> None:
+    with ui.card().classes("w-full"):
+        ui.label("3 · Then one of these").classes("text-sm font-medium")
         with ui.row().classes("w-full items-start gap-6 flex-wrap"):
-            with ui.column().classes("gap-1 grow"):
-                ui.label("1 · Try it").classes("text-sm font-medium")
-                ui.label(f"Runs on a few {step.unit} only and writes review pages — no results "
-                         f"are saved to the project.").classes("text-xs opacity-70 max-w-md")
-                ui.button("Run the demo", icon="science",
+            with ui.column().classes("gap-1 grow min-w-64"):
+                ui.label("Not right yet?").classes("text-sm font-medium")
+                ui.label("The prompt and the settings for this step are further down this page. "
+                         "Change one, then try it again and read it again.") \
+                    .classes("text-xs opacity-70 max-w-md")
+                ui.button("Run the demo again", icon="science",
                           on_click=lambda: launch(f"{step.title} — demo",
                                                   content.run_argv(step, demo=True,
                                                                    set_name=set_name), href)) \
-                    .props("dense")
-                if demo:
-                    ui.label(f"last demo {_when(demo['at'])}").classes("text-xs opacity-60")
-
-            with ui.column().classes("gap-1 grow"):
-                ui.label("2 · Run it on everything").classes("text-sm font-medium")
+                    .props("dense outline")
+            with ui.column().classes("gap-1 grow min-w-64"):
+                ui.label("Happy with it?").classes("text-sm font-medium")
                 ui.label("Asks what it will cost and how to send the calls before spending "
-                         "anything. Needs a demo you have reviewed first.") \
-                    .classes("text-xs opacity-70 max-w-md")
-                ui.button("Run on the whole collection", icon="play_arrow",
+                         "anything.").classes("text-xs opacity-70 max-w-md")
+                if step.batch:
+                    ui.label("It can go to OpenAI's Batch API at half price, taking up to a "
+                             "day. You choose when it asks.").classes("text-xs opacity-60 max-w-md")
+                ui.button("Run it on everything", icon="play_arrow",
                           on_click=lambda: launch(f"{step.title} — full run",
                                                   content.run_argv(step, demo=False,
                                                                    set_name=set_name), href)) \
@@ -234,9 +308,6 @@ def _actions(step: content.Step, set_name: str | None, href: str) -> None:
                 if full:
                     ui.label(f"last full run {_when(full['at'])} · {full['model']} · "
                              f"{full['n_units']} {step.unit}").classes("text-xs opacity-60")
-        if step.batch:
-            ui.label("A full run can go to OpenAI's Batch API at half price, taking up to a "
-                     "day. You choose when it asks.").classes("text-xs opacity-60")
 
 
 def _when(stamp: str) -> str:
@@ -249,19 +320,6 @@ def _when(stamp: str) -> str:
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=timezone.utc)
     return moment.astimezone().strftime("%d %b %Y, %H:%M")
-
-
-def _reviews(project, step: content.Step, set_name: str | None) -> None:
-    pages = diag_pages(project, step, set_name)
-    if not pages:
-        return
-    with ui.card().classes("w-full"):
-        ui.label("Review pages").classes("text-sm font-medium")
-        ui.label("What the last run produced, laid out for reading. This is the part to do "
-                 "before spending anything on the whole collection.").classes("text-xs opacity-70")
-        with ui.row().classes("gap-3 flex-wrap"):
-            for title, url in pages:
-                ui.link(title, url, new_tab=True).classes("text-sm")
 
 
 def diag_pages(project, step: content.Step, set_name: str | None) -> list[tuple[str, str]]:
@@ -277,58 +335,63 @@ def diag_pages(project, step: content.Step, set_name: str | None) -> list[tuple[
     return found
 
 
+# --- the rest of the flow, and the tools around it ------------------------------------------
+
 def _run_button(step: content.Step, action: content.Action, set_name: str | None, href: str,
                 *, flat: bool = False) -> None:
     """A Run button that is only clickable when what it reads actually exists."""
+    title = f"{step.title} — {action.title.lower()}"
     missing = content.missing_for(action, _status()["deliverables"], set_name)
-    button = ui.button("Run", on_click=lambda _, a=action: launch(
-        f"{step.title} — {a.title.lower()}",
-        content.action_argv(a, set_name), href)).props("dense" + (" flat" if flat else ""))
+    button = ui.button("Run", on_click=lambda _, a=action, t=title: launch(
+        t, content.action_argv(a, set_name), href)).props("dense" + (" flat" if flat else ""))
     if missing:
         button.disable()
         button.tooltip(f"Nothing to work from yet — this reads the "
                        f"{', '.join(m.split(':')[0] for m in missing)} that "
                        f"'{step.title}' produces. Run this step first.")
+    inline_state(title)
 
 
 def _sequels(step: content.Step, set_name: str | None, href: str) -> None:
-    """The steps that follow tagging in this branch of the pipeline. Part of the flow, not
-    extras, so they are numbered and in plain sight."""
+    """The steps that follow tagging in this branch of the pipeline. Part of the flow, so they
+    are numbered and in plain sight, with their decision aid beside them."""
     if not step.sequels:
         return
     with ui.card().classes("w-full"):
-        for i, action in enumerate(step.sequels, start=3):
+        for i, action in enumerate(step.sequels, start=4):
             with ui.row().classes("items-start w-full gap-3 py-1"):
                 with ui.column().classes("gap-0 grow"):
                     ui.label(f"{i} · {action.title}").classes("text-sm font-medium")
                     ui.label(action.blurb).classes("text-xs opacity-70 max-w-xl")
+                    for aid in action.aids:
+                        with ui.row().classes("items-center gap-2 mt-1"):
+                            ui.label(aid.title).classes("text-xs")
+                            info(aid.blurb)
+                            _run_button(step, aid, set_name, href, flat=True)
                 _run_button(step, action, set_name, href)
 
 
-def _followups(step: content.Step, set_name: str | None, href: str) -> None:
-    ordinary = [a for a in step.followups if not a.advanced]
-    if not ordinary:
-        return
-    with ui.expansion("Other things this step can do", icon="tune").classes("w-full"):
-        for action in ordinary:
-            with ui.row().classes("items-center w-full gap-3 py-1"):
-                with ui.column().classes("gap-0 grow"):
-                    ui.label(action.title).classes("text-sm font-medium")
-                    ui.label(action.blurb).classes("text-xs opacity-70")
-                _run_button(step, action, set_name, href, flat=True)
+def _tuning(project, step: content.Step, set_name: str | None, refresh) -> None:
+    """The two things that change what this step produces, on the step's own page: what it is
+    told to do, and the settings it runs with."""
+    section("Change how this step works")
+    fields = settings.for_step(step.key)
+    if step.per_set and set_name:
+        fields = [*fields, settings.rollup_field(set_name)]
+    with ui.expansion("Settings for this step", icon="tune").classes("w-full"):
+        settings_form(step.key, fields, on_saved=refresh)
+    with ui.expansion("The prompt for this step", icon="description").classes("w-full"):
+        prompt_editor(step.key, set_name, on_saved=refresh)
+    if step.per_set and set_name:
+        _edit_set(step, project, set_name)
 
 
-def _advanced(step: content.Step, set_name: str | None, href: str) -> None:
-    """Things that explain how the step works rather than change what it does. Out of the way
-    by default: nobody needs to understand chunking to clip an interview."""
-    advanced = [a for a in step.followups if a.advanced]
-    if not advanced:
+def _extras(step: content.Step, set_name: str | None, href: str) -> None:
+    if not step.extras:
         return
-    with ui.expansion("Advanced", icon="settings").classes("w-full"):
-        ui.label("Nothing here is needed to run the step. It is here if you want to see how "
-                 "the work is divided up, or to dig into how it behaves.") \
-            .classes("text-xs opacity-70 max-w-2xl")
-        for action in advanced:
+    with ui.expansion("Extra tools", icon="build").classes("w-full mt-2"):
+        ui.label(EXTRAS_BLURB).classes("text-xs opacity-70 max-w-2xl")
+        for action in step.extras:
             with ui.column().classes("w-full gap-1 py-2"):
                 with ui.row().classes("items-center w-full gap-2"):
                     ui.label(action.title).classes("text-sm font-medium")

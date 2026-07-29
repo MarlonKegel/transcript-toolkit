@@ -4,11 +4,15 @@
 # This file holds the settings you are expected to adjust per project. Everything else lives in
 # advanced/<step>.yaml (rarely needed) — see docs/CONFIG.md in the toolkit repo for every key.
 #
+# The comment above a setting is what the app shows next to it, so rewording one here changes
+# what the app says. Keep each comment directly above its setting, with no blank line between.
+#
 # NOTE: changing a model, prompt, or setting for a step makes its previous demo "stale": the next
 # full run will ask you to demo + review again first. That is intentional.
 # =================================================================================================
 
 project:
+  # What this project is called wherever the toolkit shows it. Its folder keeps its own name.
   name: "My Oral History Project"
 
 # --- import: docx -> paragraph dataset -----------------------------------------------------------
@@ -22,12 +26,16 @@ import:
 
 # --- clip: split each interview into clips -------------------------------------------------------
 clip:
+  # Which OpenAI model does this step. The larger ones cost more per interview.
   model: gpt-5.6-sol
+  # How much thinking the model does before it answers. More is slower and costs more.
   reasoning: medium                # none | low | medium | high | xhigh
 
 # --- label: one-line label per clip --------------------------------------------------------------
 label:
+  # Which OpenAI model does this step. The larger ones cost more per interview.
   model: gpt-5.6-terra
+  # How much thinking the model does before it answers. More is slower and costs more.
   reasoning: medium
   # Optional project-specific consistency rules appended to the label prompt
   # (e.g. "always write OSF, never Open Society Foundations"). Path relative to the workspace.
@@ -35,13 +43,19 @@ label:
 
 # --- summarize: one "scope and content" abstract per interview -----------------------------------
 summarize:
+  # Which OpenAI model does this step. The larger ones cost more per interview.
   model: gpt-5.6-sol
+  # How much thinking the model does before it answers. More is slower and costs more.
   reasoning: low
-  pool_sessions: true              # true: one summary per narrator (multi-session interviews pooled)
+  # On: one summary per narrator, with a multi-session interview's sessions read together.
+  # Off: one summary per session file.
+  pool_sessions: true
 
 # --- topics: score every clip against your topic list(s) -----------------------------------------
 topics:
+  # Which OpenAI model does this step. The larger ones cost more per clip.
   model: gpt-5.6-luna
+  # How much thinking the model does before it answers. More is slower and costs more.
   reasoning: medium
   # You do NOT need to fill `sets` in by hand. Put your topic list in topics/ as a .csv or
   # .xlsx — the filename is the set name — and run `toolkit topics tag --set <name> --demo`.
@@ -60,14 +74,17 @@ topics:
 
 # --- locations: tag clips to countries and regions ------------------------------------------------
 locations:
+  # Which OpenAI model does this step. The larger ones cost more per clip.
   model: gpt-5.6-luna
+  # How much thinking the model does before it answers. More is slower and costs more.
   reasoning: medium
-  # Region -> interview rollup bars (rarest band first), same idea as binned topics.
   rollup:
+    # A region becomes one of an interview's places once this share of its clips mention it.
+    # Rarer regions clear a lower bar than common ones, so the bars go rarest band first.
     thresholds: [10, 12.5, 15, 17.5, 20, 22.5, 25, 27.5, 30]
-  # Canonical relabeling applied to model output (spelling variants, merges).
+  # Spellings to settle on, so one place is one place across the whole collection.
   relabel: {}                      # e.g. { Czech Republic: Czechia, Macedonia: North Macedonia }
-  # Subnational places tagged in their own right (kept alongside their country).
+  # Places below country level to tag in their own right, kept alongside their country.
   place_tags: []                   # e.g. [Chechnya, Crimea]
 
 # --- export: the xlsx deliverable -----------------------------------------------------------------
