@@ -33,12 +33,69 @@ BUNDLE_ID = "org.incite.transcript-toolkit"
 ICON_SIZES = (16, 32, 128, 256, 512)
 
 
-def applications_dir() -> Path:
-    return Path.home() / "Applications"
+def candidate_dirs() -> list[Path]:
+    """Where the launcher can live, best first.
+
+    `/Applications` is what Finder's sidebar means by "Applications" and the only place most
+    people will think to look. It is writable by admin users without sudo; on a machine where
+    it is not, the per-user `~/Applications` works identically but is nearly invisible in
+    Finder, so it is the fallback rather than the default.
+    """
+    return [Path("/Applications"), Path.home() / "Applications"]
+
+
+def install_dir() -> Path:
+    import os
+
+    for candidate in candidate_dirs():
+        if candidate.is_dir() and os.access(candidate, os.W_OK):
+            return candidate
+    return candidate_dirs()[-1]         # make it ourselves, under the user's own home
+
+
+def installed_path() -> Path | None:
+    """The launcher that exists on this Mac, wherever it was put."""
+    for candidate in candidate_dirs():
+        bundle = candidate / f"{APP_NAME}.app"
+        if bundle.exists():
+            return bundle
+    return None
 
 
 def app_path() -> Path:
-    return applications_dir() / f"{APP_NAME}.app"
+    return installed_path() or (install_dir() / f"{APP_NAME}.app")
+
+
+def where_to_find(bundle: Path) -> str:
+    """How to get to the folder it went into — different advice for each, because one of them
+    is the Applications in Finder's sidebar and the other is not."""
+    if bundle.parent == Path("/Applications"):
+        return ("Open the Applications folder in Finder's sidebar to find it.")
+    return (f"It is in your personal Applications folder, which is NOT the Applications in "
+            f"Finder's sidebar. To get there: in Finder, Go > Go to Folder, and paste\n"
+            f"  {bundle.parent}\n"
+            f"Or just press Command-Space and type {APP_NAME}.")
+
+
+def _ours(bundle: Path) -> bool:
+    """Whether a bundle of our name is one we made, rather than something else entirely."""
+    plist = bundle / "Contents" / "Info.plist"
+    try:
+        return BUNDLE_ID in plist.read_text(errors="replace")
+    except OSError:
+        return False
+
+
+def _remove_older_copies(keep: Path) -> list[Path]:
+    """Delete launchers we left in the other folder. Two apps with the same name is how
+    somebody ends up double-clicking last month's version for a week."""
+    removed = []
+    for candidate in candidate_dirs():
+        bundle = candidate / f"{APP_NAME}.app"
+        if bundle != keep and bundle.exists() and _ours(bundle):
+            shutil.rmtree(bundle, ignore_errors=True)
+            removed.append(bundle)
+    return removed
 
 
 def log_path() -> Path:
@@ -148,8 +205,9 @@ def install_launcher(port: int | None = None) -> Path:
                            "with:  toolkit app")
 
     command = toolkit_command()
-    bundle = app_path()
-    applications_dir().mkdir(parents=True, exist_ok=True)
+    target = install_dir()
+    bundle = target / f"{APP_NAME}.app"
+    target.mkdir(parents=True, exist_ok=True)
     log_path().parent.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -169,4 +227,5 @@ def install_launcher(port: int | None = None) -> Path:
         # will not launch a bundle whose signature doesn't match its contents.
         _run(["codesign", "--force", "-s", "-", str(bundle)], "sign the launcher app")
 
+    _remove_older_copies(bundle)
     return bundle

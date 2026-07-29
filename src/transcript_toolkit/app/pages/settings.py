@@ -60,14 +60,15 @@ def _desktop_app() -> None:
             .classes("text-sm" if exists else "text-sm opacity-70")
 
         def install() -> None:
-            from ..launcher import install_launcher
+            from ..launcher import install_launcher, where_to_find
             try:
                 path = install_launcher(port=None if CONTEXT.port == DEFAULT_PORT else CONTEXT.port)
             except ToolkitError as e:
                 guard(e)
                 return
-            ui.notify(f"Created {path.name} — find it in Applications and drag it to your Dock.",
-                      type="positive", multi_line=True, close_button="OK")
+            ui.notify(f"Created {path}.\n\n{where_to_find(path)}",
+                      type="positive", multi_line=True, close_button="OK",
+                      classes="max-w-xl whitespace-pre-line")
 
         ui.button("Create it again" if exists else "Create the app", icon="apps",
                   on_click=install).props("dense")

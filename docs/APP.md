@@ -13,8 +13,14 @@ Once, after installing the toolkit (see [SETUP.md](SETUP.md) steps 1–3):
 toolkit app --install-launcher
 ```
 
-That creates **Transcript Toolkit** in your Applications folder. Open it, and drag it to your
-Dock if you want it there. From then on, double-clicking it is how you start.
+That creates **Transcript Toolkit** in your Applications folder — the one in Finder's sidebar.
+Open it, and drag it to your Dock if you want it there. From then on, double-clicking it is how
+you start.
+
+On a Mac where you are not allowed to write to `/Applications` (some managed machines), it goes
+into your own `~/Applications` instead, which is *not* the Applications in Finder's sidebar. The
+command tells you which one it used and how to get there. Either way, Command-Space and typing
+the name finds it.
 
 macOS may ask once whether the app can access files in your Documents folder — say yes, that
 is where your projects live. It only asks again if the app is rebuilt.

@@ -273,10 +273,13 @@ def cmd_app(args) -> None:
     if args.install_launcher:
         from .app.launcher import install_launcher
 
+        from .app.launcher import where_to_find
+
         path = install_launcher(port=None if port == DEFAULT_PORT else port)
         print(f"Created {path}")
-        print("\nOpen your Applications folder, double-click it, and drag it to the Dock if you\n"
-              "want it there. From then on that is how you start the toolkit.")
+        print(f"\n{where_to_find(path)}")
+        print("Double-click it, and drag it to the Dock if you want it there. From then on "
+              "that is how you start the toolkit.")
         return
 
     from .app.server import serve

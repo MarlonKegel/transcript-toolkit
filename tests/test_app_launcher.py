@@ -93,11 +93,85 @@ def test_the_icon_ships_with_the_package():
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="builds a real .app")
 def test_it_really_builds_on_a_mac(monkeypatch, tmp_path):
-    monkeypatch.setattr(launcher, "applications_dir", lambda: tmp_path / "Applications")
-    monkeypatch.setattr(launcher, "app_path",
-                        lambda: tmp_path / "Applications" / f"{launcher.APP_NAME}.app")
+    monkeypatch.setattr(launcher, "candidate_dirs", lambda: [tmp_path / "Applications"])
     monkeypatch.setattr(launcher, "log_path", lambda: tmp_path / "Logs" / "launch.log")
     bundle = launcher.install_launcher()
     assert (bundle / "Contents" / "MacOS" / "applet").exists()
     assert (bundle / "Contents" / "Resources" / "applet.icns").exists()
     assert not (bundle / "Contents" / "Resources" / "Assets.car").exists()
+
+
+# --- which Applications folder --------------------------------------------------------------
+#
+# Finder's sidebar "Applications" is /Applications. ~/Applications is a different folder that
+# looks identical in the message and is nowhere in the sidebar — the first place anybody looks
+# is the one they can see.
+
+def test_it_goes_to_the_applications_people_can_see(monkeypatch, tmp_path):
+    shared = tmp_path / "Applications"
+    shared.mkdir()
+    monkeypatch.setattr(launcher, "candidate_dirs",
+                        lambda: [shared, tmp_path / "home" / "Applications"])
+    assert launcher.install_dir() == shared
+
+
+def test_a_locked_down_mac_falls_back_to_the_users_own_folder(monkeypatch, tmp_path):
+    """On a managed machine /Applications is not writable by a standard user."""
+    shared, personal = tmp_path / "Applications", tmp_path / "home" / "Applications"
+    shared.mkdir()
+    shared.chmod(0o555)
+    monkeypatch.setattr(launcher, "candidate_dirs", lambda: [shared, personal])
+    try:
+        assert launcher.install_dir() == personal
+    finally:
+        shared.chmod(0o755)
+
+
+def test_the_message_says_how_to_reach_the_folder_it_actually_used(tmp_path):
+    shared = launcher.where_to_find(Path("/Applications") / f"{launcher.APP_NAME}.app")
+    assert "sidebar" in shared
+
+    personal = launcher.where_to_find(Path.home() / "Applications" / f"{launcher.APP_NAME}.app")
+    assert "NOT the Applications in Finder's sidebar" in personal
+    assert str(Path.home() / "Applications") in personal
+    assert "Command-Space" in personal          # the way that works wherever it ended up
+
+
+def test_an_older_copy_in_the_other_folder_is_taken_away(monkeypatch, tmp_path):
+    """Two apps of the same name is how somebody double-clicks last month's version for a
+    week without noticing."""
+    shared, personal = tmp_path / "Applications", tmp_path / "home" / "Applications"
+    for folder in (shared, personal):
+        folder.mkdir(parents=True)
+    stale = personal / f"{launcher.APP_NAME}.app"
+    (stale / "Contents").mkdir(parents=True)
+    (stale / "Contents" / "Info.plist").write_text(
+        f"<plist><dict><key>CFBundleIdentifier</key><string>{launcher.BUNDLE_ID}</string>"
+        f"</dict></plist>")
+    monkeypatch.setattr(launcher, "candidate_dirs", lambda: [shared, personal])
+
+    launcher._remove_older_copies(shared / f"{launcher.APP_NAME}.app")
+    assert not stale.exists()
+
+
+def test_something_else_with_the_same_name_is_left_alone(monkeypatch, tmp_path):
+    """Never delete an app somebody else put there just because the name matches."""
+    shared, personal = tmp_path / "Applications", tmp_path / "home" / "Applications"
+    for folder in (shared, personal):
+        folder.mkdir(parents=True)
+    theirs = personal / f"{launcher.APP_NAME}.app"
+    (theirs / "Contents").mkdir(parents=True)
+    (theirs / "Contents" / "Info.plist").write_text("<plist><dict/></plist>")
+    monkeypatch.setattr(launcher, "candidate_dirs", lambda: [shared, personal])
+
+    launcher._remove_older_copies(shared / f"{launcher.APP_NAME}.app")
+    assert theirs.exists()
+
+
+def test_the_settings_page_names_wherever_it_ended_up(monkeypatch, tmp_path):
+    shared, personal = tmp_path / "Applications", tmp_path / "home" / "Applications"
+    personal.mkdir(parents=True)
+    (personal / f"{launcher.APP_NAME}.app").mkdir()
+    monkeypatch.setattr(launcher, "candidate_dirs", lambda: [shared, personal])
+    assert launcher.app_path() == personal / f"{launcher.APP_NAME}.app"
+    assert launcher.installed_path() == personal / f"{launcher.APP_NAME}.app"
