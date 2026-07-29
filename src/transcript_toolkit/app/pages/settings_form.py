@@ -45,7 +45,7 @@ def settings_form(step: str, fields: list[settings.Field] | None = None,
     except (OSError, yaml.YAMLError) as e:
         guard(ToolkitError(f"Could not read the settings from {project.config_path}: {e}"))
         return
-    said = settings.explanations(text)
+    said = settings.explanations_for(project)
 
     readers: list[tuple[settings.Field, Callable[[], object], object]] = []
     with ui.column().classes("w-full gap-4"):

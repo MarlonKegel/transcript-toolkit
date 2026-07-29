@@ -163,6 +163,24 @@ def explanations(text: str) -> dict[str, str]:
     return found
 
 
+def shipped_explanations() -> dict[str, str]:
+    """What the toolkit's own config.yaml says about each setting — the wording a project gets
+    when `toolkit init` copies that file."""
+    from ..project import _defaults
+    return explanations((_defaults() / "scaffold" / "config.yaml").read_text())
+
+
+def explanations_for(project: Project) -> dict[str, str]:
+    """What to show beside each setting: this project's own comments, and the shipped wording for
+    any setting whose comment its file does not have.
+
+    A project created by an earlier toolkit has no comment above `model` or `reasoning`, because
+    those were added later. The shipped file is the same file, so its words are the right ones to
+    fall back to — and a comment the project has reworded still wins.
+    """
+    return {**shipped_explanations(), **explanations(project.config_path.read_text())}
+
+
 def value_at(data: dict, path: str, default=None):
     cursor = data
     for key in path.split("."):

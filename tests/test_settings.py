@@ -29,6 +29,24 @@ def test_every_setting_the_app_offers_is_documented_in_the_scaffold(project):
         assert said[field.path].strip(), field.path
 
 
+def test_a_project_made_before_a_comment_existed_still_gets_the_explanation(project):
+    """Marlon's own test project was created by an earlier version, whose config.yaml documented
+    only some of the blessed settings. The shipped file is the same file, so its wording fills the
+    gaps — and a comment the project has reworded still wins."""
+    project.config_path.write_text(
+        "clip:\n  model: gpt-5.6-sol\n  # Our own words about this one.\n  reasoning: medium\n")
+    said = settings.explanations_for(project)
+    assert said["clip.model"] == settings.shipped_explanations()["clip.model"]
+    assert said["clip.reasoning"] == "Our own words about this one."
+
+
+def test_every_setting_has_something_to_say_about_it_in_any_project(project):
+    project.config_path.write_text("clip:\n  model: gpt-5.6-sol\n")
+    said = settings.explanations_for(project)
+    for field in settings.FIELDS:
+        assert said.get(field.path, "").strip(), field.path
+
+
 def test_the_explanation_is_the_comment_above_the_setting_and_the_one_beside_it():
     said = settings.explanations("""\
 step:
