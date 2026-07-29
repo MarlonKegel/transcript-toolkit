@@ -721,16 +721,64 @@ serving the old code until it is quit and reopened.
 Tests 498 → 514. The two that matter most: every page is opened with the project folder deleted
 underneath it, and the recovery card's two buttons are clicked.
 
-### The OpenAI block, as of 2026-07-29 after Marlon was made project Owner
+### The OpenAI block — RESOLVED 2026-07-29
 
-**Still blocked.** Re-probed: `responses.create` on gpt-5.4-mini returns 429 `insufficient_quota`
-for both keys, project `proj_sAw55mP6AqHfg96VE6VYPp1T`, org `incite-columbia-university`. Owner
-rights alone did not change it — being able to *see* the limits is not the same as them being
-raised.
+The org's **credit balance was −$57.94**. Auto-recharge was switched on (top up to $100 below $5)
+but had never once succeeded: the card is fine when charged from a browser and declined for the
+unattended charge, and a failed auto-charge leaves no invoice, so Billing history showed nothing
+at all. Marlon bought $100 by hand and everything unblocked immediately. Neither spend limit was
+ever involved — project, org, and a limit a colleague raised mid-diagnosis all turned out to be
+irrelevant. Full trail, including the dead ends, in the memory note `openai-billing-block.md`.
 
-Full findings and the next step live in the persistent memory note `openai-billing-block.md`.
-Short version: auth is fine (`models.list()` returns 143 models), plain text generation fails as
-well as images, so nothing about the icon code is in question. The next diagnostic is an **admin
-key** (`sk-admin-…`), which can read the org and project limits through
-`/v1/organization/projects`, `/v1/organization/projects/{id}/rate_limits` and
-`/v1/organization/costs` instead of guessing at them from error strings.
+Two things came out of it:
+
+- **The ten icon options exist** (`~/projects/incite/brand/icon-options/`, ~$0.40), awaiting
+  Marlon's pick.
+- **A real bug, fixed in v0.2.2** (`52c4fe2`). `insufficient_quota` arrives as HTTP **429**, so
+  `RateLimitError` being in `_retry`'s transient list meant an unfunded account burned the whole
+  backoff ladder — ~250s per call, on every parallel worker — and then died in a traceback.
+  `core/llm.py` now recognises billing refusals, raises at once, and explains them: the credit
+  balance *before* the spending limits, nothing is lost, and the auto-recharge trap named
+  explicitly. `core/batch.py` wraps submission the same way. Needed no app change at all — the
+  app runs the real CLI on a pty and never calls the API itself, so `core/` is the single place.
+
+## 19. Feedback round 3 (2026-07-29, evening) — VERBATIM, not yet triaged
+
+Marlon asked for this to be stored word for word and left alone until the icon question is
+settled. **Do not act on it before re-reading it in full.** No item below has been analysed,
+scoped, or split into UI-vs-CLI yet — that triage is the first task of the next session, and the
+standing instruction applies to every item: decide whether it is UI-only or belongs at the CLI
+level too, because the two must not drift.
+
+```
+At the very top it says "Transcript Toolkit 0.2.1" and there is the preliminary icon left of it right now. It's too crowded with the settings also being on the left there. Instead, I now want the settings at the top right, the current project name at the top in the center, and the "Transcript Toolkit" + version can stay on the left. Of course, the preliminary icon should be replaced with the final icon once we've settled on one. Also, when you click on that, you should be brought back to a landing page. I basically want to merge the current Home and Workspace pages into one Workspace page and get a real Home page where you can see all the projects you have and at what stage they are, and where you can create a new project etc. The latter should be the page you get when you launch the app and when you click on the app icon at the top left.
+
+Also, on the current workspace page it currently lists all the interviews twice, once under 'Transcripts' and then again under 'What was imported'. This is unnecessary and gets out of hand really quickly on large projects. Instead, this should be deduplicated and there should be one table/list that combines the information of those two lists/sections. Also, this list should show at most 10-15 interviews at a time (depending on how much vertical space each row takes) and then should be scrollable inside (a bit like the current Transcript section already is but the 'What was imported' section isn't). This is to prevent burying the subsequent (and very crucial) 'Demo Interviews' section (which should be renamed to 'Pick sample of interviews for Demo' or something like that). Especially given that I want us to merge the current home page and workspace pages into one workspace page , we need to be careful that it stays clear, well-arranged and non-cluttered.
+
+As for the demo section, I want the 'how many' field to sit above the "Draw them at random vs 
+Choose the interviews myself" selection to make clear that you don't have to pick all of them. we shouldn't allow people to have less than 3 demo interviews. Also, once you've run the demo selector, there should be a list of the interviews that were picked for demo; currently it's only a very small line after "Demos run on 5 interviews:" and then there is also a section after it that says "Choose demo interviews — finished
+1s" and then it only shows one of the 5, in my case:
+ursu_viorel_20250416_session1 . This is confusing.
+Also, users should be able to edit the demo sample list (remove individual interviews, add specific ones, or add x more random interviews; all making sure it stays between 3 and 10).
+
+It should also be more clear when a step is running. I.e. it should be somehow shown with a progress bar or at least a x out of y steps done indicator that is not just at the very bottom with the terminal viewer. Also, the terminal viewer should be its own section at the very bottom and it should have the actual heading "Terminal Viewer". Currently, there is no such heading there is only something that says "Terminal" and can be extended. Also, it's weirdly combined with the status indicator, e.g. reading "Clip — demo — finished
+56s
+Review them; adjust config.yaml / prompts/ and re-demo if needed. Then run `toolkit clip` for the full corpus." for me on the clipping page right now, but that's after I've clicked the "Run the Demo" step all the way at the top and there is the "Review pages" section, the "Other things this step can do" options, and the "Advanced" options all between that button and the status indicator so it's not clear that it's showing the status for that specific command. Also, I don't really like the "Other things this step can do" expandable option. This should somehow be integrated into the rest of the page where it's things that are going to be used with some frequency, or if it's very niche like the preview chunking step it should go to the bottom, maybe just before the terminal viewer, into an "Advanced/Optional steps" section (there must be a better name for that, I'm open to suggestions). 
+
+Also, I actually don't like that the "Run the Demo" and "Run it on everything" buttons are both visible from the start since you shouldn't be able to run it on everything before you've run the demo. We should keep the explanation, but it should just show "Try it" with the "Run the Demo" button initially, and then once you've run the demo it should give you the review the demo button in big (nudging you to actually do that) and then give you the option to edit the prompt or the settings for this step and rerun the demo OR to run it on the whole population. 
+
+This makes me realize that there does not seem to be any way to view or edit the prompts for each step in the app right now. This, of course, needs to be addressed. 
+
+Also, I actually don't like the setting page as it is right now, i.e. as a yaml editor. I think we can just incorporate the comments as explanation in the UI (in some standard way so that editing the comments automatically adjusts the explanation for the corresponding setting/parameter) and then make the options actual settings toggles. 
+
+Then, all settings that pertain to the project and toolkit/app as a whole should sit in the expandable sidebar (upon clicking the wheel), whereas all settings that pertain to a specific step should actually sit on the page for that specific step. 
+
+I don't mind that the 'Open the review pages' button opens a new tab, but that tab should be just slightly more navigable, i.e. it's good that it throws you on a page where you see all the interviews listed but then when you click on one of them you should get a little arrow to the left icon in the top left corner to return to the page that lists all the interviews for review. You shouldn't have to use the browsers own back button (although you of course still can). 
+
+That's enough feedback for this round. Save it and then we'll treat the icon first.
+```
+
+This round is larger than 1 and 2 combined and is mostly **structural** — a new Home page, Home
+and Workspace merged, the step page resequenced around demo-then-full, prompts editable in the
+app, and `config.yaml` replaced by real controls split between the sidebar (project/app-wide) and
+each step's own page (step-specific). Expect it to need its own plan rather than a fix list.
