@@ -720,3 +720,17 @@ serving the old code until it is quit and reopened.
 
 Tests 498 → 514. The two that matter most: every page is opened with the project folder deleted
 underneath it, and the recovery card's two buttons are clicked.
+
+### The OpenAI block, as of 2026-07-29 after Marlon was made project Owner
+
+**Still blocked.** Re-probed: `responses.create` on gpt-5.4-mini returns 429 `insufficient_quota`
+for both keys, project `proj_sAw55mP6AqHfg96VE6VYPp1T`, org `incite-columbia-university`. Owner
+rights alone did not change it — being able to *see* the limits is not the same as them being
+raised.
+
+Full findings and the next step live in the persistent memory note `openai-billing-block.md`.
+Short version: auth is fine (`models.list()` returns 143 models), plain text generation fails as
+well as images, so nothing about the icon code is in question. The next diagnostic is an **admin
+key** (`sk-admin-…`), which can read the org and project limits through
+`/v1/organization/projects`, `/v1/organization/projects/{id}/rate_limits` and
+`/v1/organization/costs` instead of guessing at them from error strings.
