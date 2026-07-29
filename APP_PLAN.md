@@ -652,3 +652,35 @@ never run on hardware — this is that.
 Docs pass (SETUP.md restructure per §10 Phase E, README, regenerate the bundle), exact-pin the
 dependencies, merge `app` → `main`, resume version-bump-per-push, delete
 `scripts/mac_launcher_smoke_test.sh` and this file.
+
+## 17. Feedback round 1 (2026-07-29, from Marlon using the app on his MacBook)
+
+Fourteen items, all done in `eed57e8`. Marlon's standing instruction with any feedback: **decide
+each time whether it is a UI fix or belongs at the CLI level too — the two must never drift.**
+That column is the point of this table.
+
+| # | What he found | What changed | CLI? |
+|---|---|---|---|
+| 1 | No way to browse for a project folder | `pages/browse.py` — a server-side folder picker (a browser cannot hand a page a path; the server is the Mac, so the listing comes from there). Typing a path still works. | UI only — the terminal has tab completion |
+| 2 | "Does the example path have *my* username on other machines?" | It already did (`Path.home()`). Pinned by a test that fakes a different home. | no change |
+| 3 | Dropped 8 transcripts, saw 2 | `on_multi_upload` — one event for the whole drop, list redrawn once. Before: 8 concurrent handlers each rebuilding the section holding the upload box. | UI only |
+| 4 | "replacing a transcript silently would be worse" reads as a comment on the user | Rewritten to say what happened and what to do. **`tests/test_user_facing_wording.py` now walks every string literal in `src/` (docstrings excluded — comments are not in the AST) for wording that justifies a design decision.** | repo-wide guard |
+| 5 | The import card did not list the transcripts | `workspaces.transcript_rows()` → every `.docx` with the id import gives it and whether it is in the dataset, colour-coded. "Drop .docx files here" kept. | `toolkit status` already flags `import_stale`; not duplicating a 43-row list there |
+| 6 | Terminal needed explaining, and folding away | Folded `ui.expansion` with an `i` explaining that the app is a window onto a CLI; one line above it always shows the last output. | UI only |
+| 7 | Terminal still showed the previous project's run | `AppContext.open()` clears the job; refuses to switch while one is live (it holds that project's terminal). | UI only (one workspace per CLI invocation) |
+| 8 | "My Oral History Project" appeared without being entered | **One name is typed, the other follows.** `project.folder_name` / `display_name`; `init_project(dest, name=)`; `toolkit init --name "..."` derives the folder, `toolkit init <dir>` derives the name. The app asks for the name and shows the folder before creating it. | **yes — same rule both sides** |
+| 9 | "Open project" showed the folder name | Shows `project_name()`; the path is on the line below, where a path belongs. | UI only |
+| 10 | Import with nothing new looked like it did nothing | Dialog saying so, with "Import again anyway" (a re-import is still how you pick up an edited transcript). | UI affordance only — `toolkit import` stays unconditional so scripts keep working |
+| 11 | Demo sample belonged on the workspace page, and should be choosable | `pages/sample.py`, used by the workspace page and borrowed by step pages when unchosen. Random or hand-picked, 1–10, cost note above 5. | **yes — `--interviews` with `--n` now fills the remainder at random** |
+| 12 | Chunk preview was jargon, and terminal-only | Under **Advanced** with an `i`; renders as a table in the app. `chunk_preview()` / `batch_preview()` return the data and the print functions render it, so terminal and app cannot disagree. | print output byte-identical |
+| 13 | "Re-render review pages" failed in the terminal, silently in the UI | `Action.needs`; `content.missing_for()`; the button is disabled with a tooltip naming what is missing. | CLI keeps erroring with its message — right for a terminal |
+| 14 | Topic lists should be editable in the app | `app/topic_lists.py` + `pages/topics_editor.py`. Edits the same spreadsheet the run reads; validated by `read_topic_rows`, **extracted from `load_topic_set` so the editor's errors are literally the run's**. Autosave every 20 s; first save names the set; before that it lives in `example_topics.csv`, which set discovery excludes. | shared validation |
+
+Tests 363 → 487. Nothing here changed a prompt, a taxonomy text or a cache key.
+
+**One thing worth knowing for the next round:** the eight-file regression test passes against the
+old code too — NiceGUI's test harness dispatches `handle_uploads` without the client teardown
+that made the live version drop files. It pins the behaviour, it does not reproduce the bug.
+
+Still to come: Marlon's second round, and the icon (§16 item 2) once the OpenAI project budget
+is raised.
