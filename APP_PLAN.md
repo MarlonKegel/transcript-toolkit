@@ -415,12 +415,12 @@ Every recommended option was taken, except where noted. Reopen any of these — 
 | 3 | Config editing | **(b) guarded text editor**, not (a′). Reason below. |
 | 4 | NiceGUI | base dependency, pinned `==3.15.0` |
 | 5 | Exact pins | deferred to Phase E, as planned |
-| 6 | Icon | placeholder from `scripts/make_app_icon.py`. **Being replaced** — see §16 |
+| 6 | Icon | still the placeholder — the replacement is written but blocked on billing, §16 |
 | 7 | Update UX | Update button + "Quit, then reopen"; a **Quit** button now exists (Settings) |
 | 8 | Launcher install | explicit `toolkit app --install-launcher`, also a button in Settings |
 | 10 | Job history | none persisted; state.json already carries last-run info |
 | 11 | `TOOLKIT_YES` | left undocumented; the app never uses it |
-| 12 | LICENSE | **MIT** (decided 2026-07-29) — not yet written |
+| 12 | LICENSE | **MIT**, holder Marlon Kegel — written and in the wheel's metadata (6ff28b3) |
 | 13 | Demo sample | explicit button, offered automatically when a run fails for want of one |
 | 14 | Batch waits | accepted as a v1 limitation; the UI says stopping is safe |
 
@@ -550,13 +550,17 @@ Still not verified by anything: the Mac checklist in §9. That is the remaining 
 
 Three things, in this order.
 
-### 1. LICENSE → MIT
+### 1. LICENSE → MIT — DONE (6ff28b3)
 
-Decision made. Replace the proprietary "internal use" notice with the standard MIT text
-(copyright holder: check with Marlon — his name, or INCITE/Columbia). Grep README, pyproject
-and docs for wording that assumed the old licence.
+Standard MIT text, copyright holder **Marlon Kegel** (the holder already named in the old
+notice; change it if INCITE/Columbia should hold it instead). Declared in `pyproject.toml` as
+an SPDX expression — `license = "MIT"`, `license-files = ["LICENSE"]`, build floor raised to
+`setuptools>=77` — and verified in a built wheel: `License-Expression: MIT`, LICENSE shipped
+under `dist-info/licenses/`. README gained a License section; nothing else in the repo assumed
+the old wording. The docs bundle was regenerated (the README is part of it) — `test_docs.py`
+catches that if it is forgotten.
 
-### 2. A real app icon, generated with gpt-image-2
+### 2. A real app icon, generated with gpt-image-2 — BLOCKED ON BILLING
 
 The current icon is a placeholder I drew with matplotlib. Replacing it with something that
 combines **INCITE's logo** and **the idea of a toolkit**. Marlon's brief: *simple and minimal —
@@ -567,16 +571,44 @@ different options**, then he picks and we refine.
   2026-07-29; 396×396 RGBA). It is a square signet: field `#2A3E55` (dark navy), numeral "1"
   in `#E7DFCC` (cream) — a plain stem with a diagonal flag at the top left, no base serif.
   Deliberately kept OUT of the public repo; only the finished app icon goes in.
-- **Read first**: https://developers.openai.com/api/docs/guides/image-generation — model
-  `gpt-image-2`. Check whether to use generation or the edits/reference-image endpoint so the
-  logo can be passed in rather than described.
-- **Key** — the API is billed to Marlon's key. Look for it in a workspace `.env`
-  (e.g. the PNL-test workspace) or ask; do not print it.
-- Ten options must differ in *idea*, not in styling: e.g. logo-on-a-toolbox, the "1" as a tool
-  handle, tools arranged in the signet's square, a wrench forming the numeral, etc. Save them
-  numbered under `/home/mkegel/projects/incite/brand/icon-options/` so Marlon can view them.
-- Winner becomes `src/transcript_toolkit/defaults/app/icon.png` (1024×1024). Delete or
-  repurpose `scripts/make_app_icon.py` once a real icon replaces the drawn one.
+**Everything is written and waiting on one thing: the OpenAI key in
+`~/projects/incite/transcript_toolkit/.env` answers `400 billing_hard_limit_reached`.** That is
+the account's configured spend cap (platform.openai.com → Settings → Limits / Billing), not a
+rate limit and not a bad request — the call itself is well-formed. Raise the cap or add credit,
+then run the three commands below; nothing else needs deciding.
+
+```sh
+cd ~/projects/incite/brand
+/opt/venvs/incite/transcript-toolkit-dev/bin/python make_icon_options.py     # ~10 images
+/opt/venvs/incite/transcript-toolkit-dev/bin/python make_contact_sheet.py    # then look
+/opt/venvs/incite/transcript-toolkit-dev/bin/python install_icon.py 4        # once picked
+```
+
+What was settled while writing it:
+
+- **API shape**: `client.images.edit(model="gpt-image-2", image=[logo], prompt=..., …)` — the
+  edits endpoint takes reference images, so the signet goes in as a picture rather than a
+  description. `input_fidelity` is rejected by this model (it always reads inputs at high
+  fidelity) and `background="transparent"` is not supported either, so the options come back as
+  full-bleed squares.
+- **The Dock shape is applied locally**, not asked for in the prompt: macOS (unlike iOS) does
+  not round an app icon for you, so `iconlib.dock_shape` masks each option into Apple's rounded
+  square with a transparent margin — matching what the matplotlib placeholder did. That is what
+  the contact sheet shows and what `install_icon.py` writes.
+- **The ten ideas differ in subject, not styling** — a shared house-style block fixes the two
+  colours, the flat vector treatment and "no text except the numeral", and only the subject
+  line changes: closed toolbox with the signet as its front plate · open toolbox with tools
+  standing in it · the numeral *as* a screwdriver · a wrench turning the signet as a bolt · a
+  transcript page with a tool across it and the signet stamped on it · a speech waveform where
+  one bar is the numeral · tools fanned from the signet as a pivot · the numeral cut out of a
+  toolbox as negative space · numeral-and-hammer as one monogram · a speech bubble that is also
+  a toolbox.
+- **Where the scripts live**: `~/projects/incite/brand/`, outside the public repo, because they
+  depend on the signet. See `brand/README.md`. `make_icon_options.py` skips options whose PNG
+  already exists, so a re-run only fills gaps; passing numbers regenerates just those.
+- Winner becomes `src/transcript_toolkit/defaults/app/icon.png` (1024×1024) via
+  `install_icon.py`. Delete `scripts/make_app_icon.py` then — its docstring is the provenance
+  of the placeholder only, and `brand/README.md` takes over that job.
 
 ### 3. Marlon tries the app on his MacBook
 
