@@ -684,3 +684,19 @@ that made the live version drop files. It pins the behaviour, it does not reprod
 
 Still to come: Marlon's second round, and the icon (§16 item 2) once the OpenAI project budget
 is raised.
+
+### Round 1, item 15 (found while installing, same day)
+
+`--install-launcher` said "Created /Users/marlonkegel/Applications/Transcript Toolkit.app" and
+then "Open your Applications folder" — but **Finder's sidebar "Applications" is `/Applications`**,
+and `~/Applications` is a different folder that appears nowhere in it. Marlon looked in the
+sidebar one first, as anyone would.
+
+Now: `/Applications` when writable (it is, for admin users, without sudo — group `admin`,
+mode 775), falling back to `~/Applications` on a managed Mac. `where_to_find()` gives the
+folder-specific instructions, used by both the CLI and the Settings page, and an older copy of
+ours in the other folder is removed so two same-named apps can't coexist. A same-named bundle
+that is *not* ours (no matching `CFBundleIdentifier`) is left alone.
+
+Reinstalling moves the bundle, so macOS may ask once more for Documents access — expected, and
+already documented in APP.md.
