@@ -12,6 +12,12 @@ created by `toolkit init` carries its own `AGENTS.md` with rules for assisting e
   raise `ToolkitError`, never parse args or call `sys.exit`.
 - `defaults/` — package data: default prompts, region vocabulary + mapping, pricing table, and
   the `scaffold/` templates copied by `toolkit init`.
+- `defaults/app/icon.png` — the Mac app icon, 1024×1024, already masked into the macOS rounded
+  square with its margin (macOS does not round an app icon for you; `app/launcher.py` feeds this
+  straight to `sips`/`iconutil`). It is **generated, not hand-drawn**, by the scripts in
+  `~/projects/incite/brand/` — which live outside this repo because they carry the INCITE signet
+  and its prompts. To change the icon, work there and re-run `install_icon.py N`; see
+  `brand/README.md`. Nothing in this repo can regenerate it.
 
 ## Contracts (do not break)
 
