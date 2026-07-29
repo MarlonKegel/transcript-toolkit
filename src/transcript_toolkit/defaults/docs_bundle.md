@@ -121,6 +121,10 @@ toolkit status
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — when something goes wrong
 - [llms-full.txt](llms-full.txt) — all of the above in one file, for AI assistants (see above)
 
+## License
+
+MIT — see [LICENSE](LICENSE).
+
 ================================================================================================
 # FILE: docs/SETUP.md
 # Installing it on a Mac, step by step

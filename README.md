@@ -69,3 +69,7 @@ toolkit status
 - [docs/CONFIG.md](docs/CONFIG.md) — every setting
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — when something goes wrong
 - [llms-full.txt](llms-full.txt) — all of the above in one file, for AI assistants (see above)
+
+## License
+
+MIT — see [LICENSE](LICENSE).
