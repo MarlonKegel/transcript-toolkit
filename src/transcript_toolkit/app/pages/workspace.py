@@ -10,7 +10,7 @@ from nicegui import ui
 from ...errors import ToolkitError
 from .. import content, workspaces
 from ..context import CONTEXT
-from .browse import browse_button
+from .browse import browse_button, choose_folder
 from .common import guard, launch, run_panel, section, shell, shown_name
 from .sample import sample_section
 
@@ -19,6 +19,7 @@ HREF = "/workspace"
 
 def workspace_page() -> None:
     with shell(HREF, needs_workspace=False):
+        _gone()
         _open_or_create()
         if CONTEXT.project is None:
             return
@@ -32,6 +33,47 @@ def workspace_page() -> None:
 
         body()
         run_panel(on_finished=body.refresh)
+
+
+def _gone() -> None:
+    """The project that was open is not where it was.
+
+    Somebody renamed it, moved it to another disk, or threw it away — from Finder, with no idea
+    the app had it open. Both are ordinary things to have done, so this asks which rather than
+    guessing, and neither answer loses anything.
+    """
+    missing = CONTEXT.missing
+    if missing is None:
+        return
+    with ui.card().classes("w-full bg-amber-50 dark:bg-amber-900/30"):
+        ui.label("Your project is not where it was").classes("text-lg font-medium")
+        ui.label(str(missing)).classes("text-xs font-mono opacity-70 break-all")
+        ui.label("Nothing has been lost by the toolkit — it only stopped finding the folder "
+                 "there.").classes("text-sm")
+
+        def moved(path: str) -> None:
+            try:
+                CONTEXT.open(workspaces.open_workspace(path))
+            except ToolkitError as e:
+                guard(e)
+                return
+            CONTEXT.missing = None
+            workspaces.forget(str(missing))         # the old path will never work again
+            ui.navigate.to(HREF)
+
+        def deleted() -> None:
+            workspaces.forget(str(missing))
+            CONTEXT.close()
+            ui.navigate.to(HREF)
+
+        with ui.row().classes("gap-2 flex-wrap"):
+            ui.button("I moved or renamed it", icon="drive_file_move",
+                      on_click=lambda: choose_folder(
+                          moved, start=missing.parent,
+                          title="Where is it now?",
+                          hint="Open the project folder itself, then use it.")).props("dense")
+            ui.button("I deleted it", icon="delete_outline", on_click=deleted) \
+                .props("dense flat")
 
 
 def _rename(project) -> None:

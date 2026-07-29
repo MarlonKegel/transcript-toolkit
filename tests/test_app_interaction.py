@@ -264,3 +264,46 @@ async def test_dropping_a_topic_list_creates_the_set(user: User, open_workspace)
 
     await user.open("/step/topics")
     await user.should_see("Run the demo")               # the set exists now
+
+
+@pytest.mark.asyncio
+async def test_every_page_survives_the_project_folder_being_deleted(user: User, open_workspace):
+    """The reported failure: with the folder gone, Settings returned a 500 with a raw
+    FileNotFoundError. No page may read a file out of a project that is not there."""
+    import shutil
+    shutil.rmtree(open_workspace.root)
+
+    for path in ("/", "/settings", "/export", "/workspace", "/step/clip", "/step/topics"):
+        await user.open(path)
+        await user.should_see("Transcript Toolkit")
+
+
+@pytest.mark.asyncio
+async def test_a_deleted_project_offers_the_two_things_that_happened(user: User, open_workspace):
+    import shutil
+    shutil.rmtree(open_workspace.root)
+
+    await user.open("/")                       # noticing happens wherever you happen to be
+    await user.open("/workspace")
+    await user.should_see("Your project is not where it was")
+    await user.should_see("I moved or renamed it")
+    await user.should_see("I deleted it")
+    assert CONTEXT.project is None
+
+    user.find("I deleted it").click()
+    await settle(user)
+    assert CONTEXT.missing is None
+    await user.open("/workspace")
+    await user.should_see("Start a new project")
+
+
+@pytest.mark.asyncio
+async def test_settings_is_behind_the_gear_on_every_page(user: User, open_workspace):
+    """Settings is the same everywhere and is not a place in the pipeline, so it is a drawer
+    rather than the last tab in the row."""
+    from transcript_toolkit.app.pages.common import NAV
+
+    assert "/settings" not in [href for href, _ in NAV]
+    await user.open("/step/clip")
+    await user.should_see("Quit the toolkit")          # the drawer's content is on the page
+    await user.should_see("Delete this project")

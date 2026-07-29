@@ -13,9 +13,11 @@ from .. import content, jobs
 from ..context import CONTEXT
 
 PRIMARY = "#3b4bb8"
+# Settings is not in here: it is the same on every page and belongs behind the gear, not in the
+# row of places you go in order.
 NAV = [("/", "Home"), ("/workspace", "Workspace"),
        *[(f"/step/{s.slug}", s.title) for s in content.STEPS],
-       ("/export", "Export"), ("/settings", "Settings")]
+       ("/export", "Export")]
 
 STATE_LOOK = {
     jobs.RUNNING: ("play_circle", "text-primary", "running"),
@@ -44,15 +46,22 @@ def guard(e: Exception) -> None:
 
 
 @contextmanager
-def shell(active: str = "", *, needs_workspace: bool = True):
-    """Header, navigation, and the centred column pages draw into."""
+def shell(active: str = "", *, needs_workspace: bool = True, settings_open: bool = False):
+    """Header, navigation, the settings drawer, and the centred column pages draw into."""
     ui.colors(primary=PRIMARY)
+    # Before anything reads a file out of it: the folder may have been renamed or thrown away
+    # in Finder since the page was last drawn.
+    CONTEXT.check_still_there()
     project = CONTEXT.project
     if needs_workspace and project is None:
         ui.navigate.to("/workspace")
 
+    drawer = _settings_drawer(active, settings_open)
+
     with ui.header().classes("items-center justify-between px-4 py-2"):
         with ui.row().classes("items-center gap-3"):
+            ui.button(icon="settings", on_click=drawer.toggle) \
+                .props("flat round dense color=white").tooltip("Settings")
             ui.icon("subject", size="1.6rem")
             ui.label("Transcript Toolkit").classes("text-lg font-medium")
             # In plain sight because the first question about any odd behaviour is which
@@ -73,6 +82,35 @@ def shell(active: str = "", *, needs_workspace: bool = True):
     with ui.column().classes("w-full max-w-5xl mx-auto p-4 gap-4") as body:
         _running_banner(active)
         yield body
+
+
+def _settings_drawer(active: str, opened: bool):
+    """Settings, on every page, behind the gear. It is about the installation and the open
+    project rather than a place in the pipeline, so it does not belong in the row above."""
+    from .settings import settings_body
+
+    drawer = ui.left_drawer(value=opened, bordered=True).props("width=460 overlay")
+    with drawer:
+        with ui.row().classes("items-center w-full"):
+            ui.label("Settings").classes("text-lg font-medium")
+            ui.space()
+            ui.button(icon="close", on_click=drawer.hide).props("flat round dense")
+        on_open = settings_body(active)
+
+    # Only when it is actually opened, and only the first time: the version check calls out to
+    # GitHub, and this drawer is built on every page.
+    done = {"checked": False}
+
+    async def opened_now(event=None) -> None:
+        if done["checked"] or (event is not None and not event.value):
+            return
+        done["checked"] = True
+        await on_open()
+
+    drawer.on_value_change(opened_now)
+    if opened:
+        ui.timer(0.1, opened_now, once=True)
+    return drawer
 
 
 def _running_banner(active: str) -> None:

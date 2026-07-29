@@ -72,7 +72,8 @@ def _ask_to_quit(port: int) -> None:
         time.sleep(0.3)
     raise ToolkitError(
         f"An older copy of the toolkit is still using port {port} and did not stop when asked. "
-        f"Quit it from its own window (Settings -> Quit), then try again.")
+        f"Quit it from its own window (the gear in the top left corner, then Quit), "
+        f"then try again.")
 
 
 def refuse_quit_reason() -> str | None:
@@ -207,7 +208,8 @@ def serve(project: str | None = None, port: int = DEFAULT_PORT, open_browser: bo
     # whether the app was started by the desktop icon or by hand.
     print(f"Started {'from the desktop app' if from_launcher else 'from the command line'}.")
     print(f"Transcript Toolkit {__version__} — {url(port)}\n"
-          f"Leave this running while you work. Close it from the app's Settings page, or with "
+          f"Leave this running while you work. Close it from the app (the gear in the top left "
+          f"corner, then Quit), or with "
           f"Ctrl-C here.")
     ui.run(host="127.0.0.1", port=port, title="Transcript Toolkit", favicon=Path(str(icon)),
            show=open_browser, reload=False, dark=None, storage_secret=None)

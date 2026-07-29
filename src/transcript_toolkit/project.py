@@ -74,9 +74,15 @@ class Project:
 def find_project(explicit: str | None = None, start: Path | None = None) -> Project:
     if explicit is not None:
         project = Project(Path(explicit))
+        if not project.root.is_dir():
+            raise ToolkitError(f"There is no folder at {project.root}. If you moved or renamed "
+                               f"the project, point at where it is now; if you deleted it, there "
+                               f"is nothing to open.")
         if not project.exists():
-            raise ToolkitError(f"{project.root} is not a toolkit workspace (no .toolkit/project.json). "
-                               f"Create one with: toolkit init <dir>")
+            raise ToolkitError(f"{project.root} is not a toolkit project folder (it has no "
+                               f".toolkit/project.json in it). Open the project folder itself, "
+                               f"not the folder it sits in — or create one with: "
+                               f"toolkit init <dir>")
         return project
     here = (start or Path.cwd()).resolve()
     for candidate in (here, *here.parents):

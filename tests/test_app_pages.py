@@ -248,3 +248,17 @@ def test_the_header_shows_the_project_name_and_its_folder(server, workspace):
     _, body = get(server, "/workspace")
     assert workspace.root.name in body            # the folder
     assert "Rename it" in body                    # and a way to fix a name you did not choose
+
+
+def test_the_version_check_does_not_run_on_every_page(server, monkeypatch):
+    """The drawer is built on every page and the check calls GitHub. Doing it per page load
+    would put a network round trip behind every click."""
+    _, body = get(server, "/step/clip")
+    assert "Install the latest version" in body      # the drawer is there
+    assert "checking for a newer version" not in body       # but it has not gone looking
+
+
+def test_the_settings_url_still_works_and_opens_the_panel(server):
+    status, body = get(server, "/settings")
+    assert status == 200
+    assert "Settings are in the panel on the left" in body

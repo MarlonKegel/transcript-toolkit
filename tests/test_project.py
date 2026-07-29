@@ -81,7 +81,7 @@ def test_find_project_walks_up(tmp_path):
 def test_find_project_explicit_and_failure(tmp_path):
     project = init_project(str(tmp_path / "ws"))
     assert find_project(explicit=str(project.root)).root == project.root
-    with pytest.raises(ToolkitError, match="not a toolkit workspace"):
+    with pytest.raises(ToolkitError, match="not a toolkit project folder"):
         find_project(explicit=str(tmp_path))
     with pytest.raises(ToolkitError, match="Not inside a toolkit workspace"):
         find_project(start=tmp_path / "elsewhere")

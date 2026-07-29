@@ -82,7 +82,7 @@ def test_renaming_an_empty_name_is_refused(tmp_path):
 
 def test_opening_a_plain_folder_fails_with_the_cli_wording(tmp_path):
     (tmp_path / "not-a-workspace").mkdir()
-    with pytest.raises(ToolkitError, match="not a toolkit workspace"):
+    with pytest.raises(ToolkitError, match="not a toolkit project folder"):
         workspaces.open_workspace(tmp_path / "not-a-workspace")
 
 

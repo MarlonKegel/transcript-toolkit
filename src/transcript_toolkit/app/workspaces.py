@@ -8,6 +8,7 @@ on the app having run.
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -110,6 +111,48 @@ def rename_project(project: Project, name: str) -> None:
         raise ToolkitError("Give the project a name.")
     project.config_path.write_text(config_with_name(project.config_path.read_text(), name))
     remember(project)               # the recent list shows the name, so it has to hear about it
+
+
+def describe(project: Project) -> dict:
+    """What is in a project, for the "are you sure" before deleting it."""
+    counts = {"transcripts": transcript_count(project)}
+    for label, folder in (("results", project.outputs_dir), ("review pages", project.diags_dir)):
+        counts[label] = sum(1 for p in folder.rglob("*") if p.is_file()) \
+            if folder.is_dir() else 0
+    return counts
+
+
+def delete_project(project: Project) -> str:
+    """Throw a project away, and say where it went.
+
+    On a Mac it goes to the Trash, so a wrong answer to the confirmation is a mistake somebody
+    can undo. Only ever a folder that is a toolkit project — the marker file is checked here,
+    not by the caller.
+    """
+    import subprocess
+    import sys
+
+    root = project.root
+    if not project.exists():
+        raise ToolkitError(f"{root} is not a toolkit project folder, so it was left alone.")
+    if root.parent == root:
+        raise ToolkitError(f"{root} is the top of a disk. Nothing was deleted.")
+
+    if sys.platform == "darwin":
+        script = f'tell application "Finder" to delete POSIX file "{root}"'
+        result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+        if result.returncode != 0:
+            raise ToolkitError(
+                f"Could not move {root} to the Trash: "
+                f"{result.stderr.strip() or result.stdout.strip()}\n"
+                f"Nothing was deleted — you can drag the folder to the Trash yourself.")
+        where = "the Trash"
+    else:
+        shutil.rmtree(root)
+        where = "nowhere — it was deleted outright"
+
+    forget(str(root))
+    return where
 
 
 def suggested_parent() -> Path:

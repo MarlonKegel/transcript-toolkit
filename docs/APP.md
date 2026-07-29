@@ -47,8 +47,9 @@ up without paying twice.
 **Stopping is always safe.** Every call that has finished is saved. Stop a run halfway and run
 it again tomorrow, and it carries on from where it stopped rather than starting over.
 
-**Quit it when you are done** — Settings → Quit the toolkit. Also do that after installing an
-update: the copy that is already running keeps using the old version until you restart it.
+**Quit it when you are done** — the gear in the top left corner → Quit the toolkit. Also do that
+after installing an update: the copy that is already running keeps using the old version until
+you restart it.
 
 **The Terminal panel** under a run is folded away until you open it. Inside is the command
 being run and its output, exactly as Terminal would show it — the app is a window onto the
@@ -132,10 +133,28 @@ toolkit app --install-launcher --port 8378
 
 ## Settings
 
-The Settings page holds the installation-wide things: which version you have and whether a
-newer one exists, the button that rebuilds the desktop app, and a plain text editor for the
-current project's `config.yaml`. That file's comments explain every setting; the editor will
-refuse to save something that is not valid YAML rather than leave you with a broken project.
+**The gear in the top left corner** opens Settings, from any page. It holds the things that are
+about the installation or the project as a whole rather than about a step:
 
-Changing a model or a prompt there makes the demos stale on purpose — the next full run will
-ask you to look at a fresh demo first.
+- which version you have, and whether a newer one exists
+- the button that rebuilds the desktop app
+- a plain text editor for the current project's `config.yaml`. That file's comments explain
+  every setting; the editor refuses to save something that is not valid YAML rather than leave
+  you with a broken project. Changing a model or a prompt there makes the demos stale — the next
+  full run will ask you to look at a fresh demo first.
+- **Delete this project**, which asks you to type DELETE and tells you how many transcripts and
+  results go with it. On a Mac it moves the folder to the Trash, so a wrong answer is
+  recoverable.
+- **Quit the toolkit**.
+
+## If your project folder moves or disappears
+
+Renaming a project folder in Finder, moving it to another disk, or throwing it away are all
+ordinary things to do, and nothing warns Finder that the app has it open. When the toolkit next
+looks and the folder is not there, it closes the project and asks on the workspace page:
+
+- **I moved or renamed it** — point it at the folder's new home and everything carries on. The
+  project is intact; only its path changed.
+- **I deleted it** — the toolkit forgets it and you are back at a clean start.
+
+Neither answer loses anything the toolkit was holding.
