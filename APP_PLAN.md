@@ -818,3 +818,24 @@ that a hand-reindented file is left alone), `test_review_pages.py`, `test_app_pr
 into the developer's list of projects.
 
 Nothing here changed a prompt text, a taxonomy text or a cache key.
+
+## 21. Feedback round 4 (2026-07-30) — triage and what was built
+
+Nine items, four of them arriving mid-round. Same standing rule in the last column.
+
+| # | What he asked for | What changed | CLI? |
+|---|---|---|---|
+| 1 | The review tab still had no way back to the interview list | Nothing to build — v0.2.4 added it (`reviewdoc.document(back=…)`). His pages were **written before that**, so they do not have it. Review pages are generated artifacts and go stale when the toolkit improves, so the fix is discoverability: **Rebuild these pages** now sits beside the review links on every step page (it was buried in Extra tools), free and instant. | already CLI (`toolkit <step> annotate`) |
+| 2 | A project cost report: everything ever billed, per step and total, updated whenever anything runs | `toolkit cost` was already the actual-spend report, but it deduped to the latest record per cache key — i.e. *what the current results cost*, not *what was spent*. Now every record counts, because a step only appends one when it actually calls the API. New `spend_report()` returns it as data; `run_cost` prints from it and `pages/spend.py` draws from it, so the two cannot disagree. On the workspace page in full, and one line per step page beside the buttons that spend. | **yes — the semantics changed for both** |
+| 3 | Keep the sync/Batch choice at the confirmation, with an explainer | Already there for every batch-capable step (`console.choose_transport`'s three-way menu, shown as three buttons). Added the `i` beside them (`content.TRANSPORT_EXPLAINER`), and fixed the block above them: it was rendered `whitespace-pre-line`, which **collapses the spaces the CLI lines the two prices up with**. Clipping cannot batch, so it still asks a plain yes/no. | no change |
+| 4 | The status line runs off the right-hand edge | It was `truncate`d, so a long interview id vanished rather than wrapping. Everything in the status panel now wraps (`pre-wrap`/`break-words`), including the error tail and the question block. | UI only |
+| 5 | House rules: writable in the app, and the justify addendums should not be selectable | **A real bug first**: the picker offered `prompt_addendums/x.md` while `steps/label` resolves the path from the project root, so anything chosen there failed at run time. `core/prompts.addendums()` now returns workspace-relative paths, and `write_addendum()` makes one from the app. The toolkit's own justify files are excluded by looking up every step's `justify_prompt` — not by name. Justify itself was already right: on for demos, off for full runs, `--justify` a CLI flag only. | **yes** — the path bug was in the picker; a test now pins the two ends together |
+| 6 | The prompt box is too short, and should look like a field | The height was set on the wrapper, not the textarea, which is where the gap came from — now `input-style="height: 36rem"`. Every outlined field in the app is white (`theme`), so anything you can type into reads as paper. | UI only |
+| 7 | More than one topic list, kept apart, with their own prompts and settings; tabs | Multiple lists already worked end to end (separate `--set`, cache, state key, deliverables). What was missing: a tab per list with its own state, an **Add a topic list** tab that works when lists already exist (before, the editor only appeared when there were none), a per-list prompt (*Give this list its own prompt* splits it off the shared one), and per-list model/reasoning. | **yes** — `sets.<set>.{model, reasoning}` merged in `topics/tag._context`; the fingerprint already covers both, so one list's change stales only that list |
+| 8 | An uploaded topic list should be editable in the same editor | It refused anything that was not `.csv`. It now edits the file that is actually there, `.xlsx` included — rewriting only the sheet the toolkit reads and leaving any other sheet in the workbook alone. | shared editor/validation |
+| 9 | The topics demo page needs line breaks in the clip text | `<pre>` had `overflow-x:auto`, so a paragraph was one long scrolling line. Now wraps. | **yes** — the review pages are the toolkit's own artifacts |
+
+Tests 592 → 609.
+
+**Worth knowing for the next round.** NiceGUI HTML-escapes `$` in the served page (`&#36;`), so a
+page test asserting a money figure has to expect that, not `$8.00`.

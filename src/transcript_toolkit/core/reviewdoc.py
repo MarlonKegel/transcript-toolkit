@@ -69,8 +69,10 @@ th, td { border:1px solid var(--line); padding:.3rem .5rem; text-align:left; }
 th { background:var(--card); }
 td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 a { color:var(--accent); }
+/* Transcript text, so it wraps: reading a clip must not mean scrolling sideways. */
 pre { background:var(--bg); border:1px solid var(--line); border-radius:6px;
-  padding:.75rem 1rem; overflow-x:auto; font-size:.82rem; line-height:1.5; }
+  padding:.75rem 1rem; font-size:.82rem; line-height:1.5;
+  white-space:pre-wrap; overflow-wrap:anywhere; }
 """
 
 

@@ -1,5 +1,8 @@
-"""`toolkit cost` reports money actually spent: each group is priced at the tier it was really
-billed at, decided by the `api` field the batch path stamps on its records."""
+"""`toolkit cost` is the project's cost report: money actually spent, per step and in total.
+
+Each group is priced at the tier it was really billed at, decided by the `api` field the batch
+path stamps on its records. Every cached call counts, because every cached call was paid for.
+"""
 import json
 
 import pytest
@@ -63,7 +66,9 @@ def test_total_spans_steps(project, capsys):
     write_cache(project, "topics_main", [record("b", api="batch")])
     run_cost(project)
     out = capsys.readouterr().out
-    assert "=== label ===" in out and "=== topics_main ===" in out
+    assert "Project cost report" in out
+    # each step named the way state.json names it, so a topic list is its own line
+    assert "label: $5.2500" in out and "topics:main: $2.6250" in out
     assert "TOTAL so far: $7.8750" in out
 
 
@@ -75,11 +80,40 @@ def test_to_n_forecast_shows_both_tiers(project, capsys):
     assert "for 10 calls: $52.50 sync / $26.25 batch" in out
 
 
-def test_latest_record_per_cache_key_wins(project, capsys):
-    """A re-run appends; only the newest record for a cache key counts, so cost isn't doubled."""
+def test_every_call_ever_made_is_counted(project, capsys):
+    """This is a report of what was spent, not of what the current results cost. A step only
+    appends a record when it actually calls the API, so two records for one cache key are two
+    calls that were both paid for — even though only the later one is used from here on."""
     write_cache(project, "topics_main", [record("a"), record("a", api="batch")])
     run_cost(project)
-    assert "TOTAL so far: $2.6250" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "TOTAL so far: $7.8750" in out
+    assert "2 calls" in out
+
+
+def test_demos_and_abandoned_attempts_are_in_the_total(project, capsys):
+    """Records left behind by a prompt that has since been rewritten have different cache keys
+    and are still money that left the account."""
+    write_cache(project, "clip", [record("old-prompt"), record("new-prompt")])
+    run_cost(project)
+    assert "TOTAL so far: $10.5000" in capsys.readouterr().out
+
+
+def test_the_report_is_the_same_figures_as_data(project):
+    """The app draws its cost report from this, so the printed one and the drawn one cannot
+    disagree about what a project has cost."""
+    from transcript_toolkit.steps.cost import spend_report, spent_on
+
+    write_cache(project, "label", [record("a")])
+    write_cache(project, "topics_main", [record("b", api="batch")])
+    report = spend_report(project)
+
+    assert report["total_usd"] == pytest.approx(7.875)
+    assert report["calls"] == 2
+    assert report["by_tier"] == pytest.approx({"standard": 5.25, "batch": 2.625})
+    assert spent_on(report, "topics:main")["usd"] == pytest.approx(2.625)
+    assert spent_on(report, "summarize") is None
+    assert [e["key"] for e in report["steps"]] == ["label", "topics:main"]
 
 
 def test_unknown_model_reported_not_crashed(project, capsys):

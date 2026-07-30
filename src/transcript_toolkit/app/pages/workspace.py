@@ -16,6 +16,7 @@ from .common import (guard, run_status, section, shell, shown_name, status_chip,
 from .sample import BLURB as SAMPLE_BLURB
 from .sample import TITLE as SAMPLE_TITLE
 from .sample import sample_section
+from .spend import cost_report
 from .transcripts import transcripts_section
 
 HREF = "/workspace"
@@ -41,6 +42,7 @@ def workspace_page() -> None:
             _api_key(refresh_all)
             transcripts_section(refresh_all)
             _demo_sample(refresh_all)
+            _cost()
 
         @ui.refreshable
         def rest() -> None:
@@ -205,6 +207,15 @@ def _demo_sample(refresh) -> None:
         return
     section(SAMPLE_TITLE, SAMPLE_BLURB)
     sample_section(HREF, refresh)
+
+
+def _cost() -> None:
+    """What this project has cost. It belongs to the project rather than to a step, and it is the
+    question somebody asks before starting the next expensive thing."""
+    ui.link_target("cost")
+    section("Project cost report", "Everything this project has been billed for so far, demos "
+                                   "included. It goes up whenever something runs.")
+    cost_report()
 
 
 def _folder() -> None:

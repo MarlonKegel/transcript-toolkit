@@ -179,9 +179,9 @@ def run_status(on_fix: Callable[[str], None] | None = None,
         header.clear()
         with header:
             ui.icon(icon).classes(colour)
-            ui.label(f"{job.title} — {word}").classes("font-medium")
+            ui.label(f"{job.title} — {word}").classes("font-medium break-words min-w-0")
             ui.space()
-            ui.label(f"{job.duration:.0f}s").classes("text-xs opacity-60")
+            ui.label(f"{job.duration:.0f}s").classes("text-xs opacity-60 shrink-0")
             if job.live:
                 ui.button("Stop", icon="stop", on_click=_stop, color="negative") \
                     .props("outline dense").tooltip(
@@ -199,17 +199,22 @@ def run_status(on_fix: Callable[[str], None] | None = None,
                 ui.label("The toolkit is asking before it spends anything:") \
                     .classes("text-xs opacity-70")
                 # Its own words and its own figures, lifted from the run itself, so nothing
-                # here is a second opinion about what something costs.
-                ui.label(_question_block(job)).classes("whitespace-pre-line font-mono text-sm")
-                with ui.row().classes("gap-2 flex-wrap"):
+                # here is a second opinion about what something costs. `pre-wrap` rather than
+                # `pre-line`: the CLI lines the two prices up with spaces.
+                ui.label(_question_block(job)).classes(
+                    "whitespace-pre-wrap break-words font-mono text-sm w-full")
+                with ui.row().classes("gap-2 flex-wrap items-center"):
                     for answer in job.answers() or ():
                         ui.button(answer.label,
                                   on_click=lambda _, a=answer: _answer(a.send)) \
                             .props(f"color={answer.tone or 'primary'} dense")
+                    if job.answers() == content.TRANSPORT_ANSWERS:
+                        info(content.TRANSPORT_EXPLAINER)
         elif job.unanswered_question():
             with prompt_area, ui.card().classes(f"w-full {theme.WARN}"):
                 ui.label("It is waiting for an answer:").classes("text-xs opacity-70")
-                ui.label(job.unanswered_question()).classes("font-mono text-sm")
+                ui.label(job.unanswered_question()).classes(
+                    "font-mono text-sm whitespace-pre-wrap break-words w-full")
                 reply = ui.input("Type your answer").classes("w-full")
                 ui.button("Send", on_click=lambda: _answer(reply.value)).props("dense")
 
@@ -217,7 +222,7 @@ def run_status(on_fix: Callable[[str], None] | None = None,
         if job.state == jobs.FAILED and job.error:
             with error_area, ui.card().classes(f"w-full {theme.FAIL}"):
                 ui.label("It stopped with this:").classes("text-xs opacity-70")
-                ui.label(job.error).classes("whitespace-pre-line text-sm")
+                ui.label(job.error).classes("whitespace-pre-line break-words text-sm w-full")
                 fix = content.fix_for(job.error)
                 if fix and on_fix:
                     label = "Pick the demo interviews" if fix == "sample" else "Run the demo"
@@ -230,7 +235,8 @@ def run_status(on_fix: Callable[[str], None] | None = None,
                 ui.label("It stopped unexpectedly. These are its last lines — send them to "
                          "whoever looks after the toolkit.").classes("text-sm")
                 tail = "\n".join(list(job.lines)[-20:])
-                ui.label(tail).classes("whitespace-pre-line font-mono text-xs opacity-80")
+                ui.label(tail).classes(
+                    "whitespace-pre-wrap break-all font-mono text-xs opacity-80 w-full")
                 ui.button("Copy them", icon="content_copy",
                           on_click=lambda: _copy(job)).props("dense flat")
         elif job.state == jobs.CANCELLED:
@@ -291,7 +297,10 @@ def _progress(job: jobs.Job, unit: str) -> None:
             ui.label("Starting…").classes("text-xs opacity-70")
     latest = _latest(job)
     if latest:
-        ui.label(latest).classes("text-xs opacity-60 font-mono truncate w-full")
+        # Wrapped, not clipped: this is the one line that says which interview it is on, and a
+        # long interview id is exactly the thing that used to disappear off the right-hand edge.
+        ui.label(latest).classes(
+            "text-xs opacity-60 font-mono whitespace-pre-wrap break-all w-full")
 
 
 def inline_state(title: str) -> None:

@@ -32,6 +32,13 @@ class TopicSet:
     source: Path
     prompt: str | None       # optional per-set prompt file (config sets.<set>.prompt);
                              # None = the step-wide advanced `prompt` is used
+    overrides: dict          # settings this set runs with instead of the step's (SET_OVERRIDES)
+
+
+# A topic list is its own piece of work: a fine-grained list may want a stronger model or more
+# thinking than a coarse one, and there is no reason for one to dictate the other. A set that
+# overrides nothing runs with the step's own settings.
+SET_OVERRIDES = ("model", "reasoning")
 
 
 TOPIC_SUFFIXES = (".csv", ".xlsx")
@@ -211,7 +218,8 @@ def load_topic_set(project: Project, cfg: dict, set_name: str | None = None) -> 
     topics = [{"id": r["id"], "name": r["name"]} for r in rows]
     return TopicSet(name=name, ids=[t["id"] for t in topics], topics=topics,
                     taxonomy_text="\n\n".join(blocks), source=path,
-                    prompt=entry.get("prompt"))
+                    prompt=entry.get("prompt"),
+                    overrides={k: entry[k] for k in SET_OVERRIDES if entry.get(k) is not None})
 
 
 def read_topic_rows(raw: list[list[str]], label: str) -> tuple[list[dict], list[str]]:

@@ -313,6 +313,20 @@ TRANSPORT_ANSWERS = (
     Answer("Use the Batch API", "2", "secondary"),
     Answer("Cancel", "n", "negative"),
 )
+
+# What the two ways of sending a full run mean. The figures beside the buttons are the step's
+# own; this only explains what it is choosing between.
+TRANSPORT_EXPLAINER = (
+    "Two ways to send the same work to OpenAI.\n\n"
+    "RUN NOW sends the calls straight away and they come back over the next minutes or hours, "
+    "with the progress on screen. Choose this when you want the results today, or when you are "
+    "still deciding and might want to stop partway.\n\n"
+    "THE BATCH API hands the whole job over and OpenAI works through it when it has room. It "
+    "costs half as much and can take up to a day — usually much less. The toolkit waits for it, "
+    "but you can quit and re-run the same command later: it picks the same job back up rather "
+    "than paying twice.\n\n"
+    "Either way, nothing you have already paid for is sent again, and stopping is safe."
+)
 YES_NO_ANSWERS = (
     Answer("Yes, go ahead", "y", "primary"),
     Answer("Cancel", "n", "negative"),

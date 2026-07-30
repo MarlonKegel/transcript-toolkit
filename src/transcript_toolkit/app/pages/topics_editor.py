@@ -16,7 +16,7 @@ from pathlib import Path
 from nicegui import ui
 
 from ...errors import ToolkitError
-from .. import topic_lists
+from .. import theme, topic_lists
 from ..context import CONTEXT
 from .common import guard, info
 
@@ -49,7 +49,7 @@ def editor(set_name: str | None, path: Path, on_saved) -> None:
         ui.space()
         saved_at = ui.label().classes("text-xs opacity-60")
     if guidance:
-        with ui.card().classes("w-full bg-blue-50 dark:bg-blue-900/30 py-2"):
+        with ui.card().classes(f"w-full {theme.NOTE} py-2"):
             ui.label(guidance).classes("text-xs opacity-80")
 
     @ui.refreshable

@@ -56,6 +56,9 @@ body.body--dark .tk-good {{ color:#6FB08A; }}
 body.body--dark .tk-bad {{ color:#D98A80; }}
 .tk-caution {{ color:{CAUTION}; }}
 body.body--dark .tk-caution {{ color:#D9B45E; }}
+/* Anything you can type into looks like paper you can type on, against the cream ground. */
+.q-field--outlined .q-field__control {{ background:#FFFFFF; }}
+body.body--dark .q-field--outlined .q-field__control {{ background:#101A24; }}
 .tk-terminal {{ background:{PAPER_DARK}; color:{CREAM}; }}
 .tk-row + .tk-row {{ border-top:1px solid {EDGE}; }}
 body.body--dark .tk-row + .tk-row {{ border-top-color:{EDGE_DARK}; }}

@@ -51,15 +51,19 @@ def settings_form(step: str, fields: list[settings.Field] | None = None,
     with ui.column().classes("w-full gap-4"):
         for field in chosen:
             was = settings.value_at(current, field.path)
+            # A setting that has not been given its own value here runs on whatever it falls back
+            # to, so that is what the control has to show — and saving it writes it here.
+            shown = was if was is not None else (
+                settings.value_at(current, field.fallback) if field.fallback else None)
+            says = settings.explained(said, field)
             with ui.column().classes("w-full gap-1"):
                 with ui.row().classes("items-center gap-2"):
                     ui.label(field.label).classes("text-sm font-medium")
-                    if field.path in said:
-                        info(said[field.path])
-                if field.path in said:
-                    ui.label(said[field.path]).classes(
-                        "text-xs opacity-70 max-w-2xl whitespace-pre-line")
-                readers.append((field, _control(project, field, was), was))
+                    if says:
+                        info(says)
+                if says:
+                    ui.label(says).classes("text-xs opacity-70 max-w-2xl whitespace-pre-line")
+                readers.append((field, _control(project, field, shown), was))
 
         if note:
             ui.label(STALE_NOTE).classes("text-xs opacity-60 max-w-2xl")
@@ -106,11 +110,7 @@ def _control(project, field: settings.Field, was) -> Callable[[], object]:
         return lambda: box.value
 
     if field.kind == settings.PROMPT_FILE:
-        options = [NONE_LABEL, *addendums(project)]
-        if was and was not in options:
-            options.insert(1, str(was))
-        box = ui.select(options, value=was or NONE_LABEL).props("dense outlined").classes("w-full")
-        return lambda: None if box.value == NONE_LABEL else box.value
+        return _house_rules(project, was)
 
     if field.kind == settings.WORDS:
         box = ui.input(value=", ".join(str(v) for v in (was or []))) \
@@ -132,6 +132,41 @@ def _control(project, field: settings.Field, was) -> Callable[[], object]:
 
     box = ui.input(value="" if was is None else str(was)).props("dense outlined").classes("w-full")
     return lambda: box.value.strip()
+
+
+def _house_rules(project, was) -> Callable[[], object]:
+    """The extra instructions attached to a step's prompt: pick one the project already has, or
+    write a new one here rather than being sent to make a file first.
+
+    The toolkit's own justification instructions are not on the list (core/prompts.addendums):
+    a step turns those on for its demo and off for a full run by itself.
+    """
+    from .prompts import edit_addendum, new_addendum
+
+    state = {"value": was or None}
+    options = [NONE_LABEL, *addendums(project)]
+    if was and was not in options:
+        options.insert(1, str(was))
+    box = ui.select(options, value=was or NONE_LABEL).props("dense outlined").classes("w-full")
+
+    def chosen(path: str) -> None:
+        if path not in box.options:
+            box.set_options([*box.options, path])
+        box.set_value(path)
+        state["value"] = path
+
+    with ui.row().classes("gap-2"):
+        ui.button("Write new house rules", icon="add", on_click=lambda: new_addendum(chosen)) \
+            .props("dense flat")
+        edit = ui.button("Edit these", icon="edit",
+                         on_click=lambda: edit_addendum(box.value, chosen)).props("dense flat")
+
+    def keep_edit_usable() -> None:
+        edit.set_visibility(box.value != NONE_LABEL)
+
+    box.on_value_change(keep_edit_usable)
+    keep_edit_usable()
+    return lambda: None if box.value == NONE_LABEL else box.value
 
 
 def _words(text: str) -> list[str]:

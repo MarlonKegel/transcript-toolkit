@@ -83,8 +83,11 @@ model to `defaults/pricing.yaml`. Runs are not blocked by this — the spend est
 **How do I update the toolkit?** `toolkit update`. (It runs `uv tool upgrade
 transcript-toolkit` for you. `toolkit upgrade` works too.)
 
-**How much have I spent?** `toolkit cost` (all steps) or `toolkit cost <step>`. Each line is
-priced at the transport it actually used — `sync` or `batch` — so the total is money spent, not a
-hypothetical; a closing line tells you what the synchronous part would have cost on the Batch API.
+**How much have I spent?** `toolkit cost` (all steps) or `toolkit cost <step>` is the project's
+cost report, and the app shows the same figures on the workspace page. Each line is priced at the
+transport it actually used — `sync` or `batch` — so the total is money spent, not a hypothetical;
+a closing line tells you what the synchronous part would have cost on the Batch API. It counts
+every call ever made in the project, demos included, and the calls behind a prompt you have since
+rewritten: re-running a step you have already run adds nothing, because its answers are kept.
 `--to-n N` extrapolates a demo's per-call cost to a full run of N calls, and quotes both
 transports (you haven't picked one for that run yet).

@@ -30,6 +30,13 @@ def set_path(project: Project, name: str) -> Path:
     return project.topics_dir / f"{name}.csv"
 
 
+def discovered_path(project: Project, name: str) -> Path | None:
+    """Where a list that was simply dropped into topics/ actually is — it may be an .xlsx, and
+    it is a set whether or not config.yaml has caught up with it yet."""
+    from ..steps.topics.taxonomy import discover_topic_files
+    return discover_topic_files(project).get(name)
+
+
 def load_rows(path: Path) -> tuple[list[dict], str]:
     """The list as rows, plus the guidance the example file carries in its first row.
 
@@ -64,14 +71,39 @@ def as_table(rows: list[dict]) -> list[list[str]]:
 
 
 def write_rows(path: Path, rows: list[dict]) -> None:
-    """Write the list as CSV. Blank rows are dropped — an editor collects them."""
+    """Write the list back to the file it came from. Blank rows are dropped — an editor
+    collects them.
+
+    An .xlsx keeps being an .xlsx: somebody who brought a spreadsheet gets to keep the format
+    they brought, and any other sheet in the workbook is left where it is. Only the sheet the
+    toolkit reads is rewritten, so formatting on that one sheet does not survive.
+    """
     kept = [r for r in rows if any((r.get(c) or "").strip() for c in COLUMNS)]
+    table = [list(COLUMNS)] + [[(row.get(c) or "").strip() for c in COLUMNS] for row in kept]
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.suffix.lower() == ".xlsx":
+        _write_xlsx(path, table)
+        return
     with open(path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(COLUMNS)
-        for row in kept:
-            writer.writerow([(row.get(c) or "").strip() for c in COLUMNS])
+        for line in table:
+            writer.writerow(line)
+
+
+def _write_xlsx(path: Path, table: list[list[str]]) -> None:
+    from openpyxl import Workbook, load_workbook
+
+    if path.exists():
+        book = load_workbook(path)
+        sheet = book.active
+        book.remove(sheet)
+        sheet = book.create_sheet(sheet.title, 0)
+    else:
+        book = Workbook()
+        sheet = book.active
+    for line in table:
+        sheet.append(line)
+    book.save(path)
 
 
 def save_draft(project: Project, rows: list[dict]) -> Path:
@@ -108,9 +140,6 @@ def save_as(project: Project, name: str, rows: list[dict]) -> tuple[str, Path]:
 
 
 def save_existing(project: Project, set_name: str, path: Path, rows: list[dict]) -> None:
-    """Overwrite a named list that is already in use."""
-    if path.suffix.lower() != ".csv":
-        raise ToolkitError(f"{path.name} is an Excel file, so it is not edited here. Change it "
-                           f"in Excel, or upload a replacement.")
+    """Overwrite a named list that is already in use, in whatever format it is kept in."""
     check(rows, path.name)
     write_rows(path, rows)

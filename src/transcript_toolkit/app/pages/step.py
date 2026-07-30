@@ -26,6 +26,7 @@ from .prompts import prompt_editor
 from .sample import BLURB as SAMPLE_BLURB
 from .sample import needed_here, sample_section
 from .settings_form import settings_form
+from .spend import step_spend_line
 from .topics_editor import editor
 
 SET_QUERY = "set"
@@ -39,7 +40,8 @@ def href_for(step: content.Step) -> str:
     return f"/step/{step.slug}"
 
 
-def step_page(slug: str, set: str | None = None) -> None:      # noqa: A002 - URL query name
+def step_page(slug: str, set: str | None = None,               # noqa: A002 - URL query name
+              add: str | None = None) -> None:
     step = content.BY_SLUG.get(slug)
     if step is None:
         with shell(needs_workspace=False):
@@ -55,11 +57,12 @@ def step_page(slug: str, set: str | None = None) -> None:      # noqa: A002 - UR
 
         set_name = None
         if step.per_set:
-            set_name = _topic_sets(step, set)
+            section(step.title, step.blurb)
+            set_name = _topic_lists(step, set, add)
             if set_name is None:
                 return
-
-        section(step.title, step.blurb)
+        else:
+            section(step.title, step.blurb)
 
         def refresh_all() -> None:
             actions.refresh()
@@ -82,6 +85,7 @@ def step_page(slug: str, set: str | None = None) -> None:      # noqa: A002 - UR
         # output is at the foot of the page, under its own heading.
         run_status(on_fix=lambda kind: _fix(kind, step, set_name, href),
                    on_finished=refresh_all, unit=step.unit)
+        step_spend_line(content.step_key(step, set_name))
         rest()
         terminal_viewer()
 
@@ -96,8 +100,19 @@ def _fix(kind: str, step: content.Step, set_name: str | None, href: str) -> None
                  once=True)
 
 
-def _topic_sets(step: content.Step, chosen: str | None) -> str | None:
-    """The set picker. Topic lists are just spreadsheets in topics/ — the filename is the name."""
+ADD_QUERY = "add"
+
+TABS_BLURB = ("Each list is tagged separately, with its own demo, its own prompt and its own "
+              "settings — so a coarse list and a fine-grained one do not have to agree about "
+              "anything.")
+
+
+def _topic_lists(step: content.Step, chosen: str | None, add: str | None) -> str | None:
+    """The list of topic lists, as tabs, and the way to add another.
+
+    Returns the list being worked on, or None when the page has instead drawn the panel for
+    making a new one — which is reachable whether or not there are lists already.
+    """
     project = CONTEXT.require_project()
     try:
         sets = CONTEXT.topic_sets()
@@ -105,32 +120,49 @@ def _topic_sets(step: content.Step, chosen: str | None) -> str | None:
         guard(e)
         return None
 
-    if not sets:
-        section(step.title, step.blurb)
-        with ui.card().classes("w-full"):
-            ui.label("No topic list yet.").classes("font-medium")
-            ui.label("A topic list is one row per topic: a name and a description of what "
-                     "belongs under it. Write it here, or bring one you already have.") \
-                .classes("text-sm opacity-80")
-            with ui.tabs().classes("w-full") as tabs:
-                write_tab = ui.tab("Write one here")
-                upload_tab = ui.tab("Upload a spreadsheet")
-            with ui.tab_panels(tabs, value=write_tab).classes("w-full"):
-                with ui.tab_panel(write_tab):
-                    editor(None, topic_lists.draft_path(project),
-                           lambda name: ui.navigate.to(f"{href_for(step)}?{SET_QUERY}={name}"))
-                with ui.tab_panel(upload_tab):
-                    _topic_upload(step, project)
-        return None
+    current = chosen if chosen in sets else (sets[0] if sets else None)
+    if sets:
+        _tabs(step, sets, None if add else current)
+        ui.label(TABS_BLURB).classes("text-xs opacity-70 max-w-2xl")
 
-    current = chosen if chosen in sets else sets[0]
-    if len(sets) > 1:
-        with ui.row().classes("items-center gap-2"):
-            ui.label("Topic list").classes("text-sm opacity-70")
-            ui.select(sets, value=current,
-                      on_change=lambda e: ui.navigate.to(
-                          f"{href_for(step)}?{SET_QUERY}={e.value}")).props("dense outlined")
-    return current
+    if sets and not add:
+        return current
+
+    with ui.card().classes("w-full"):
+        ui.label("A new topic list" if sets else "No topic list yet.").classes("font-medium")
+        ui.label("A topic list is one row per topic: a name and a description of what "
+                 "belongs under it. Write it here, or bring one you already have.") \
+            .classes("text-sm opacity-80")
+        with ui.tabs().classes("w-full") as tabs:
+            write_tab = ui.tab("Write one here")
+            upload_tab = ui.tab("Upload a spreadsheet")
+        with ui.tab_panels(tabs, value=write_tab).classes("w-full"):
+            with ui.tab_panel(write_tab):
+                editor(None, topic_lists.draft_path(project),
+                       lambda name: ui.navigate.to(f"{href_for(step)}?{SET_QUERY}={name}"))
+            with ui.tab_panel(upload_tab):
+                _topic_upload(step, project)
+    return None
+
+
+def _tabs(step: content.Step, sets: list[str], current: str | None) -> None:
+    """One tab per topic list, each carrying how far that list has got, plus a tab that adds
+    another. Drawn like the row of pages above it, because that is what it is."""
+    from .. import stage
+
+    status = _status()
+    with ui.row().classes("w-full gap-1 flex-wrap items-center"):
+        for name in sets:
+            word, colour = stage.step_state(status, step, name)
+            classes = "text-sm px-3 py-1 rounded no-underline flex items-center gap-2"
+            classes += " bg-primary text-white" if name == current else " text-primary"
+            with ui.link(target=f"{href_for(step)}?{SET_QUERY}={name}").classes(classes) \
+                    .tooltip(f"{name}: {word}"):
+                ui.label(name)
+                ui.icon("circle", size="0.5rem").props(f"color={colour}")
+        ui.link("+ Add a topic list", f"{href_for(step)}?{ADD_QUERY}=1") \
+            .classes("text-sm px-3 py-1 rounded no-underline text-primary"
+                     + (" bg-primary text-white" if current is None else ""))
 
 
 def _topic_upload(step: content.Step, project) -> None:
@@ -164,22 +196,35 @@ def _topic_upload(step: content.Step, project) -> None:
     ui.label(f"Or put one in {project.topics_dir} yourself.").classes("text-xs opacity-60")
 
 
-def _edit_set(step: content.Step, project, set_name: str) -> None:
-    """Change a list that is already in use, without leaving the app."""
+def set_file(project, set_name: str):
+    """The spreadsheet a topic list is kept in — the one it was uploaded as, or the one the app
+    wrote when it was typed here."""
     from ...core.config import load_root_config
 
     entry = ((load_root_config(project).get("topics") or {}).get("sets") or {}).get(set_name) or {}
-    path = (project.root / entry["file"]) if entry.get("file") else \
-        topic_lists.set_path(project, set_name)
+    if entry.get("file"):
+        return project.root / entry["file"]
+    discovered = topic_lists.discovered_path(project, set_name)
+    return discovered or topic_lists.set_path(project, set_name)
+
+
+def _edit_set(step: content.Step, project, set_name: str) -> None:
+    """Change a list that is already in use, without leaving the app — whether it was written
+    here or uploaded, and whichever format it is kept in."""
+    path = set_file(project, set_name)
     with ui.expansion("The topic list itself", icon="list_alt").classes("w-full"):
-        if path.suffix.lower() != ".csv" or not path.exists():
-            ui.label(f"'{set_name}' is kept in {path.name}, which is not edited here. Change it "
-                     f"in Excel, or upload a replacement under a new name.") \
+        if not path.exists():
+            ui.label(f"'{set_name}' should be kept in {path}, and that file is not there. "
+                     f"Upload it again, or point config.yaml at where it now is.") \
                 .classes("text-sm opacity-80")
             return
         ui.label("Changing a topic list changes what the tags mean, so the next full run will "
                  "ask you to try it out and review it again first.") \
             .classes("text-xs opacity-70 max-w-2xl")
+        if path.suffix.lower() == ".xlsx":
+            ui.label(f"{path.name} stays an Excel file. Saving rewrites the sheet the toolkit "
+                     f"reads and leaves any other sheet in the workbook alone.") \
+                .classes("text-xs opacity-60 max-w-2xl")
         editor(set_name, path,
                lambda _: ui.navigate.to(f"{href_for(step)}?{SET_QUERY}={set_name}"))
 
@@ -260,6 +305,20 @@ def _try_it(step: content.Step, set_name: str | None, href: str, demo: dict | No
             .props("dense color=primary")
 
 
+def _rebuild_button(step: content.Step, set_name: str | None, href: str) -> None:
+    """Re-render the review pages from results already saved. Free and instant, and the way to
+    pick up an improvement to the pages themselves without paying for the step again."""
+    annotate = next((a for a in step.extras if a.slug == "annotate"), None)
+    if annotate is None or content.missing_for(annotate, _status()["deliverables"], set_name):
+        return
+    title = f"{step.title} — {annotate.title.lower()}"
+    ui.button("Rebuild these pages", icon="refresh",
+              on_click=lambda: launch(title, content.action_argv(annotate, set_name), href)) \
+        .props("dense flat").tooltip("Writes them again from results you already have — no "
+                                     "calls to OpenAI, nothing to pay for.")
+    inline_state(title)
+
+
 def _read_it(project, step: content.Step, set_name: str | None) -> None:
     pages = diag_pages(project, step, set_name)
     with ui.card().classes("w-full"):
@@ -272,11 +331,12 @@ def _read_it(project, step: content.Step, set_name: str | None) -> None:
             return
         ui.label("This is the part to do before spending anything on the whole collection.") \
             .classes("text-xs opacity-60")
-        with ui.row().classes("gap-3 flex-wrap"):
+        with ui.row().classes("gap-3 flex-wrap items-center"):
             for i, (title, url) in enumerate(pages):
                 ui.button(title, icon="open_in_new",
                           on_click=lambda _, u=url: ui.navigate.to(u, new_tab=True)) \
                     .props("dense" + (" color=primary" if i == 0 else " outline"))
+            _rebuild_button(step, set_name, href_for(step))
 
 
 def _then(step: content.Step, set_name: str | None, href: str, full: dict | None) -> None:
@@ -372,18 +432,60 @@ def _sequels(step: content.Step, set_name: str | None, href: str) -> None:
 
 
 def _tuning(project, step: content.Step, set_name: str | None, refresh) -> None:
-    """The two things that change what this step produces, on the step's own page: what it is
-    told to do, and the settings it runs with."""
-    section("Change how this step works")
-    fields = settings.for_step(step.key)
-    if step.per_set and set_name:
-        fields = [*fields, settings.rollup_field(set_name)]
+    """The things that change what this step produces, on the step's own page: what it is told to
+    do, and the settings it runs with. For topics these belong to the chosen list, not to the
+    step — two lists are two pieces of work."""
+    per_list = bool(step.per_set and set_name)
+    section(f"Change how '{set_name}' is tagged" if per_list else "Change how this step works")
+    fields = settings.set_fields(set_name) if per_list else settings.for_step(step.key)
     with ui.expansion("Settings for this step", icon="tune").classes("w-full"):
         settings_form(step.key, fields, on_saved=refresh)
     with ui.expansion("The prompt for this step", icon="description").classes("w-full"):
-        prompt_editor(step.key, set_name, on_saved=refresh)
-    if step.per_set and set_name:
+        _prompt(project, step, set_name, refresh)
+    if per_list:
         _edit_set(step, project, set_name)
+
+
+def _prompt(project, step: content.Step, set_name: str | None, refresh) -> None:
+    """A step's prompt, or a topic list's own if it has one.
+
+    A topic list can carry its own rubric; until it does, the prompt shown is the one every list
+    shares, and saying so is the difference between changing one list and changing them all.
+    """
+    from ...core import prompts as core_prompts
+
+    if not (step.per_set and set_name):
+        prompt_editor(step.key, set_name, on_saved=refresh)
+        return
+
+    shared = core_prompts.prompt_name(project, step.key) == \
+        core_prompts.prompt_name(project, step.key, set_name)
+    note = ("This prompt is shared by every topic list in this project — changing it changes "
+            "them all. Give this list its own copy to change it on its own."
+            if shared else "")
+    prompt_editor(step.key, set_name, on_saved=refresh, shared_note=note)
+    if shared:
+        ui.button(f"Give '{set_name}' its own prompt", icon="call_split",
+                  on_click=lambda: _split_prompt(project, step, set_name, refresh)) \
+            .props("dense outline").classes("mt-2")
+
+
+def _split_prompt(project, step: content.Step, set_name: str, refresh) -> None:
+    """Copy the shared prompt to a file of this list's own and point the list at it."""
+    from ...core import prompts as core_prompts
+    from ...core import settings as core_settings
+
+    name = f"tag_topics_{set_name}.md"
+    destination = project.prompts_dir / name
+    try:
+        if not destination.exists():
+            destination.write_text(core_prompts.prompt_path(project, step.key).read_text())
+        core_settings.save(project, {f"topics.sets.{set_name}.prompt": name})
+    except (ToolkitError, OSError) as e:
+        guard(ToolkitError(f"Could not give '{set_name}' its own prompt: {e}"))
+        return
+    ui.notify(f"'{set_name}' now has its own prompt, prompts/{name}.", type="positive")
+    refresh()
 
 
 def _extras(step: content.Step, set_name: str | None, href: str) -> None:

@@ -120,8 +120,21 @@ The workspace page always names one next thing to do, and the pages follow the s
    description is the only thing the model reads when deciding whether a clip belongs to a
    topic, so it is worth saying what does *not* count as well as what does.
 
+   You can have **more than one topic list**, and each gets a tab of its own, with a tab at the
+   end that adds another. Two lists are two pieces of work: separate demos, separate results, and
+   their own prompt, model and thinking effort — so a fine-grained list can run on a stronger
+   model than a coarse one without either dictating the other. A new list starts on the shared
+   prompt; *Give this list its own prompt* is what splits it off. Whichever list you uploaded is
+   editable in the same table you would have typed it into, and an Excel file stays an Excel
+   file.
+
 3. **Export** — one Excel file with everything produced so far. Steps that have not run are
    simply left out, so exporting early is fine; run it again later and it will have more in it.
+
+The **project cost report** on the workspace page is what the project has actually cost, per step
+and in total. It counts every call ever made in it, demos included, so it is money that has left
+the account rather than an estimate. Each step page carries its own line of it, next to the
+buttons that spend. (In Terminal: `toolkit cost`.)
 
 At the foot of each step page, **Extra tools** holds the things that are not part of a normal
 run: rebuilding review pages from results you already have, and seeing how a long interview will
@@ -140,6 +153,10 @@ rather than behind the gear:
 - **Settings for this step** — which model does the work, how much thinking it does, and
   whatever else belongs to that step alone.
 
+Labelling also takes **house rules**: a short set of project decisions added to the end of the
+prompt — how a name is spelled, what to call something, what never to abbreviate. Write them in
+the app; they are saved as a file in the project like everything else.
+
 Each setting is shown with the explanation written beside it in the project's `config.yaml`. If
 you reword a comment in that file, the app says the new wording: there is one description of a
 setting, and the file is where it lives. Saving writes back into `config.yaml` itself, comments
@@ -157,8 +174,9 @@ many calls it needs and how many it already has cached, then asks — in the app
 - **Use the Batch API** — half the price, but up to a day.
 - **Cancel**.
 
-Both prices are shown. They are worked out by the step itself, not by the app, so what you see
-is what will actually be spent.
+Both prices are shown, and the `i` beside the buttons explains what you are choosing between.
+The figures are worked out by the step itself, not by the app, so what you see is what will
+actually be spent. Clipping has no Batch option — it asks a plain yes or no.
 
 Demos do not ask: they are small on purpose, usually a few cents.
 

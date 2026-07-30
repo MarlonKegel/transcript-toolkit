@@ -5,6 +5,7 @@ import pytest
 
 from transcript_toolkit.app import content
 from transcript_toolkit.core import prompts
+from transcript_toolkit.errors import ToolkitError
 from transcript_toolkit.project import init_project
 
 
@@ -82,10 +83,34 @@ def test_status_says_which_file_to_edit_for_each_step(project, capsys):
     assert "--reset-prompt" in printed
 
 
-def test_the_addendums_offered_are_the_files_that_are_there(project):
-    """`label.addendum` points at a file in prompts/. The app offers the ones that exist rather
-    than a free-text box that can name a file that does not."""
-    offered = prompts.addendums(project)
-    assert "prompt_addendums/justify_topics.md" in offered
-    for name in offered:
-        assert (project.prompts_dir / name).is_file()
+def test_the_toolkits_own_justification_files_are_not_offered_as_house_rules(project):
+    """A fresh project has two files in prompt_addendums/ and both belong to the toolkit: it adds
+    them for a demo and leaves them off for a full run, and they change the shape of the reply it
+    asks for. Attaching one by hand would only break the run."""
+    assert prompts.justify_prompt_names(project) == {"prompt_addendums/justify_topics.md",
+                                                     "prompt_addendums/justify_locations.md"}
+    assert prompts.addendums(project) == []
+
+
+def test_house_rules_written_in_the_app_are_offered_afterwards(project):
+    """`label.addendum` is resolved from the project root, so that is the shape of path the
+    picker has to offer — anything else names a file the run will not find."""
+    path = prompts.write_addendum(project, "House style", "Always write OSF.")
+    assert path == "prompts/prompt_addendums/house_style.md"
+    assert prompts.addendums(project) == [path]
+    for rel in prompts.addendums(project):
+        assert (project.root / rel).is_file()
+
+
+def test_the_addendum_a_step_reads_is_the_one_the_picker_offers(project):
+    """The bug this pins: the picker offered prompts/-relative paths while the step resolves them
+    from the project root, so choosing one gave 'Configured label addendum not found'."""
+    from transcript_toolkit.steps.label.run import _load_addendum
+
+    path = prompts.write_addendum(project, "House style", "Always write OSF.")
+    assert _load_addendum(project, path) == "Always write OSF."
+
+
+def test_house_rules_cannot_take_a_toolkit_files_name(project):
+    with pytest.raises(ToolkitError, match="toolkit's own"):
+        prompts.write_addendum(project, "justify topics", "x")

@@ -47,6 +47,9 @@ topics:
       file: topics/collection.xlsx  # your topic list (xlsx/csv: name, description, [id])
       rollup: { scheme: flat, threshold_pct: 30 }
       # or:  { scheme: binned, thresholds: [10, 12.5, ..., 30] }
+      # prompt: tag_topics_strict.md   # this list's own rubric, a file in prompts/
+      # model: gpt-5.6-sol             # and its own model / reasoning, overriding the two above
+      # reasoning: high
 
 locations:
   model: gpt-5.6-luna
@@ -63,7 +66,9 @@ locations:
   `null`.
 - **summarize.pool_sessions** — pool a narrator's session files into one summary.
 - **topics.sets** — one or more topic lists; each has a `file` and a `rollup` scheme (`flat`
-  with `threshold_pct`, or `binned` with a `thresholds` bar list, rarest band first).
+  with `threshold_pct`, or `binned` with a `thresholds` bar list, rarest band first). A list may
+  also carry its own `prompt`, `model` and `reasoning`, which override the `topics` section for
+  that list alone — two lists are two pieces of work, with separate demos and separate caches.
 - **locations.rollup.thresholds / relabel / place_tags** — see [steps/locations.md](steps/locations.md).
 - **export.locations** — how location tags appear in the xlsx: `countries` (only those tagged
   directly), `countries_and_regions` (default; those countries plus a separate Regions column), or

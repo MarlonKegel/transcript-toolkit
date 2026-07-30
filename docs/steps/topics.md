@@ -27,12 +27,19 @@ both work. The columns:
 | `id` | no | a short code; auto-derived from the name if omitted |
 
 Several topic lists? Drop in several files. `topics/collection.xlsx` and `topics/filter.csv`
-give you `--set collection` and `--set filter`, tagged independently, each with its own outputs.
+give you `--set collection` and `--set filter`, tagged independently, each with its own outputs,
+its own demo, and its own cache. A list can also carry **its own prompt, model and reasoning**
+(`sets.<set>.{prompt, model, reasoning}`), because a fine-grained list and a coarse one are two
+different pieces of work; anything it does not set, it takes from the `topics` section.
 
-**In the app** this is the Topics page: write the list in the table there, or upload a
-spreadsheet. The table edits the same `topics/*.csv` file — it is checked against the rules
-above as you save it, and the first save is where you name the set. Until you name it, what you
-type is kept in `topics/example_topics.csv`, which no run will ever tag against.
+**In the app** this is the Topics page, with one tab per list and a tab that adds another — by
+writing it in the table there or by uploading a spreadsheet. The table edits the same file the
+run reads, whether that is a `.csv` you typed here or an `.xlsx` you brought (an Excel file stays
+one, and other sheets in the workbook are left alone). It is checked against the rules above as
+you save it, and the first save is where you name the set. Until you name it, what you type is
+kept in `topics/example_topics.csv`, which no run will ever tag against. Each tab carries its own
+prompt and settings, and *Give this list its own prompt* is what splits it off from the shared
+one.
 
 There is **no default set** — every `toolkit topics` command needs `--set`. Tagging a whole
 corpus against the wrong taxonomy is expensive, so the set is always named explicitly. Forget it
@@ -68,7 +75,9 @@ trade-offs.
 
 ## Settings
 
-`config.yaml` → `topics`: `model`, `reasoning`, `sets.<set>.{file, rollup, prompt}` (written for
+`config.yaml` → `topics`: `model`, `reasoning` (the default for every list), and
+`sets.<set>.{file, rollup, prompt, model, reasoning}` — the last three override the step's for
+that list alone (written for
 you when a set is first used). `advanced/topics.yaml`: `score_values`, `justify_min_score`,
 `demo_n_clips`, `max_workers`, `prompt`.
 

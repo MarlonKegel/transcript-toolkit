@@ -34,6 +34,7 @@ class Field:
     kind: str
     step: str                       # "project", or the step whose page it belongs on
     choices: tuple[str, ...] = ()
+    fallback: str = ""              # what this setting falls back to when it is not set here
 
 
 PROJECT = "project"
@@ -76,11 +77,20 @@ def for_step(step: str) -> list[Field]:
     return [f for f in FIELDS if f.step == step]
 
 
-def rollup_field(set_name: str) -> Field:
-    """The rollup rule for one topic list. Written as a whole because config.yaml keeps it on one
-    line, and the two schemes carry different keys."""
-    return Field(f"topics.sets.{set_name}.rollup", "How clip topics become interview topics",
-                 ROLLUP, "topics")
+def set_fields(set_name: str) -> list[Field]:
+    """The settings of one topic list.
+
+    A topic list is its own piece of work — a fine-grained list may want a stronger model than a
+    coarse one — so each has its own settings rather than sharing the step's. Until one is saved
+    the list runs on `topics.model` / `topics.reasoning`, which is what `fallback` shows.
+    """
+    base = f"topics.sets.{set_name}"
+    return [
+        Field(f"{base}.model", "Model", MODEL, "topics", fallback="topics.model"),
+        Field(f"{base}.reasoning", "Thinking effort", CHOICE, "topics", REASONING_LEVELS,
+              fallback="topics.reasoning"),
+        Field(f"{base}.rollup", "How clip topics become interview topics", ROLLUP, "topics"),
+    ]
 
 
 def choices_for(field: Field) -> tuple[str, ...]:
@@ -168,6 +178,12 @@ def shipped_explanations() -> dict[str, str]:
     when `toolkit init` copies that file."""
     from ..project import _defaults
     return explanations((_defaults() / "scaffold" / "config.yaml").read_text())
+
+
+def explained(said: dict[str, str], field: Field) -> str:
+    """What to show beside a setting: its own comment, or the one belonging to what it falls
+    back to — a per-topic-list model is the same setting as the step's, in a narrower place."""
+    return said.get(field.path) or (said.get(field.fallback, "") if field.fallback else "")
 
 
 def explanations_for(project: Project) -> dict[str, str]:

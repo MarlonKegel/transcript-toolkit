@@ -63,8 +63,11 @@ topics:
   #   flat   — an interview gets a topic when >= threshold_pct % of its clips have it.
   #   binned — per-topic bars: rare topics clear a lower bar than common ones
   #            (list of bars, rarest band first; run `toolkit topics thresholds` to tune).
-  # A set may also bring its own rubric when its tagging rules differ from the default prompt:
+  # A set may also bring its own rubric when its tagging rules differ from the default prompt,
+  # and its own model and reasoning when it is harder or easier work than the others:
   #   prompt: tag_topics_strict.md        # a file in prompts/
+  #   model: gpt-5.6-sol
+  #   reasoning: high
   sets: {}
     # Filled in automatically. An entry looks like this:
     # my_set_name:

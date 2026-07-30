@@ -199,6 +199,38 @@ def test_per_set_prompt_override(project):
     assert all(default_text not in i for i in project.llm_calls)
 
 
+def test_a_set_runs_on_its_own_model_and_reasoning(project):
+    """Two topic lists are two pieces of work: a fine-grained list may want a stronger model than
+    a coarse one, and neither should have to dictate the other's."""
+    set_entry(project, model="gpt-5.4-nano", reasoning="high")
+    cfg, tset, _justify, _instructions, _fp = tag_step._context(project, "main", None, True)
+    assert (cfg["model"], cfg["reasoning"]) == ("gpt-5.4-nano", "high")
+    assert tset.overrides == {"model": "gpt-5.4-nano", "reasoning": "high"}
+
+
+def test_a_set_without_overrides_runs_on_the_steps_settings(project):
+    set_entry(project)
+    cfg, tset, _j, _i, _f = tag_step._context(project, "main", None, True)
+    assert tset.overrides == {}
+    assert cfg["model"] == "gpt-5.6-luna"          # the scaffold's topics.model
+
+
+def test_a_sets_own_model_stales_only_that_sets_demo(project):
+    """The fingerprint already covers the model, so changing one list's model asks for a fresh
+    demo of that list and leaves the others alone."""
+    set_entry(project)
+    _, _, _, _, before = tag_step._context(project, "main", None, True)
+    set_entry(project, model="gpt-5.4-nano")
+    _, _, _, _, after = tag_step._context(project, "main", None, True)
+    assert before != after
+
+
+def test_an_impossible_reasoning_level_for_a_set_is_refused(project):
+    set_entry(project, reasoning="enormous")
+    with pytest.raises(ToolkitError, match="Unknown reasoning level"):
+        tag_step._context(project, "main", None, True)
+
+
 def test_unknown_set_fails_loud(project):
     with pytest.raises(ToolkitError, match="Unknown topic set"):
         run_topics_tag(project, set_name="nope", demo=True)

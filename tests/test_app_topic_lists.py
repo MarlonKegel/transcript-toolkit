@@ -86,12 +86,34 @@ def test_editing_a_named_list_writes_back_to_the_same_file(project):
     assert [r["name"] for r in rows][-1] == "Migration"
 
 
-def test_an_excel_list_is_left_to_excel(project):
-    """Rewriting an .xlsx set as .csv would leave two files claiming the same set name."""
+def test_an_excel_list_is_edited_as_an_excel_file(project):
+    """A list somebody uploaded as a spreadsheet is editable here like any other, and stays the
+    format they brought — rewriting it as .csv would leave two files claiming one set name."""
+    from openpyxl import Workbook, load_workbook
+
     path = project.topics_dir / "collection.xlsx"
-    path.write_bytes(b"not really xlsx")
-    with pytest.raises(ToolkitError, match="Excel"):
-        topic_lists.save_existing(project, "collection", path, ROWS)
+    book = Workbook()
+    book.active.append(["name", "description"])
+    book.active.append(["Old", "the row that was there"])
+    book.create_sheet("notes").append(["something else of the user's"])
+    book.save(path)
+
+    topic_lists.save_existing(project, "collection", path, ROWS)
+
+    assert path.suffix == ".xlsx"
+    rows, _ = topic_lists.load_rows(path)
+    assert [r["name"] for r in rows] == [r["name"] for r in ROWS]
+    # and the rest of their workbook is still theirs
+    assert "notes" in load_workbook(path).sheetnames
+
+
+def test_the_set_the_editor_opens_is_the_file_that_was_uploaded(project):
+    """An uploaded list has never been through the editor, so nothing has written a .csv for it —
+    the page has to find the file that is actually there."""
+    from transcript_toolkit.app.pages.step import set_file
+
+    (project.topics_dir / "brought_along.xlsx").write_bytes(b"")
+    assert set_file(project, "brought_along").name == "brought_along.xlsx"
 
 
 def test_blank_rows_an_editor_collects_are_not_written(project):

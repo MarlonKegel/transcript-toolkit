@@ -110,7 +110,11 @@ def _context(project: Project, set_name: str | None, justify: bool | None, demo:
     check_levels(cfg["reasoning"], cfg["verbosity"])
     tset = load_topic_set(project, cfg, set_name)
     # A set may bring its own rubric (config sets.<set>.prompt) when its tagging rules differ
-    # from the default — e.g. OSF's fine-grained Filter set with its specific+substantive bar.
+    # from the default — e.g. OSF's fine-grained Filter set with its specific+substantive bar —
+    # and its own model and reasoning with it. Merging here means everything downstream (the
+    # cost estimate, the demo fingerprint, what gets printed) follows one set of settings.
+    cfg = {**cfg, **tset.overrides}
+    check_levels(cfg["reasoning"], cfg["verbosity"])
     prompt_text = load_prompt(project, tset.prompt or cfg["prompt"])
 
     # Justifications default ON for demos (they are what you review) and OFF for full runs

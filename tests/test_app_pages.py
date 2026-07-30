@@ -68,6 +68,15 @@ def workspace(tmp_path_factory):
     (project.diags_dir / "clip").mkdir(parents=True)
     (project.diags_dir / "clip" / "index.html").write_text("<h1>review</h1>")
     (project.root / "secret.txt").write_text("not for the browser")
+
+    # two topic lists, so the page has to keep them apart
+    for name in ("collection", "filter"):
+        (project.topics_dir / f"{name}.csv").write_text("name,description\nWork,About work\n")
+    # and calls that have been paid for, so the cost report has something to report
+    (project.cache_dir / "clip.jsonl").write_text(json.dumps({
+        "cache_key": "a", "model": "gpt-5.6-sol", "reasoning_effort": "medium",
+        "usage": {"input_tokens": 1_000_000, "cached_input_tokens": 0,
+                  "reasoning_tokens": 0, "output_tokens": 100_000}}) + "\n")
     return project
 
 
@@ -145,9 +154,10 @@ def test_a_step_page_offers_only_the_demo_until_it_has_been_run(server):
     assert "2 · Read what came out" not in body
 
 
-def test_the_topics_page_explains_itself_when_there_is_no_topic_list(server):
+def test_the_topics_page_opens_on_a_list_and_names_the_others(server):
     _, body = get(server, "/step/topics")
-    assert "No topic list yet" in body
+    assert "1 · Try it" in body                  # it opens on a list, not on a chooser
+    assert "collection" in body and "filter" in body
 
 
 def test_an_unknown_step_says_so_instead_of_failing(server):
@@ -291,7 +301,7 @@ def test_the_settings_drawer_holds_only_what_belongs_to_the_whole_project(server
 
 
 def test_a_topic_list_can_be_written_in_the_app(server):
-    _, body = get(server, "/step/topics")
+    _, body = get(server, "/step/topics?add=1")
     assert "Write one here" in body and "Upload a spreadsheet" in body
     assert "description" in body
 
@@ -322,6 +332,51 @@ def test_the_version_check_does_not_run_on_every_page(server, monkeypatch):
     _, body = get(server, "/step/clip")
     assert "Install the latest version" in body      # the drawer is there
     assert "checking for a newer version" not in body       # but it has not gone looking
+
+
+def test_the_workspace_page_reports_what_the_project_has_cost(server):
+    """The question somebody asks before starting the next expensive thing, on the page that is
+    about the project as a whole."""
+    _, body = get(server, "/workspace")
+    assert "Project cost report" in body
+    assert "billed in this project so far" in body
+    assert "8.00 billed" not in body          # the figure is in its own label
+    assert "&#36;8.00" in body                # 1M in + 100k out on gpt-5.6-sol
+    assert "Clip" in body
+
+
+def test_a_step_page_says_what_that_step_has_cost(server):
+    _, body = get(server, "/step/clip")
+    assert "This step has cost" in body and "8.00 so far (1 call)" in body
+
+
+def test_topic_lists_get_a_tab_each_and_a_way_to_add_another(server):
+    """Two lists are two pieces of work — separate demos, separate prompts, separate settings —
+    so the page has to keep them apart rather than quietly using the first."""
+    _, body = get(server, "/step/topics?set=filter")
+    assert "collection" in body and "filter" in body
+    assert "Add a topic list" in body
+    assert "Change how 'filter' is tagged" in body
+
+
+def test_a_topic_list_can_be_added_when_there_are_already_some(server):
+    """Before, the editor only appeared when a project had no lists at all, so a second one could
+    only arrive as an upload."""
+    _, body = get(server, "/step/topics?add=1")
+    assert "A new topic list" in body
+    assert "Write one here" in body and "Upload a spreadsheet" in body
+
+
+def test_a_shared_prompt_says_that_it_is_shared(server):
+    _, body = get(server, "/step/topics?set=collection")
+    assert "shared by every topic list" in body
+    assert "Give 'collection' its own prompt" in body
+
+
+def test_house_rules_can_be_written_rather_than_only_chosen(server):
+    _, body = get(server, "/step/label")
+    assert "House rules added to the prompt" in body
+    assert "Write new house rules" in body
 
 
 def test_the_settings_url_still_works_and_opens_the_panel(server):
