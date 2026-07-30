@@ -16,7 +16,7 @@ from ..context import CONTEXT
 from .common import guard
 
 INTRO = ("These are the instructions the toolkit sends with every call for this step. Rewording "
-         "them is the main way to change what comes back — more than any setting.")
+         "them changes what comes back.")
 
 STALE_NOTE = ("Saving makes this step's demo out of date, which is what you want: try it out on "
               "the demo interviews again and read the result before running the whole collection.")

@@ -87,6 +87,18 @@ def test_more_transcripts_than_the_last_run_covered(project):
     assert fresh.freshness(project, "clip")["full"] == fresh.PARTIAL
 
 
+def test_label_is_counted_in_interviews_because_that_is_what_it_records(project):
+    """`label` labels every clip but calls the model once per interview, and records interviews.
+    Counting its clips instead would leave a finished run reading as partial for ever — the app
+    saying there is more in the collection about a collection that has not grown."""
+    clips(project, n=6)                                  # six clips, one interview
+    now = fresh.current_fingerprint(project, "label")
+    record_full(project, "label", now, model="m", n_units=1)
+    wrote(project, "labels/labels.parquet")
+    assert fresh.unit_count(project, "label") == 1
+    assert fresh.freshness(project, "label")["full"] == fresh.CURRENT
+
+
 def test_a_locations_run_is_judged_by_what_it_writes_itself(project):
     """`toolkit status` calls `locations` done once clip_countries.parquet exists — and that is
     written by `locations map`, one command later. Judging the tagging by it would report the
@@ -164,6 +176,27 @@ def test_changing_a_setting_puts_the_rollup_back(project):
     assert fresh.derived_state(project, "topics", "rollup", "main") == fresh.STALE
 
 
+def test_editing_the_region_table_puts_the_locations_moves_back(project):
+    """Both moves read region_to_country.csv, and the app invites editing it. If they went on
+    reading as done, the correction would never reach the deliverable."""
+    import os
+    import time
+
+    from transcript_toolkit.core.config import load_step_config
+
+    for rel in ("locations/clip_locations.parquet", "locations/clip_countries.parquet",
+                "locations/interview_locations_wide.parquet"):
+        wrote(project, rel)
+    assert fresh.derived_state(project, "locations", "map") == fresh.CURRENT
+    assert fresh.derived_state(project, "locations", "rollup") == fresh.CURRENT
+
+    table = project.root / load_step_config(project, "locations")["region_map_file"]
+    later = time.time() + 10
+    os.utime(table, (later, later))
+    assert fresh.derived_state(project, "locations", "map") == fresh.STALE
+    assert fresh.derived_state(project, "locations", "rollup") == fresh.STALE
+
+
 def test_a_rollup_that_has_never_run_is_not_done(project):
     wrote(project, "topics/main_clip_topics_wide.parquet")
     assert fresh.derived_state(project, "topics", "rollup", "main") == fresh.NONE
@@ -176,3 +209,40 @@ def test_only_the_free_deterministic_moves_are_judged_this_way():
     assert ("locations", "thresholds") not in fresh.DERIVED
     for step in ("clip", "label", "summarize", "topics", "locations"):
         assert (step, "annotate") not in fresh.DERIVED
+
+
+def test_picking_different_demo_interviews_puts_the_demo_back(project):
+    """Nothing about `toolkit sample` touches the fingerprint — it is not part of the
+    instructions — so a demo would go on reading as done over interviews it never saw. Somebody
+    who has just chosen different ones has said plainly that they want the demo run on those."""
+    import time
+
+    from transcript_toolkit.core.sampling import draw_interview_sample
+
+    page = project.diags_dir / "clip"
+    page.mkdir(parents=True, exist_ok=True)
+    draw_interview_sample(project, n=2, seed=1)
+    now = fresh.current_fingerprint(project, "clip")
+    record_demo(project, "clip", now, units=["a"], diag=str(page))
+    assert fresh.freshness(project, "clip")["demo"] == fresh.CURRENT
+
+    time.sleep(2.1)                                  # the record keeps whole seconds
+    draw_interview_sample(project, n=3, seed=2)
+    assert fresh.freshness(project, "clip")["demo"] == fresh.STALE
+
+
+def test_the_clip_level_demos_do_not_watch_the_interview_sample(project):
+    """topics and locations draw their own spread of clips from a seed, so the interview
+    sample is nothing to do with them."""
+    import time
+
+    from transcript_toolkit.core.sampling import draw_interview_sample
+
+    clips(project)
+    page = project.diags_dir / "locations"
+    page.mkdir(parents=True, exist_ok=True)
+    now = fresh.current_fingerprint(project, "locations")
+    record_demo(project, "locations", now, units=["a"], diag=str(page))
+    time.sleep(2.1)
+    draw_interview_sample(project, n=2, seed=1)
+    assert fresh.freshness(project, "locations")["demo"] == fresh.CURRENT

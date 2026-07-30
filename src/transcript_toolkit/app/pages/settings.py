@@ -17,7 +17,7 @@ from ... import __version__
 from ...core import settings as config_settings
 from ...core.console import reveal
 from ...errors import ToolkitError
-from .. import DEFAULT_PORT, workspaces
+from .. import DEFAULT_PORT, content, workspaces
 from ..context import CONTEXT
 from .settings_form import settings_form
 
@@ -84,9 +84,11 @@ def _version(active: str):
             notice.classes(replace="text-xs opacity-80 whitespace-pre-line")
 
         ui.button("Update to the most recent version", icon="system_update",
-                  on_click=lambda: launch_global("Update", ["update"], active)).props("dense flat")
-        ui.label("After updating, quit the app below and open it again — the running app keeps "
-                 "using the old version until you do.").classes("text-xs opacity-60")
+                  on_click=lambda: launch_global(content.UPDATE_TITLE, ["update"], active)) \
+            .props("dense flat")
+        ui.label("If there is a newer version, the toolkit installs it and then starts again on "
+                 "it — this page goes quiet for a few seconds and comes back by itself. Nothing "
+                 "in your projects is touched.").classes("text-xs opacity-60")
     return check
 
 

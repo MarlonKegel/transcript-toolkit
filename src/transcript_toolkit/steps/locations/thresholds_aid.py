@@ -28,6 +28,12 @@ from .rollup import locations_rollup, rollover
 
 STEP = "locations"
 
+BRACKETS = (
+    "In brackets after a place's name is how many clips named it outright, which is the "
+    "frequency its threshold is set from. A place that only ever came up inside a region shows 0 "
+    "there and is drawn grey: it has no threshold of its own, and the threshold printed beside "
+    "its bar is the one its region had to clear.")
+
 HYBRID_LEAD = (
     "How a region becomes an interview's places, which is a separate question from where the bar "
     "sits. The toolkit ships the first of these. In it, regions are rolled up as regions and only "
@@ -73,8 +79,13 @@ def run_locations_thresholds(project: Project, bins: list[int] | None = None,
     regs = (cw[cw["regions"] != ""].assign(region=lambda d: d["regions"].str.split("|"))
             .explode("region")[["interview_key", "region", "clip_id"]])
 
-    freq = final.groupby("label")["clip_id"].nunique()
-    labels = list(freq.index)
+    labels = list(final.groupby("label")["clip_id"].nunique().index)
+    # The number shown beside a place has to be the number its threshold was set from, and the
+    # direct rollover bins on clips that named the place outright. Counting every clip that
+    # reaches it — including the ones arriving through a region — would print a frequency next to
+    # a threshold that was never derived from it. A place only ever named inside a region shows 0
+    # here, which is why it has no threshold of its own and is drawn grey.
+    freq = direct.groupby("label")["clip_id"].nunique().reindex(labels).fillna(0).astype(int)
     order = sorted(labels, key=lambda t: (int(freq[t]), t))
 
     def hybrid(rollup: thresholds.Rollup):
@@ -113,7 +124,7 @@ def run_locations_thresholds(project: Project, bins: list[int] | None = None,
         project.diags_dir / STEP, "locations",
         title="Locations · deciding how clip tags become interview tags",
         subtitle=f"{len(labels)} places · {n_int} interviews · {said}",
-        panels=panels, order=order, freq=freq, n_int=n_int,
+        panels=panels, order=order, freq=freq, n_int=n_int, brackets=BRACKETS,
         choose="Roll up to interview places",
         extra=reviewdoc.panel("How regions become an interview's places",
                               _scheme_table(schemes, n_int), lead=HYBRID_LEAD, aside=True))

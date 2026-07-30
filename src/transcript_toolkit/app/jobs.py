@@ -270,6 +270,13 @@ class JobManager:
         job.revision += 1
         self._proc = None
 
+        if job.state == SUCCEEDED and job.title == content.UPDATE_TITLE \
+                and content.updated_version(job.lines):
+            # The code this server is running has just been replaced on disk. Nothing here will
+            # be the new version until it starts again, so it does.
+            from . import server
+            server.ask_restart()
+
     # --- talking back ---------------------------------------------------------------------
     def answer(self, text: str) -> None:
         """Type a line into the running command — the answer to what it asked.

@@ -52,6 +52,17 @@ TOPIC_SUFFIXES = (".csv", ".xlsx")
 EXAMPLE_STEM = "example_topics"          # the shipped template; not a usable set on its own
 
 
+def unusable_set_name(name: str) -> str | None:
+    """Why this cannot be a set name, or None when it can.
+
+    The set name becomes a key under `topics.sets`, and settings address that key by a dotted
+    path (`topics.sets.collection.rollup`). A dot in the name would split there and write the
+    rollup rule into a level nothing reads — so a list called `themes.v2.csv` is refused by name
+    rather than saved into the wrong place.
+    """
+    return "it has a dot in it" if "." in name else None
+
+
 def discover_topic_files(project: Project) -> dict[str, Path]:
     """{set name: spreadsheet} for every topic list sitting in topics/, the set name being the
     filename without its extension. The shipped example template is excluded — it is meant to be
@@ -60,9 +71,21 @@ def discover_topic_files(project: Project) -> dict[str, Path]:
     if not project.topics_dir.is_dir():
         return found
     for path in sorted(project.topics_dir.iterdir()):
-        if path.suffix.lower() in TOPIC_SUFFIXES and path.stem != EXAMPLE_STEM:
+        if (path.suffix.lower() in TOPIC_SUFFIXES and path.stem != EXAMPLE_STEM
+                and not unusable_set_name(path.stem)):
             found.setdefault(path.stem, path)     # .csv wins over .xlsx for the same stem
     return found
+
+
+def unusable_topic_files(project: Project) -> dict[str, str]:
+    """{filename: why it is not offered as a set}. Skipping one silently would leave somebody
+    looking at a list in topics/ that nothing anywhere admits to seeing."""
+    if not project.topics_dir.is_dir():
+        return {}
+    return {path.name: why
+            for path in sorted(project.topics_dir.iterdir())
+            if path.suffix.lower() in TOPIC_SUFFIXES and path.stem != EXAMPLE_STEM
+            and (why := unusable_set_name(path.stem))}
 
 
 def available_sets(project: Project, cfg: dict) -> list[str]:
@@ -72,19 +95,29 @@ def available_sets(project: Project, cfg: dict) -> list[str]:
     return sorted(names | set(discover_topic_files(project)))
 
 
+def _skipped_note(project: Project) -> str:
+    skipped = unusable_topic_files(project)
+    if not skipped:
+        return ""
+    listed = "; ".join(f"{name} ({why})" for name, why in skipped.items())
+    return (f"\nNot usable as a topic list: {listed}. Rename the file — the name without the "
+            f"extension becomes the set name.")
+
+
 def _no_set_error(project: Project, cfg: dict, given: str | None) -> ToolkitError:
     names = available_sets(project, cfg)
     lead = (f"Unknown topic set {given!r}. There is no topics.sets.{given} in config.yaml and no "
             f"topics/{given}.csv or topics/{given}.xlsx." if given
             else "No topic set given. Use --set <name>.")
+    skipped = _skipped_note(project)
     if names:
-        return ToolkitError(f"{lead}\nAvailable: {', '.join(names)}")
+        return ToolkitError(f"{lead}\nAvailable: {', '.join(names)}{skipped}")
     example = project.topics_dir / f"{EXAMPLE_STEM}.csv"
     hint = (f"\nStart from {example.name}: fill in your topics, then rename it to the set name you "
             f"want (e.g. topics/collection.csv)." if example.exists() else "")
     return ToolkitError(
         f"{lead}\nNo topic lists found. Put one in {project.topics_dir}{'/'} as a .csv or .xlsx — "
-        f"the filename becomes the set name.{hint}\n"
+        f"the filename becomes the set name.{skipped}{hint}\n"
         f"Then run: toolkit topics tag --set <name> --demo")
 
 
@@ -100,14 +133,27 @@ def resolve_set(project: Project, cfg: dict, set_name: str | None) -> tuple[str,
         raise ToolkitError("config.yaml topics.sets must be a mapping of set name -> settings.")
     if not set_name:
         raise _no_set_error(project, cfg, None)
+    why = unusable_set_name(set_name)
+    if why:
+        raise ToolkitError(
+            f"{set_name!r} cannot be a topic set name: {why}. The name is a settings key, and a "
+            f"dot in it would put this list's settings somewhere nothing reads them. Rename the "
+            f"spreadsheet in topics/ (and its entry in config.yaml, if it has one).")
 
+    discovered = discover_topic_files(project)
     if set_name in sets:
         entry = sets[set_name]
         if not isinstance(entry, dict):
             raise ToolkitError(f"config.yaml topics.sets.{set_name} must be a mapping")
-        return set_name, entry
+        if entry.get("file") or set_name not in discovered:
+            return set_name, entry
+        # An entry with settings but no spreadsheet named. That is what config.yaml looks like
+        # after somebody sets a list's rollup rule before ever tagging with it — the app offers
+        # that from the start — and refusing here would break a list that is sitting in topics/
+        # in plain sight. The filename is the set name, which is the whole convention.
+        return set_name, {**entry,
+                          "file": discovered[set_name].relative_to(project.root).as_posix()}
 
-    discovered = discover_topic_files(project)
     if set_name not in discovered:
         raise _no_set_error(project, cfg, set_name)
 

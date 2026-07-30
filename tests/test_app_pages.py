@@ -438,6 +438,22 @@ def test_the_region_vocabulary_is_editable_in_the_app(server):
     assert "Eastern Europe" in body and "Save these regions" in body
 
 
+def test_a_saved_region_list_can_always_be_read_back(workspace):
+    """A region name is free text. Written out by hand, one containing a colon would save a file
+    the next run cannot read — and that file is the enum the model answers from."""
+    import yaml
+
+    from transcript_toolkit.app.pages.regions import _read, _write
+    from transcript_toolkit.core.config import load_step_config
+
+    path = workspace.root / load_step_config(workspace, "locations")["regions_file"]
+    names = ["Eastern Europe", "Korea: North and South", "#1 in the list", "Yes"]
+    _write(path, names)
+    assert _read(path) == names
+    assert path.read_text().startswith("#")             # the file keeps explaining itself
+    assert yaml.safe_load(path.read_text()) == names
+
+
 def test_a_run_that_would_do_nothing_is_greyed_out_and_says_why(server, workspace):
     """Pressing Run and having nothing happen is what makes people wonder whether it worked.
     Every call is cached, so the toolkit would re-run happily and change nothing — the button

@@ -147,3 +147,74 @@ def test_failed_upgrade_is_reported(monkeypatch):
 def test_notice_points_at_the_toolkit_command(monkeypatch):
     monkeypatch.setattr(upd, "_fetch_latest", lambda: "9.9.9")
     assert "toolkit update" in upd.update_notice(current="0.1.0")
+
+
+def test_uv_is_told_where_its_tools_go_when_there_is_no_shell(monkeypatch, tmp_path):
+    """From the Dock, PATH is launchd's, so uv warns that installed tools will not be found and
+    tells the reader to edit their shell profile. True of that PATH, irrelevant here — the app
+    runs `toolkit` by absolute path — and confusing to whoever is watching the output."""
+    import shutil as _shutil
+    import subprocess
+
+    seen = {}
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.setenv("UV_TOOL_BIN_DIR", str(tmp_path / "bin"))
+    monkeypatch.setattr(_shutil, "which", lambda name: None)      # not on PATH: no shell
+    monkeypatch.setattr(upd, "uv_path", lambda: "/somewhere/uv")
+    monkeypatch.setattr(subprocess, "run",
+                        lambda cmd, **kw: seen.update(kw) or subprocess.CompletedProcess(cmd, 0))
+    upd.run_update()
+    assert str(tmp_path / "bin") in seen["env"]["PATH"]
+
+
+def test_a_real_shell_keeps_uvs_warning(monkeypatch):
+    """In a terminal the same warning is real advice, so it is left alone."""
+    import shutil as _shutil
+    import subprocess
+
+    seen = {}
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.setattr(_shutil, "which", lambda name: "/usr/local/bin/uv")
+    monkeypatch.setattr(subprocess, "run",
+                        lambda cmd, **kw: seen.update(kw) or subprocess.CompletedProcess(cmd, 0))
+    upd.run_update()
+    assert seen["env"]["PATH"] == "/usr/bin:/bin"
+
+
+def test_it_says_whether_anything_actually_changed(monkeypatch, capsys):
+    """The app reads this line to decide whether to restart itself, so it is the toolkit's own
+    words and not uv's prose."""
+    import subprocess
+
+    monkeypatch.setattr(upd, "uv_path", lambda: "/usr/bin/uv")
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0))
+
+    monkeypatch.setattr(upd, "installed_version", lambda: "9.9.9")
+    upd.run_update()
+    assert f"{upd.UPDATED_MARKER} {upd.__version__} -> 9.9.9" in capsys.readouterr().out
+
+    monkeypatch.setattr(upd, "installed_version", lambda: upd.__version__)
+    upd.run_update()
+    assert upd.UNCHANGED_MARKER in capsys.readouterr().out
+
+    monkeypatch.setattr(upd, "installed_version", lambda: None)     # could not ask
+    upd.run_update()
+    assert upd.UNCHANGED_MARKER in capsys.readouterr().out
+
+
+def test_the_new_version_is_read_from_a_fresh_process(monkeypatch, tmp_path):
+    """This process loaded __version__ before the upgrade, so it cannot see the new code — only
+    a subprocess of the command uv just replaced can."""
+    import subprocess
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "toolkit").write_text("#!/bin/sh\n")
+    monkeypatch.setenv("UV_TOOL_BIN_DIR", str(bin_dir))
+    monkeypatch.setattr(
+        subprocess, "run",
+        lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, "transcript-toolkit 1.2.3\n", ""))
+    assert upd.installed_version() == "1.2.3"
+
+    monkeypatch.setenv("UV_TOOL_BIN_DIR", str(tmp_path / "nowhere"))
+    assert upd.installed_version() is None

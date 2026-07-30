@@ -186,6 +186,68 @@ def build(allowed_hosts: list[str] | None = None) -> None:
     _register_routes(allowed_hosts or LOCAL_HOSTS)
 
 
+# Set when an update has replaced the code underneath this server. Acted on after `ui.run`
+# returns — never while the event loop is up, because replacing the process image out from
+# under a running server is how you get a half-closed port and a window that never comes back.
+RESTART = {"asked": False}
+STARTED_FROM_LAUNCHER = {"yes": False}
+RESTART_DELAY_S = 1.5
+
+
+def ask_restart() -> None:
+    """Start again on the new code. The browser reconnects by itself (pages/common.py)."""
+    import asyncio
+
+    from nicegui import app as nicegui_app
+
+    if RESTART["asked"]:
+        return
+    RESTART["asked"] = True
+
+    async def stop() -> None:
+        # A moment first, so the last lines of the update reach the window and the page can set
+        # itself to come back. The server is idle by now: the update was the job that finished.
+        await asyncio.sleep(RESTART_DELAY_S)
+        nicegui_app.shutdown()
+
+    asyncio.create_task(stop())
+
+
+def restart_argv(port: int) -> list[str]:
+    """How to start this app again, from a path that survives the upgrade.
+
+    `sys.argv[0]` is the `toolkit` uv keeps in its bin directory — the same path the desktop
+    launcher runs — and uv rewrites what it points at rather than moving it. `sys.executable`
+    is inside the tool's own environment, which an upgrade rebuilds, so it is the fallback and
+    not the first choice.
+    """
+    import sys
+
+    argv = ["app", "--port", str(port), "--no-browser"]
+    if CONTEXT.project is not None:
+        argv += ["--project", str(CONTEXT.project.root)]
+    if STARTED_FROM_LAUNCHER["yes"]:
+        # The log line saying how this session began is the first thing anybody looks at when a
+        # colleague's Mac misbehaves; a restart must not turn "from the desktop app" into "from
+        # the command line".
+        argv.append("--from-launcher")
+    launcher = Path(sys.argv[0])
+    if launcher.name in ("toolkit", "transcript-toolkit") and launcher.exists():
+        return [str(launcher), *argv]
+    return [sys.executable, "-m", "transcript_toolkit.cli", *argv]
+
+
+def _start_again(port: int) -> None:
+    import os
+    import sys
+
+    argv = restart_argv(port)
+    print(f"\nUpdated — starting again: {' '.join(argv)}", flush=True)
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os.execv(argv[0], argv)
+
+
 def serve(project: str | None = None, port: int = DEFAULT_PORT, open_browser: bool = True,
           from_launcher: bool = False) -> None:
     """Run the app, or hand over to the copy that is already running."""
@@ -212,6 +274,7 @@ def serve(project: str | None = None, port: int = DEFAULT_PORT, open_browser: bo
 
     CONTEXT.port = port
     CONTEXT.project = _resolve_workspace(project)
+    STARTED_FROM_LAUNCHER["yes"] = from_launcher
 
     from nicegui import ui
 
@@ -225,3 +288,5 @@ def serve(project: str | None = None, port: int = DEFAULT_PORT, open_browser: bo
           f"corner, then Quit), or with Ctrl-C here.")
     ui.run(host="127.0.0.1", port=port, title="Transcript Toolkit", favicon=Path(str(icon)),
            show=open_browser, reload=False, dark=None, storage_secret=None)
+    if RESTART["asked"]:
+        _start_again(port)

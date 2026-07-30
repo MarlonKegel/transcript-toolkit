@@ -126,9 +126,16 @@ class Rollup:
                 + (" (written out by hand)" if self.explicit else ""))
 
     def as_config(self) -> dict:
-        """What to write into config.yaml for this rule."""
+        """What to write into config.yaml for this rule.
+
+        A hand-written list is written back as a list. Describing it by bins and range instead
+        would regularise it — [10, 12.5, 30] would come back as [10, 20, 30], and a single
+        threshold as a range with no width at all, which `parse` refuses outright.
+        """
         if self.method == FLAT:
             return {"method": FLAT, "threshold_pct": number(self.threshold_pct)}
+        if self.explicit:
+            return {"method": self.method, "thresholds": [number(b) for b in self.explicit]}
         return {"method": self.method, "bins": int(self.bins),
                 "range": [number(self.low), number(self.high)]}
 

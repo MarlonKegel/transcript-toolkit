@@ -90,7 +90,10 @@ def _write(path, names: list[str]) -> None:
             raise ToolkitError(f"'{name}' is on the list twice, so nothing was saved.")
         seen[name] = True
     header = [line for line in path.read_text().split("\n") if line.startswith("#")]
-    path.write_text("\n".join([*header, *(f"- {name}" for name in names), ""]))
+    # yaml writes the list rather than us: a region name is free text, and one containing a colon
+    # or a leading quote would otherwise save a file nothing can read back.
+    body = yaml.safe_dump(names, allow_unicode=True, default_flow_style=False, sort_keys=False)
+    path.write_text("\n".join([*header, body]))
 
 
 def _report_unmapped(project, cfg: dict, names: list[str], label) -> None:

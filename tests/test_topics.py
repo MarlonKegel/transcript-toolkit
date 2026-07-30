@@ -9,7 +9,7 @@ from transcript_toolkit.core.tables import clips_path, write_deliverable
 from transcript_toolkit.core import thresholds
 from transcript_toolkit.errors import ToolkitError
 from transcript_toolkit.project import init_project
-from transcript_toolkit.state import load_state
+from transcript_toolkit.state import load_state, rolled_up_with
 from transcript_toolkit.steps.import_ import run_import
 from transcript_toolkit.steps.topics import (
     annotate_topics,
@@ -328,6 +328,21 @@ def test_rollup_reads_the_older_spelling(project):
     set_entry(project, rollup={"scheme": "flat", "threshold_pct": 30})
     wide = run_topics_rollup(project, "main").set_index("interview_key")
     assert wide.loc["fake_alpha", "topics"] == "education"
+
+
+def test_a_hand_written_threshold_list_survives_being_recorded(project):
+    """A rollup records the rule it ran with, and the decision aid reads that back. Describing a
+    hand-written list by bins and range instead would regularise it — and a one-element list would
+    come back as a range with no width, which is refused outright."""
+    write_hand_wide(project)
+    set_entry(project, rollup={"method": "freq_width", "thresholds": [50]})
+    run_topics_rollup(project, "main")
+    assert rolled_up_with(project, "topics:main") == {"method": "freq_width", "thresholds": [50]}
+    run_topics_thresholds(project, "main")               # used to crash on the read-back
+
+    set_entry(project, rollup={"method": "freq_width", "thresholds": [10, 12.5, 30]})
+    run_topics_rollup(project, "main")
+    assert thresholds.parse(rolled_up_with(project, "topics:main"), "x").bars() == [10, 12.5, 30]
 
 
 def test_rollup_schemas(project):

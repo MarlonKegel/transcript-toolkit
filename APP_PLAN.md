@@ -950,7 +950,41 @@ config.yaml included. Any settings save re-enables them, which is the harmless d
 
 Tests 638 → 654. Version 0.2.9.
 
-## 25. Merging `app` into `main` — handover (2026-07-30)
+## 25. The audit of rounds 5-7, and what it found (2026-07-30)
+
+A 38-agent adversarial audit of feedback rounds 5-7 confirmed seven bugs and refuted fifteen
+more claims. All seven are fixed; they are recorded here because each one is a shape of mistake
+this codebase can make again.
+
+1. **`Rollup.as_config()` threw away hand-written thresholds.** A rollup records the rule it ran
+   with, and the decision aid reads that back — so the recorded rule has to be the rule that ran.
+   Describing a hand-written list by bins and range regularised it, and a one-element legacy list
+   (`thresholds: [50]`) came back as `range: [50, 50]`, which `parse()` refuses: **`toolkit
+   topics/locations thresholds` crashed after a rollup.** `as_config()` now writes a list back as
+   a list.
+2. **`freshness.unit_count` counted clips for `label`, which records interviews.** A finished
+   label run read `PARTIAL` for ever — the app claiming the collection had grown when it had not.
+   Each step is now counted the way it records itself.
+3. **`freshness` did not watch `region_to_country.csv`.** Both locations moves read it and the app
+   now invites editing it, after which both buttons stayed greyed as done and the correction never
+   reached the deliverable. `EDITABLE_INPUTS` names the files a step reads that are neither
+   deliverables nor config.
+4. **`regions.py::_write` wrote region names unquoted**, so a name with a colon in it saved a
+   `regions.yaml` nothing could read — and that file is the enum the model answers from. yaml
+   dumps the list now.
+5. **A topic list whose filename has a dot in it** would have written its settings into a level
+   nothing reads (`topics.sets.themes.v2.rollup`). Such a file is refused by name, and
+   `unusable_topic_files` makes sure it is refused out loud rather than silently skipped.
+6. **The locations comparison bracketed a frequency the bins were not built from.** The number
+   beside a place is now the clips that named it outright — the count its threshold really comes
+   from — and a place that only ever arrived through a region shows 0, which is why it has no
+   threshold of its own.
+7. **summarize's fingerprint omitted `import.session_regex`**, which with pooling on decides what
+   a summarized unit is. Now included, but only when pooling is on: with pooling off the regex
+   changes nothing. Deliberate consequence: a project holding a summarize demo recorded before
+   this has to re-run that demo once.
+
+## 26. Merging `app` into `main` — handover (2026-07-30)
 
 Marlon has judged the app good enough to ship and is presenting it shortly. This section is
 written for whoever does the merge, and is the one place that has to be read first.

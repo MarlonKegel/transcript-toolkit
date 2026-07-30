@@ -86,6 +86,7 @@ def shell(active: str = "", *, needs_workspace: bool = True, settings_open: bool
 
     with ui.column().classes("w-full max-w-5xl mx-auto p-4 gap-4") as body:
         _running_banner(active)
+        _update_watch()
         yield body
 
 
@@ -116,6 +117,38 @@ def _settings_drawer(active: str, opened: bool):
     if opened:
         ui.timer(0.1, opened_now, once=True)
     return drawer
+
+
+# Wait for the new server to answer, then load the page from it. Written to run in the browser
+# rather than on a server timer, because the server this is scheduled from is the one going away.
+COME_BACK_JS = """
+(() => {
+  const again = () => fetch('/api/health', {cache: 'no-store'})
+    .then(r => r.ok ? location.reload() : setTimeout(again, 700))
+    .catch(() => setTimeout(again, 700));
+  setTimeout(again, 2500);
+})()
+"""
+
+
+def _update_watch() -> None:
+    """When an update changes the version, the app starts again on the new code and this page
+    comes back by itself — rather than leaving somebody looking at a window that is still the
+    old version and being told to quit and reopen it."""
+    told = {"done": False}
+
+    def tick() -> None:
+        job = CONTEXT.jobs.current
+        if told["done"] or job is None or job.live or job.title != content.UPDATE_TITLE:
+            return
+        if not content.updated_version(job.lines):
+            return
+        told["done"] = True
+        ui.notify("Updated. The toolkit is starting again — this page will come back on its "
+                  "own in a few seconds.", type="positive", timeout=15000)
+        ui.run_javascript(COME_BACK_JS)
+
+    ui.timer(1.0, tick)
 
 
 def _running_banner(active: str) -> None:

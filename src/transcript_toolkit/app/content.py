@@ -82,18 +82,16 @@ BATCHING_EXPLAINER = (
 )
 
 ROLLUP_EXPLAINER = (
-    "Clips are what the model reads, but a catalogue entry is about an interview. So the tags on "
-    "a clip have to become tags on the interview it came from, and that needs a threshold: how "
-    "much of an interview has to be about something before it is one of that interview's "
-    "subjects.\n\n"
-    "One threshold for everything is the obvious answer and the wrong one. Set it high enough "
-    "that a common subject means something, and the subjects that only come up now and then "
-    "never reach it — so the rare ones, which are usually the interesting ones, vanish from the "
-    "catalogue.\n\n"
-    "The recommended alternative sorts the subjects by how often they come up across the whole "
-    "collection, splits them into bins, and asks less of a rarer bin. Nothing is invented: a "
-    "topic still has to be a real share of the interview. It just is not measured against the "
-    "collection's busiest subject."
+    "The model tags clips. A catalogue entry is about a whole interview, so those clip tags have "
+    "to become interview tags, and that takes a rule: what share of an interview's clips must "
+    "carry a topic before the interview itself is tagged with it.\n\n"
+    "The three methods differ only in how that share is set. A flat threshold asks the same "
+    "share of every topic. The two binned methods sort the topics by how often they come up "
+    "across the whole collection, split them into bins, and give the bins that come up less a "
+    "lower share to clear — so what a topic has to reach depends on how common it is.\n\n"
+    "Which to use depends on your collection and what the tags are for. This step draws what "
+    "each of them would tag, worked out against your own results, so the choice is made by "
+    "looking rather than by guessing at numbers."
 )
 
 # The controls the app draws beside a `thresholds` run, and the flags they become. Nothing else
@@ -430,6 +428,22 @@ CANCELLED_MARKER = "Aborted."
 def is_cancellation(error_text: str) -> bool:
     """Whether a failed run was simply declined at the prompt."""
     return error_text.strip() == CANCELLED_MARKER
+
+
+# Updating replaces the code this server is running, so the server has to start again for the
+# new version to be the one in the window. It only does that when the version actually changed
+# — `toolkit update` says which it was (core/update.py), and this reads it back.
+UPDATE_TITLE = "Update"
+
+
+def updated_version(lines) -> str | None:
+    """The version an update moved to, or None if it changed nothing."""
+    from ..core.update import UPDATED_MARKER
+
+    for line in reversed(list(lines)):
+        if line.strip().startswith(UPDATED_MARKER):
+            return line.strip().split("->")[-1].strip() or None
+    return None
 
 
 def fix_for(error_text: str) -> str | None:

@@ -67,8 +67,11 @@ def _context(project: Project, pool_sessions_override: bool | None):
     session_regex = load_step_config(project, "import")["session_regex"]
 
     instructions = load_prompt(project, cfg["prompt"])
-    fingerprint = cache_key(cfg["model"], cfg["reasoning"], cfg["verbosity"], instructions,
-                            f"pool_sessions={pool}")
+    # `session_regex` is what decides which files are one narrator's sessions, so with pooling on
+    # it decides what a summarized unit is — change it and the demo was of different interviews.
+    # It is deliberately left out when pooling is off, where it changes nothing.
+    shape = f"pool_sessions={pool}" + (f" session_regex={session_regex}" if pool else "")
+    fingerprint = cache_key(cfg["model"], cfg["reasoning"], cfg["verbosity"], instructions, shape)
     units = build_units(load_paragraphs(project), pool, session_regex)
     return cfg, instructions, fingerprint, units, pool
 

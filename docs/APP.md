@@ -192,10 +192,9 @@ greyed out, and say what is missing when you hover them.
 Two things on every step page change what comes back, and they are on that step's own page
 rather than behind the gear:
 
-- **The prompt for this step** — the instructions sent with every call. Rewording them is the
-  main way to change the result, more than any setting. It is the project's own copy, so an edit
-  here changes nothing in any other project, and *Put the original back* restores the one the
-  toolkit ships with.
+- **The prompt for this step** — the instructions sent with every call. Rewording them changes
+  what comes back. It is the project's own copy, so an edit here changes nothing in any other
+  project, and *Put the original back* restores the one the toolkit ships with.
 - **Settings for this step** — which model does the work, how much thinking it does, and
   whatever else belongs to that step alone. How clip tags become interview tags is *not* here:
   it belongs to the rollup, which is further down, next to the comparison that informs it.

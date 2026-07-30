@@ -281,3 +281,19 @@ def test_a_later_run_is_announced_even_if_it_is_over_in_one_tick():
     seen = fresh_slot()
     assert not watch(seen, FakeJob("j1", live=False))       # was over before the slot appeared
     assert watch(seen, FakeJob("j2", live=False))           # this one began while it watched
+
+
+# --- knowing an update actually changed something --------------------------------------------
+
+def test_the_update_marker_is_the_one_the_command_prints():
+    """The app restarts itself on this line, so it has to be the line `toolkit update` really
+    writes — not a description of it."""
+    from transcript_toolkit.core import update
+
+    changed = [f"{update.UPDATED_MARKER} 0.2.9 -> 0.3.0", "Check it with:  toolkit --version"]
+    assert content.updated_version(changed) == "0.3.0"
+
+    unchanged = [update.UNCHANGED_MARKER, "Check it with:  toolkit --version"]
+    assert content.updated_version(unchanged) is None
+    assert content.updated_version([]) is None
+    assert content.updated_version(["Updating https://github.com/…"]) is None

@@ -40,11 +40,14 @@ LEAD = (
     "In every picture there is one bar per {item}, longest at the top: how many interviews that "
     "{item} would end up tagged in. Beside each bar is that count and the threshold the {item} "
     "had to clear, and the colour is that same threshold — so a picture with varied colours is "
-    "one where rarer {items} are being asked for less. In brackets after a {item}'s name is how "
-    "many clips it was tagged in across the whole collection, which is the frequency the bins are "
-    "built from.\n\n"
+    "one where rarer {items} are being asked for less. {brackets}\n\n"
     "Open the one you like, set it under '{choose}', and roll up."
 )
+
+# What the number in brackets beside each name means. A step that bins on something other than
+# the count drawn here says so itself — see `steps/locations/thresholds_aid.py`.
+BRACKETS = ("In brackets after a {item}'s name is how many clips it was tagged in across the "
+            "whole collection, which is the frequency the bins are built from.")
 
 CHOOSE_STEP = "Roll up to interview tags"
 
@@ -219,12 +222,13 @@ BAR_LEGEND = "the threshold this {item} has to clear (% of the interview's clips
 
 def write(step_dir: Path, name: str, *, title: str, subtitle: str, panels: list[Panel],
           order: list[str], freq: pd.Series, n_int: int, choose: str = CHOOSE_STEP,
-          extra: str = "") -> Path:
+          extra: str = "", brackets: str = BRACKETS) -> Path:
     """The comparison as one page: the explanation, the figures folded by method, and the same
     numbers as a table underneath."""
     items = panels[0].items
     plots = step_dir / "plots"
-    body = [f'<p class="lead">{reviewdoc.esc(phrase(LEAD, items, choose=choose))}</p>']
+    lead = phrase(LEAD, items, choose=choose, brackets=phrase(brackets, items))
+    body = [f'<p class="lead">{reviewdoc.esc(lead)}</p>']
     for panel in panels:
         figure_path = draw(panel, order, freq, plots / f"{name}_{panel.method}.png", n_int)
         chosen = next((v for v in panel.variants if v.current), None)

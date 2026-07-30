@@ -22,6 +22,12 @@ VERSION_URL = ("https://raw.githubusercontent.com/MarlonKegel/transcript-toolkit
 CHECK_EVERY_S = 24 * 60 * 60
 FETCH_TIMEOUT_S = 2.0
 UPGRADE_COMMAND = "uv tool upgrade transcript-toolkit"
+VERSION_TIMEOUT_S = 20.0
+
+# What `toolkit update` says about itself when it is done. The app reads these to know whether
+# to restart — a version that did not change is not worth interrupting anybody for.
+UPDATED_MARKER = "Updated:"
+UNCHANGED_MARKER = "Already the newest version — nothing changed."
 
 
 def _cache_path() -> Path:
@@ -113,6 +119,37 @@ def print_update_notice() -> None:
         print(notice)
 
 
+def tool_bin_dir() -> Path:
+    """Where uv puts the commands it installs — `toolkit` among them."""
+    import os
+
+    for name in ("UV_TOOL_BIN_DIR", "XDG_BIN_HOME"):
+        said = os.environ.get(name)
+        if said:
+            return Path(said).expanduser()
+    return Path.home() / ".local" / "bin"
+
+
+def _uv_env() -> dict:
+    """The environment to run uv in.
+
+    When uv had to be found off PATH we are not being driven by a shell — the app was opened
+    from the Dock, where macOS hands out `/usr/bin:/bin:/usr/sbin:/sbin` and nothing else. uv
+    checks its own bin directory against PATH and warns that installed tools will not be found,
+    which is true of that PATH and irrelevant to this situation: the app runs `toolkit` by
+    absolute path. Telling uv where its tools go stops it giving an instruction that would only
+    confuse whoever is reading. In a terminal, where uv IS on PATH, the warning is real advice
+    and is left alone.
+    """
+    import os
+    import shutil
+
+    env = dict(os.environ)
+    if shutil.which("uv") is None:
+        env["PATH"] = os.pathsep.join([str(tool_bin_dir()), env.get("PATH", "")]).rstrip(os.pathsep)
+    return env
+
+
 def run_update() -> None:
     """`toolkit update` — do the thing people type when they want a newer version.
 
@@ -132,10 +169,43 @@ def run_update() -> None:
 
     print(f"Current version: {__version__}")
     print(f"Running: {UPGRADE_COMMAND}\n")
-    result = subprocess.run([uv, *UPGRADE_COMMAND.split()[1:]], check=False)
+    result = subprocess.run([uv, *UPGRADE_COMMAND.split()[1:]], check=False, env=_uv_env())
     if result.returncode != 0:
         raise ToolkitError(
             f"uv could not upgrade this install (exit code {result.returncode}). If you installed "
             f"the toolkit some other way, update it that way instead.")
     _cache_path().unlink(missing_ok=True)          # the "newer version" notice is now stale
-    print("\nDone. Check it with:  toolkit --version")
+    installed = installed_version()
+    if installed and installed != __version__:
+        # Said in the toolkit's own words rather than left to uv's: this line is what the app
+        # reads to know it should restart itself, and parsing another program's prose for that
+        # would be a promise about uv's output nobody made.
+        print(f"\n{UPDATED_MARKER} {__version__} -> {installed}")
+    else:
+        print(f"\n{UNCHANGED_MARKER}")
+    print("Check it with:  toolkit --version")
+
+
+def installed_version() -> str | None:
+    """The version now on disk, by asking the command uv just replaced.
+
+    Not `__version__`: this process loaded that before the upgrade and cannot see the new code.
+    A fresh subprocess can, which is why it is worth the second or so it takes.
+    """
+    import subprocess
+
+    toolkit = tool_bin_dir() / "toolkit"
+    if not toolkit.exists():
+        return None
+    try:
+        said = subprocess.run([str(toolkit), "--version"], capture_output=True, text=True,
+                              timeout=VERSION_TIMEOUT_S, check=False, env=_uv_env())
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return parse_reported_version(said.stdout or said.stderr)
+
+
+def parse_reported_version(said: str) -> str | None:
+    """`toolkit --version` prints `transcript-toolkit 0.2.9`."""
+    parts = said.strip().split()
+    return parts[-1] if parts else None

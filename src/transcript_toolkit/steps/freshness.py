@@ -49,8 +49,12 @@ def current_fingerprint(project: Project, step: str, set_name: str | None = None
 
 
 def unit_count(project: Project, step: str, set_name: str | None = None) -> int:
-    """How many things a full run would work through — interviews for clip and summarize, clips
-    for the rest. What the step counted last time is recorded beside its run."""
+    """How many things a full run would work through, counted the same way the step records it.
+
+    It has to be the same way: `label` labels every clip but calls the model once per interview
+    and records interviews, so counting its clips would leave a finished run reading as partial
+    for ever. Interviews for clip, label and summarize; clips for topics and locations.
+    """
     import pandas as pd
 
     if step == "clip":
@@ -65,6 +69,8 @@ def unit_count(project: Project, step: str, set_name: str | None = None) -> int:
     path = clips_path(project)
     if not path.exists():
         return 0
+    if step == "label":
+        return int(pd.read_parquet(path, columns=["interview_id"])["interview_id"].nunique())
     return len(pd.read_parquet(path, columns=["clip_id"]))
 
 
@@ -102,22 +108,49 @@ def freshness(project: Project, step: str, set_name: str | None = None) -> dict:
     demo = record.get("demo")
     full = record.get("full")
     return {"fingerprint": now,
-            "demo": _demo_state(project, demo, now),
+            "demo": _demo_state(project, demo, now, step),
             "full": _full_state(project, full, now, step, set_name)}
 
 
-def _demo_state(project: Project, demo: dict | None, now: str) -> str:
+# The steps whose demo runs on the interviews `toolkit sample` picked. Nothing about changing
+# that choice touches the fingerprint — it is not part of the instructions — so a demo would go
+# on reading as done over a set of interviews it never saw. Somebody who has just picked
+# different interviews has said plainly that they want the demo run on those.
+ON_THE_SAMPLE = ("clip", "label")
+
+
+def _demo_state(project: Project, demo: dict | None, now: str, step: str) -> str:
     from pathlib import Path
 
     if not demo:
         return NONE
     if demo["fingerprint"] != now:
         return STALE
+    if step in ON_THE_SAMPLE and _sample_changed_since(project, demo.get("at")):
+        return STALE
     # A demo is only done while what it left to read is still there. `diag` is recorded as an
     # absolute path, so a project that has been moved reads as "not run" rather than as done
     # with nothing to show for it — and re-running a demo is cheap.
     diag = demo.get("diag")
     return CURRENT if not diag or Path(diag).exists() else NONE
+
+
+def _sample_changed_since(project: Project, at: str | None) -> bool:
+    from datetime import datetime, timezone
+
+    path = project.demo_sample_path
+    if not at or not path.exists():
+        return False
+    try:
+        when = datetime.fromisoformat(at)
+    except ValueError:
+        return False
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    # A run record keeps whole seconds, so a demo started in the same second as the sample it
+    # ran on looks a fraction older than it. The second of slack is that rounding, not a
+    # tolerance for real edits: picking a new sample and re-drawing takes longer than that.
+    return path.stat().st_mtime > when.timestamp() + 1
 
 
 # The free, deterministic steps that come after tagging: what each one writes, and what it reads.
@@ -134,6 +167,28 @@ DERIVED = {
                               ["locations/clip_countries.parquet"]),
 }
 
+# Files these steps read that are not deliverables and are not config.yaml. Both locations moves
+# turn a region into its countries, and the app now invites editing that table — after which
+# both buttons would otherwise stay greyed out as done and the correction never be applied.
+EDITABLE_INPUTS = {
+    ("locations", "map"): ("locations", "region_map_file"),
+    ("locations", "rollup"): ("locations", "region_map_file"),
+}
+
+
+def _editable_input(project: Project, step: str, action: str):
+    """The path of that file, or None when config cannot say where it is."""
+    named = EDITABLE_INPUTS.get((step, action))
+    if named is None:
+        return None
+    from ..core.config import load_step_config
+
+    try:
+        where = load_step_config(project, named[0]).get(named[1])
+    except (ToolkitError, OSError, KeyError):
+        return None
+    return project.root / where if where else None
+
 
 def derived_state(project: Project, step: str, action: str, set_name: str | None = None) -> str:
     """CURRENT when this action's output is on disk and newer than everything it reads."""
@@ -144,8 +199,8 @@ def derived_state(project: Project, step: str, action: str, set_name: str | None
                        for group in paths)
     if not all(p.exists() for p in outputs):
         return NONE
-    newest_input = max((p.stat().st_mtime for p in [*inputs, project.config_path] if p.exists()),
-                       default=0.0)
+    watched = [*inputs, project.config_path, _editable_input(project, step, action)]
+    newest_input = max((p.stat().st_mtime for p in watched if p and p.exists()), default=0.0)
     return CURRENT if min(p.stat().st_mtime for p in outputs) >= newest_input else STALE
 
 
