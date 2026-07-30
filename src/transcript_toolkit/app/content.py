@@ -14,6 +14,13 @@ from ..core import sampling
 
 
 @dataclass(frozen=True)
+class Review:
+    """A page a step writes for you to read. `{set}` is filled in for per-set steps."""
+    filename: str
+    title: str
+
+
+@dataclass(frozen=True)
 class Action:
     """One button: a command with no options to decide."""
     slug: str
@@ -24,14 +31,19 @@ class Action:
     needs: tuple[str, ...] = ()     # deliverables it reads; without them the button is disabled
     explain: str = ""               # the `i` tooltip: what this is, for someone new to it
     preview: str = ""               # renders in the app as a table: "chunks" | "batches"
-    aids: tuple["Action", ...] = ()  # decision aids shown beside this action, not after it
+    reviews: tuple[Review, ...] = ()   # pages it writes, linked once they are there
+    options: str = ""               # extra controls the app draws for it: "compare"
 
 
 @dataclass(frozen=True)
-class Review:
-    """A page a step writes for you to read. `{set}` is filled in for per-set steps."""
-    filename: str
+class Choice:
+    """A move in a step's flow that runs nothing: a setting to decide, in the place in the order
+    where deciding it is what comes next. The rollup rule is the one of these — it is chosen
+    after reading the comparison, not while browsing settings."""
     title: str
+    blurb: str
+    setting: str                    # which setting: core/settings.rollup_field
+    explain: str = ""
 
 
 @dataclass(frozen=True)
@@ -50,7 +62,9 @@ class Step:
     deliverable: str = ""           # name in gather_status()["deliverables"]
     needs: tuple[str, ...] = ()     # deliverables that must exist first
     reviews: tuple[Review, ...] = field(default_factory=tuple)
-    sequels: tuple[Action, ...] = field(default_factory=tuple)      # part of the flow
+    # The moves that follow tagging, in order — Actions to run and Choices to make. Numbered on
+    # the page, because the order is the work: compare, choose, then apply.
+    sequels: tuple[Action | Choice, ...] = field(default_factory=tuple)
     extras: tuple[Action, ...] = field(default_factory=tuple)       # occasional, at the bottom
     review_hint: str = ""           # what to look for in the review pages, before spending
 
@@ -73,6 +87,42 @@ BATCHING_EXPLAINER = (
     "You do not have to do anything with this. It is here so you can see how the work will be "
     "divided up before anything is sent."
 )
+
+ROLLUP_EXPLAINER = (
+    "Clips are what the model reads, but a catalogue entry is about an interview. So the tags on "
+    "a clip have to become tags on the interview it came from, and that needs a bar: how much of "
+    "an interview has to be about something before it is one of that interview's subjects.\n\n"
+    "One bar for everything is the obvious answer and the wrong one. Set it high enough that a "
+    "common subject means something, and the subjects that only come up now and then never reach "
+    "it — so the rare ones, which are usually the interesting ones, vanish from the catalogue.\n\n"
+    "The recommended alternative sorts the subjects by how often they come up across the whole "
+    "collection, splits them into bands, and asks less of a rarer band. Nothing is invented: a "
+    "topic still has to be a real share of the interview. It just is not measured against the "
+    "collection's busiest subject."
+)
+
+# The controls the app draws beside a `thresholds` run, and the flags they become. Nothing else
+# in app/ may name a flag, so the compare options are described here and nowhere else.
+COMPARE_FIELDS = (
+    ("bins", "--bins", "Bands to compare",
+     "How many rarity bands to split the topics into. More bands means a finer ladder of bars."),
+    ("ranges", "--ranges", "Ranges to compare",
+     "The lowest and the highest bar, per range. Write them as 10-30, separated by commas."),
+    ("flat", "--flat", "Single bars to compare",
+     "The one-bar-for-everything percentages to draw beside the banded ones."),
+)
+
+
+def compare_argv(action: "Action", set_name: str | None, chosen: dict[str, str]) -> list[str]:
+    """`toolkit ... thresholds` with whatever the user asked it to draw. An empty box means
+    'whatever the project says', which is exactly what leaving the flag off does."""
+    argv = action_argv(action, set_name)
+    for key, flag, _, _ in COMPARE_FIELDS:
+        said = (chosen.get(key) or "").strip()
+        if said:
+            argv += [flag, said]
+    return argv
+
 
 SAMPLE = Action(
     slug="sample", title="Choose demo interviews",
@@ -165,17 +215,21 @@ STEPS: tuple[Step, ...] = (
         review_hint="Read the justifications: where a score looks wrong, the topic's description "
                     "in your topic list is usually what needs changing, not the prompt.",
         sequels=(
+            Action("thresholds", "Compare how tags are decided",
+                   "A topic becomes one of an interview's tags once enough of that interview's "
+                   "clips were assigned to it — and 'enough' is your decision. This draws what "
+                   "each way of deciding would tag, side by side. Nothing is sent to OpenAI.",
+                   ("topics", "thresholds"), needs_set=True, needs=("topics:{set}",),
+                   reviews=(Review("{set}_thresholds.html", "Open the comparison"),),
+                   options="compare"),
+            Choice("Choose how tags are decided",
+                   "Set the one you settled on, having looked at the comparison. Changing it "
+                   "changes nothing until you roll up again — this step is free to redo.",
+                   "rollup", explain=ROLLUP_EXPLAINER),
             Action("rollup", "Roll up to interview tags",
-                   "Turn the per-clip scores into one set of tags per interview. Run this "
-                   "after tagging the whole collection.",
-                   ("topics", "rollup"), needs_set=True, needs=("topics:{set}",),
-                   aids=(
-                       Action("thresholds", "Compare thresholds first",
-                              "Shows what each threshold would tag, side by side, so you can "
-                              "pick one before rolling up (no API calls).",
-                              ("topics", "thresholds"), needs_set=True,
-                              needs=("topics:{set}",)),
-                   )),
+                   "Apply it: turn the per-clip scores into one set of tags per interview. Run "
+                   "this after tagging the whole collection.",
+                   ("topics", "rollup"), needs_set=True, needs=("topics:{set}",)),
         ),
         extras=(
             Action("annotate", "Re-render review pages",
@@ -195,15 +249,21 @@ STEPS: tuple[Step, ...] = (
                    "Turn each region tag into the countries it covers, and settle on one "
                    "spelling per place. Run this after tagging the whole collection.",
                    ("locations", "map"), needs=("locations",)),
+            Action("thresholds", "Compare how tags are decided",
+                   "A place becomes one of an interview's places once enough of that "
+                   "interview's clips talk about it — and 'enough' is your decision. This draws "
+                   "what each way of deciding would tag, side by side. Nothing is sent to OpenAI.",
+                   ("locations", "thresholds"), needs=("locations",),
+                   reviews=(Review("locations_thresholds.html", "Open the comparison"),),
+                   options="compare"),
+            Choice("Choose how tags are decided",
+                   "Set the one you settled on, having looked at the comparison. The same rule "
+                   "applies to regions, which are rolled up as regions and only then expanded "
+                   "into their countries.",
+                   "rollup", explain=ROLLUP_EXPLAINER),
             Action("rollup", "Roll up to interview places",
-                   "Turn the per-clip places into one set per interview.",
-                   ("locations", "rollup"), needs=("locations",),
-                   aids=(
-                       Action("thresholds", "Compare thresholds first",
-                              "Shows what each threshold would tag, side by side, so you can "
-                              "pick one before rolling up (no API calls).",
-                              ("locations", "thresholds"), needs=("locations",)),
-                   )),
+                   "Apply it: turn the per-clip places into one set per interview.",
+                   ("locations", "rollup"), needs=("locations",)),
         ),
         extras=(
             Action("annotate", "Re-render review page",
@@ -218,6 +278,12 @@ STEPS: tuple[Step, ...] = (
 )
 
 BY_SLUG = {s.slug: s for s in STEPS}
+
+
+def runnable(step: Step) -> list[Action]:
+    """Every button on a step's page below the demo: the sequels that run something, and the
+    extras. Choices are not in here — they decide something rather than run something."""
+    return [move for move in (*step.sequels, *step.extras) if isinstance(move, Action)]
 
 
 def step_key(step: Step, set_name: str | None = None) -> str:
@@ -244,6 +310,23 @@ def run_argv(step: Step, *, demo: bool, set_name: str | None = None) -> list[str
     if demo:
         argv.append("--demo")
     return argv
+
+
+DEMO_RUN, FULL_RUN = "demo", "full run"
+
+
+def job_title(step: Step, kind: str, set_name: str | None = None) -> str:
+    """What a run is called while it happens, and what the status under a button matches on.
+
+    The topic list is part of it: two lists are two pieces of work, and a panel that said only
+    'Topics — demo' would be describing the wrong one half the time.
+    """
+    where = f" · {set_name}" if set_name and step.per_set else ""
+    return f"{step.title}{where} — {kind}"
+
+
+def action_title(step: Step, action: Action, set_name: str | None = None) -> str:
+    return job_title(step, action.title.lower(), set_name)
 
 
 def action_argv(action: Action, set_name: str | None = None) -> list[str]:

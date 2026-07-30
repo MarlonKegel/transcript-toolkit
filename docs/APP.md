@@ -71,7 +71,9 @@ never have to read it. It is there so you can see what is happening, and so you 
 command out and run it yourself if you ever want to.
 
 While something is running, its own state — how far it has got, and a Stop button — appears
-directly under the button you pressed, not down beside the terminal.
+directly under the button you pressed, wherever on the page that is. When it finishes it folds
+back to a single line with a tick, so a page you have worked through does not fill up with
+panels about things that are over.
 
 ## Working through a project
 
@@ -128,7 +130,33 @@ The workspace page always names one next thing to do, and the pages follow the s
    editable in the same table you would have typed it into, and an Excel file stays an Excel
    file.
 
-3. **Export** — one Excel file with everything produced so far. Steps that have not run are
+   **Topics and Locations have three more moves after that**, because tagging clips is not the
+   same as tagging interviews. See below.
+
+3. **Turning clip tags into interview tags** — on Topics and on Locations, once the whole
+   collection is tagged. A clip is what the model reads; a catalogue entry is about an interview.
+   So the tags have to move up, and that needs a bar: how much of an interview has to be about
+   something before it is one of that interview's subjects. The page asks it in the order the
+   decision is actually made.
+
+   - **Compare how tags are decided** writes a page with a panel per method, each drawing what
+     that way of deciding would tag: one bar per topic, showing how many interviews it would
+     reach and the bar it had to clear. What your project is set to now is marked. Nothing is
+     sent to OpenAI, so compare as often as you like. *What to compare* changes the variants
+     drawn — how many bands, over what range.
+   - **Choose how tags are decided** is the setting itself, here rather than behind a gear,
+     because this is the point at which you have the evidence to set it. Two numbers do the
+     work: how many bands, and the lowest and highest bar. The recommended method gives rarer
+     topics a lower bar — one bar for everything sounds simpler but buries exactly the topics
+     worth finding. The other methods are behind *Use a different method*.
+   - **Roll up** applies it. It is free and instant, so changing your mind costs a re-run and
+     nothing else.
+
+   Locations works the same way, with one wrinkle: regions are rolled up as regions and only then
+   expanded into their countries, so a country becomes an interview's place through a region only
+   when the region itself is what that interview is about.
+
+4. **Export** — one Excel file with everything produced so far. Steps that have not run are
    simply left out, so exporting early is fine; run it again later and it will have more in it.
 
 The **project cost report** on the workspace page is what the project has actually cost, per step
@@ -151,7 +179,8 @@ rather than behind the gear:
   here changes nothing in any other project, and *Put the original back* restores the one the
   toolkit ships with.
 - **Settings for this step** — which model does the work, how much thinking it does, and
-  whatever else belongs to that step alone.
+  whatever else belongs to that step alone. How clip tags become interview tags is *not* here:
+  it is a numbered move further up the page, where the comparison that informs it is.
 
 Labelling also takes **house rules**: a short set of project decisions added to the end of the
 prompt — how a name is spelled, what to call something, what never to abbreviate. Write them in

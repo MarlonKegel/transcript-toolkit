@@ -26,10 +26,21 @@ def test_demo_and_full_commands_are_real_commands(step):
 
 @ALL_STEPS
 def test_every_button_on_a_step_page_is_a_real_command(step):
-    for action in (*step.sequels, *step.extras):
+    for action in content.runnable(step):
         parses(content.action_argv(action, set_name="fixture"))
-        for aid in action.aids:
-            parses(content.action_argv(aid, set_name="fixture"))
+
+
+@ALL_STEPS
+def test_what_to_compare_becomes_real_flags(step):
+    """The comparison's boxes turn into flags on the real command; a typo here would only show
+    up as a run that dies in the terminal."""
+    asked = {"bins": "5,9", "ranges": "10-30,20-40", "flat": "20,30,40"}
+    for action in content.runnable(step):
+        if action.options == "compare":
+            parses(content.compare_argv(action, "fixture", asked))
+            # an empty box means "whatever the project says", which is the flag left off
+            assert content.compare_argv(action, "fixture", {"bins": " "}) == \
+                content.action_argv(action, "fixture")
 
 
 def test_standalone_commands_are_real_commands():
@@ -228,3 +239,45 @@ def test_the_dashboard_counts_a_step_done_when_the_step_says_so(tmp_path, monkey
 
     status["steps"].pop("locations")
     assert stage.next_action(status, project, ["main"])[2] == "/step/locations"
+
+
+# --- the status slot's one dangerous decision ------------------------------------------------
+
+class FakeJob:
+    def __init__(self, id, live):
+        self.id, self.live = id, live
+
+
+def fresh_slot() -> dict:
+    return {"id": None, "revision": -1, "finished": None, "fresh": True}
+
+
+def watch(seen: dict, job) -> bool:
+    from transcript_toolkit.app.pages.common import finished_now, note
+
+    note(seen, job)
+    return finished_now(seen, job)
+
+
+def test_a_finished_run_is_announced_once():
+    seen = fresh_slot()
+    assert not watch(seen, FakeJob("j1", live=True))
+    assert watch(seen, FakeJob("j1", live=False))
+    assert not watch(seen, FakeJob("j1", live=False))       # and not again on every tick
+
+
+def test_a_run_that_was_already_over_is_not_announced():
+    """The status slot lives inside the section it asks to be rebuilt, so finishing a run
+    replaces the slot. If the replacement announced the same finish, the page would rebuild
+    itself forever — which is what this rules out."""
+    for _ in range(3):                                      # what a loop would look like
+        seen = fresh_slot()
+        assert not watch(seen, FakeJob("j1", live=False))
+
+
+def test_a_later_run_is_announced_even_if_it_is_over_in_one_tick():
+    """A slot that existed before the run started reports it, however quick it was — some of
+    these finish in well under one tick."""
+    seen = fresh_slot()
+    assert not watch(seen, FakeJob("j1", live=False))       # was over before the slot appeared
+    assert watch(seen, FakeJob("j2", live=False))           # this one began while it watched

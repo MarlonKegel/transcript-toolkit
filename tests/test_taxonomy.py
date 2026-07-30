@@ -133,12 +133,12 @@ def test_set_discovered_from_topics_folder_and_registered(project, capsys):
     name, entry = resolve_set(project, cfg, "collection")
     assert name == "collection"
     assert entry["file"] == "topics/collection.csv"
-    assert entry["rollup"] == {"scheme": "flat", "threshold_pct": 30}
+    assert entry["rollup"] == {"method": "freq_width", "bins": 5, "range": [10, 30]}
     assert "Registered topic set 'collection'" in capsys.readouterr().out
 
     written = yaml.safe_load(project.config_path.read_text())["topics"]["sets"]["collection"]
     assert written == {"file": "topics/collection.csv",
-                       "rollup": {"scheme": "flat", "threshold_pct": 30}}
+                       "rollup": {"method": "freq_width", "bins": 5, "range": [10, 30]}}
 
 
 def test_registration_preserves_comments(project):

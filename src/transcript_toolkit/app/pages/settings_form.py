@@ -128,7 +128,7 @@ def _control(project, field: settings.Field, was) -> Callable[[], object]:
         return _pairs(was or {})
 
     if field.kind == settings.ROLLUP:
-        return _rollup(was or {})
+        return _rollup(was or {}, field.step)
 
     box = ui.input(value="" if was is None else str(was)).props("dense outlined").classes("w-full")
     return lambda: box.value.strip()
@@ -214,35 +214,83 @@ def _pairs(was: dict) -> Callable[[], dict]:
                     if r["from"].value.strip()}
 
 
-FLAT, BINNED = "flat", "binned"
+def _rollup(was: dict, step: str) -> Callable[[], dict]:
+    """When a topic (or a place) becomes one of an interview's tags.
 
+    Two things are tuned here and everything else is a consequence of them: how many rarity bands
+    the topics are split into, and the range the bars run over. The bars themselves are worked out
+    from those, so nobody has to write out a list of numbers and keep it evenly spaced.
 
-def _rollup(was: dict) -> Callable[[], dict]:
-    """The two rollup schemes, one control each, with only the chosen one's numbers showing."""
-    scheme = (was or {}).get("scheme") or FLAT
-    picked = ui.radio({FLAT: "One bar for every topic",
-                       BINNED: "A lower bar for rarer topics"}, value=scheme).props("dense")
-    flat_box = ui.number("Percent of an interview's clips", min=1, max=100, step=0.5,
-                         value=(was or {}).get("threshold_pct") or 30) \
-        .props("dense outlined").classes("w-64")
-    bars = list((was or {}).get("thresholds") or [10, 12.5, 15, 17.5, 20, 22.5, 25, 27.5, 30])
-    binned_box = ui.input("Bars, rarest topics first",
-                          value=", ".join(_number_text(v) for v in bars)) \
-        .props("dense outlined").classes("w-full")
+    The method sits behind a fold, opened only when the project is not on the recommended one.
+    Most projects should never have to think about it, and `toolkit topics thresholds` is where
+    the case for changing it is actually made — with pictures.
+    """
+    from ...core import thresholds
+
+    items = thresholds.PLACES if step == "locations" else thresholds.TOPICS
+    current = thresholds.parse(was or None, "this setting")
+    picked = {"method": current.method}
+
+    binned = ui.column().classes("gap-1")
+    with binned:
+        with ui.row().classes("items-center gap-2 flex-wrap"):
+            bins_box = ui.number("Bands", min=1, max=20, step=1, precision=0,
+                                 value=current.bins).props("dense outlined").classes("w-28")
+            ui.label("from").classes("text-sm opacity-70")
+            low_box = ui.number(min=0.5, max=100, step=0.5, value=current.low) \
+                .props("dense outlined suffix=%").classes("w-28")
+            ui.label("to").classes("text-sm opacity-70")
+            high_box = ui.number(min=0.5, max=100, step=0.5, value=current.high) \
+                .props("dense outlined suffix=%").classes("w-28")
+        derived = ui.label().classes("text-xs opacity-70")
+
+    flat_box = ui.number(
+        thresholds.phrase("Every {item} needs this share of an interview's clips", items),
+        min=0.5, max=100, step=0.5, value=current.threshold_pct) \
+        .props("dense outlined suffix=%").classes("w-96")
+    says = ui.label().classes("text-xs opacity-70 max-w-2xl")
+
+    with ui.expansion("Use a different method",
+                      value=current.method != thresholds.RECOMMENDED).classes("w-full"):
+        choice = ui.radio({m: thresholds.method_label(m, items)
+                           + (" — recommended" if m == thresholds.RECOMMENDED else "")
+                           for m in thresholds.METHODS}, value=current.method).props("dense")
+        ui.label("Which one to use is a judgement about your collection, and the way to make it "
+                 "is to look: 'Compare how tags are decided', above, draws what each of these "
+                 "would tag.").classes("text-xs opacity-70 max-w-2xl")
 
     def show() -> None:
-        flat_box.set_visibility(picked.value == FLAT)
-        binned_box.set_visibility(picked.value == BINNED)
+        picked["method"] = choice.value
+        flat = choice.value == thresholds.FLAT
+        binned.set_visibility(not flat)
+        flat_box.set_visibility(flat)
+        says.set_text(thresholds.method_blurb(choice.value, items))
+        derived.set_text(f"Bars: {_bars_text(bins_box.value, low_box.value, high_box.value)}")
 
-    picked.on_value_change(show)
+    for box in (choice, bins_box, low_box, high_box):
+        box.on_value_change(show)
     show()
 
     def read() -> dict:
-        if picked.value == FLAT:
-            return {"scheme": FLAT, "threshold_pct": _number(flat_box.value)}
-        return {"scheme": BINNED, "thresholds": _numbers(binned_box.value, "the bars")}
+        if picked["method"] == thresholds.FLAT:
+            said = {"method": thresholds.FLAT, "threshold_pct": _number(flat_box.value)}
+        else:
+            said = {"method": picked["method"], "bins": int(_number(bins_box.value)),
+                    "range": [_number(low_box.value), _number(high_box.value)]}
+        return thresholds.parse(said, "these settings").as_config()   # refuse nonsense here
 
     return read
+
+
+def _bars_text(bins, low, high) -> str:
+    """The bars the numbers above would produce, so what is being set is visible while it is set."""
+    from ...core import thresholds
+
+    try:
+        bars = thresholds.spread(float(low), float(high), int(bins))
+    except (TypeError, ValueError, ToolkitError):
+        return "—"
+    return ", ".join(f"{_number_text(b)}%" for b in bars)
 
 
 def _number(value):

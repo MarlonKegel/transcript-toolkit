@@ -6,6 +6,7 @@ import pytest
 
 import transcript_toolkit.steps.topics.tag as tag_step
 from transcript_toolkit.core.tables import clips_path, write_deliverable
+from transcript_toolkit.core import thresholds
 from transcript_toolkit.errors import ToolkitError
 from transcript_toolkit.project import init_project
 from transcript_toolkit.state import load_state
@@ -268,8 +269,9 @@ def interview_paths(project):
 
 def test_rollup_flat(project):
     write_hand_wide(project)
+    set_entry(project, rollup={"method": "flat", "threshold_pct": 30})
+    # one bar for every topic: alpha education 50% >= 30 tagged, career 25% < 30 not
     wide = run_topics_rollup(project, "main").set_index("interview_key")
-    # flat 30% (scaffold config): alpha education 50% >= 30 tagged, career 25% < 30 not
     assert list(wide.index) == ["fake_alpha", "fake_beta"]     # sessions pooled per narrator
     assert wide.loc["fake_alpha", "topics"] == "education"
     assert wide.loc["fake_alpha", "n_topics"] == 1
@@ -283,9 +285,23 @@ def test_rollup_flat(project):
     assert row["n_clips_assigned"] == 1 and row["n_clips_total"] == 4
 
 
+def test_rollup_defaults_to_rarity_bins(project):
+    """A set nobody has configured rolls up the recommended way: 5 rarity bands over 10-30%."""
+    write_hand_wide(project)
+    # frequencies [education 6, career 1, family 0] over 5 equal-width bands: education lands in
+    # the top band (bar 30%), career and family in the bottom one (bar 10%). Alpha's career is
+    # 25% of its clips — under a flat 30% bar it would be dropped; here it clears its own.
+    wide = run_topics_rollup(project, "main").set_index("interview_key")
+    assert wide.loc["fake_alpha", "topics"] == "education|career"
+    _, long_p = interview_paths(project)
+    long = pd.read_parquet(long_p)
+    bars = long.drop_duplicates("topic_id").set_index("topic_id")["threshold_pct"]
+    assert bars["education"] == 30.0 and bars["career"] == 10.0 and bars["family"] == 10.0
+
+
 def test_rollup_binned_hand_computed(project):
     write_hand_wide(project)
-    set_entry(project, rollup={"scheme": "binned", "thresholds": [10, 30]})
+    set_entry(project, rollup={"method": "freq_width", "bins": 2, "range": [10, 30]})
     # 2 equal-width bins over frequencies [6, 1, 0]: family(0) and career(1) fall in the rare
     # band -> bar 10%; education(6) in the common band -> bar 30%. So alpha's career (25% of
     # clips) now clears its 10% bar while education still needs (and clears) 30%.
@@ -299,6 +315,19 @@ def test_rollup_binned_hand_computed(project):
     assert career["threshold_pct"] == 10.0 and career["tagged"]
     edu = long[long["topic_id"] == "education"].iloc[0]
     assert edu["threshold_pct"] == 30.0
+
+
+def test_rollup_reads_the_older_spelling(project):
+    """Projects made before the methods existed said `scheme: binned` with the bars written out.
+    They are still in use, so they still roll up the same way."""
+    write_hand_wide(project)
+    set_entry(project, rollup={"scheme": "binned", "thresholds": [10, 30]})
+    wide = run_topics_rollup(project, "main").set_index("interview_key")
+    assert wide.loc["fake_alpha", "topics"] == "education|career"
+
+    set_entry(project, rollup={"scheme": "flat", "threshold_pct": 30})
+    wide = run_topics_rollup(project, "main").set_index("interview_key")
+    assert wide.loc["fake_alpha", "topics"] == "education"
 
 
 def test_rollup_schemas(project):
@@ -321,12 +350,29 @@ def test_rollup_without_tag_fails(project):
 # --- thresholds aid + annotate -------------------------------------------------------------
 
 
-def test_thresholds_aid_prints_sweep_and_writes_figure(project, capsys):
+def test_thresholds_aid_compares_every_method(project, capsys):
     write_hand_wide(project)
     run_topics_thresholds(project, "main")
     out = capsys.readouterr().out
-    assert "Flat-threshold sweep" in out and ">= 10%" in out and ">= 40%" in out
-    assert (project.diags_dir / "topics" / "plots" / "main_thresholds.png").exists()
+    assert "What you have now: rarity bins: 5 bands from 10% to 30%" in out
+    for method in ("freq_width", "equal_count", "flat"):
+        assert (project.diags_dir / "topics" / "plots" / f"main_{method}.png").exists()
+
+    page = (project.diags_dir / "topics" / "main_thresholds.html").read_text()
+    for method in thresholds.METHODS:                   # one foldable panel per method
+        assert f"<summary>{thresholds.method_label(method, thresholds.TOPICS)}" in page
+    assert "what you have now" in page                  # the configured rule is marked as such
+    assert 'src="plots/main_freq_width.png"' in page
+
+
+def test_thresholds_aid_takes_what_to_compare(project):
+    write_hand_wide(project)
+    run_topics_thresholds(project, "main", bins=[3], ranges=[(20.0, 40.0)], flat=[50.0])
+    page = (project.diags_dir / "topics" / "main_thresholds.html").read_text()
+    assert "3 bands · 20–40%" in page and "50% for every topic" in page
+    assert "9 bands" not in page
+    # ...and what the project is set to is on the page whether or not it was asked for
+    assert "5 bands · 10–30%" in page
 
 
 def test_annotate_writes_per_interview_html(project):

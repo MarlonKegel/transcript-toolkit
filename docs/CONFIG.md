@@ -45,8 +45,9 @@ topics:
   sets:                           # written for you when a set is first used; no default set
     collection:
       file: topics/collection.xlsx  # your topic list (xlsx/csv: name, description, [id])
-      rollup: { scheme: flat, threshold_pct: 30 }
-      # or:  { scheme: binned, thresholds: [10, 12.5, ..., 30] }
+      rollup: { method: freq_width, bins: 5, range: [10, 30] }
+      # or:  { method: equal_count, bins: 5, range: [10, 30] }
+      # or:  { method: flat, threshold_pct: 30 }
       # prompt: tag_topics_strict.md   # this list's own rubric, a file in prompts/
       # model: gpt-5.6-sol             # and its own model / reasoning, overriding the two above
       # reasoning: high
@@ -54,7 +55,7 @@ topics:
 locations:
   model: gpt-5.6-luna
   reasoning: medium
-  rollup: { thresholds: [10, 12.5, ..., 30] }
+  rollup: { method: freq_width, bins: 5, range: [10, 30] }
   relabel: {}                     # output spelling/merge fixes, e.g. {Macedonia: North Macedonia}
   place_tags: []                  # subnational places kept as their own tag, e.g. [Crimea]
 ```
@@ -65,11 +66,25 @@ locations:
 - **label.addendum** — path (relative to the workspace) to project-specific labeling rules, or
   `null`.
 - **summarize.pool_sessions** — pool a narrator's session files into one summary.
-- **topics.sets** — one or more topic lists; each has a `file` and a `rollup` scheme (`flat`
-  with `threshold_pct`, or `binned` with a `thresholds` bar list, rarest band first). A list may
-  also carry its own `prompt`, `model` and `reasoning`, which override the `topics` section for
-  that list alone — two lists are two pieces of work, with separate demos and separate caches.
-- **locations.rollup.thresholds / relabel / place_tags** — see [steps/locations.md](steps/locations.md).
+- **topics.sets** — one or more topic lists; each has a `file` and a `rollup` rule (below). A
+  list may also carry its own `prompt`, `model` and `reasoning`, which override the `topics`
+  section for that list alone — two lists are two pieces of work, with separate demos and
+  separate caches.
+- **rollup** (per topic list, and once for locations) — when a topic or place becomes one of an
+  interview's tags. `method` is one of:
+  - `freq_width` (the default) — the topics are split into `bins` bands by how often they come
+    up across the collection, over `range: [lowest, highest]` percent of an interview's clips,
+    and a rarer band clears a lower bar. Five bands over 10–30% are the bars 10, 15, 20, 25, 30.
+    Two topics that come up equally often always get the same bar.
+  - `equal_count` — the same, except each band holds the same number of topics. It spreads the
+    bars evenly over your list, at the cost of splitting equally-frequent topics between bands.
+  - `flat` — one `threshold_pct` bar for every topic.
+
+  `toolkit topics thresholds --set <name>` and `toolkit locations thresholds` draw what each of
+  these would tag before you choose. The older spelling (`scheme: flat|binned` with the bars
+  written out as `thresholds: [...]`) is still read, and a hand-written bar list is still used
+  exactly as written.
+- **locations.relabel / place_tags** — see [steps/locations.md](steps/locations.md).
 - **export.locations** — how location tags appear in the xlsx: `countries` (only those tagged
   directly), `countries_and_regions` (default; those countries plus a separate Regions column), or
   `countries_incl_regions` (one column, with regions mapped down into it). See

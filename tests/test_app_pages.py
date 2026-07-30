@@ -383,3 +383,44 @@ def test_the_settings_url_still_works_and_opens_the_panel(server):
     status, body = get(server, "/settings")
     assert status == 200
     assert "Settings are in the panel on the right" in body
+
+
+def test_rolling_up_reads_as_compare_then_choose_then_apply(server):
+    """Deciding when a topic becomes an interview's tag used to happen inside the rollup, from a
+    number nobody had been shown the consequences of. Now the page asks for it in the order the
+    decision is made, and the comparison that informs it comes first."""
+    _, body = get(server, "/step/topics?set=collection")
+    order = ["4 · Compare how tags are decided", "5 · Choose how tags are decided",
+             "6 · Roll up to interview tags"]
+    positions = [body.index(text) for text in order]
+    assert positions == sorted(positions), order
+    assert "What to compare" in body and "Bands to compare" in body
+
+
+def test_the_rollup_rule_is_two_numbers_and_the_method_is_folded_away(server):
+    """Most projects should never change the method, so the page asks for the two things they
+    should tune and keeps the rest out of the way."""
+    _, body = get(server, "/step/topics?set=collection")
+    assert "Bands" in body and "Use a different method" in body
+    assert "Bars: 10%, 15%, 20%, 25%, 30%" in body          # what those numbers come to
+    assert "A lower bar for rarer topics — recommended" in body
+    # and it is not also sitting in the step's settings, where it was before
+    settings_at = body.index("Settings for this step")
+    assert body.index("Use a different method") < settings_at
+
+
+def test_the_state_of_a_run_sits_under_the_thing_that_starts_it(server):
+    """Not at a fixed place on the page: on Topics the one panel used to land between step 3 and
+    step 4, describing neither."""
+    _, body = get(server, "/step/topics?set=collection")
+    # the demo's own state is above the moves that follow tagging, not below them
+    assert body.index("1 · Try it") < body.index("4 · Compare how tags are decided")
+    assert body.index("Terminal Viewer") > body.index("6 · Roll up to interview tags")
+
+
+def test_locations_rolls_up_the_same_way(server):
+    _, body = get(server, "/step/locations")
+    order = ["4 · Expand regions into countries", "5 · Compare how tags are decided",
+             "6 · Choose how tags are decided", "7 · Roll up to interview places"]
+    positions = [body.index(text) for text in order]
+    assert positions == sorted(positions), order

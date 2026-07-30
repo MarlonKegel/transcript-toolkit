@@ -840,7 +840,54 @@ Tests 592 → 609.
 **Worth knowing for the next round.** NiceGUI HTML-escapes `$` in the served page (`&#36;`), so a
 page test asserting a money figure has to expect that, not `$8.00`.
 
-## 22. Merging `app` into `main` — handover (2026-07-30)
+## 22. Feedback round 5 (2026-07-30) — the rollup becomes a decision, not a number
+
+Two items, and the second is the larger change the toolkit has had since the app itself.
+
+| # | What he asked for | What changed | CLI? |
+|---|---|---|---|
+| 1 | The status panel should sit under the step being run, not at a fixed place — on Topics it landed between "3 · Then one of these" and "4 · Roll up". Ideally it expands on click and folds back to a tick | `run_status(titles=…)` — a page now puts a slot under **each** thing it can start, and a slot only answers for the runs it named. A finished run folds to one line with a tick (`DONE_CARD`). | UI only |
+| 2 | Rolling up should be **compare thresholds → pick one → apply**; the comparison should produce real plots like the working repo's, in three foldable panels; 5 bins / freq-width / 10–30% should be the default; users tune **bins and range**, not a list of bars; equal-count and flat are advanced | Rebuilt from the config format up. See below. | **yes — config format, both steps, both decision aids** |
+
+**What the rollup rule is now.** `core/thresholds.py` owns one `Rollup` object for topics and
+locations alike: `{ method, bins, range }` or `{ method: flat, threshold_pct }`, where method is
+`freq_width` (default, recommended), `equal_count`, or `flat`. **The bars are derived** from bins
++ range — 5 bands over 10–30% is `[10, 15, 20, 25, 30]` — so nobody hand-writes a list and keeps
+it evenly spaced. The older spelling (`scheme: flat|binned` with `thresholds: [...]`) still reads,
+and an explicit bar list is still used verbatim: Marlon's own projects predate this.
+
+**`equal_count` needed a guard the working repo never did.** `pd.qcut` cannot make 9 bands out of
+8 topics, and the OSF *collection* set has 8. Fewer items than bands now means one band per item
+over bars spread across the range.
+
+**The comparison is a review page**, `diags/<step>/<name>_thresholds.html`: a `<details>` panel
+per method, the recommended one open, each holding one figure with an axis per variant (5 vs 9
+bands × 10–30% vs 20–40%; 20/30/40% for flat), plus the numbers as a table. Ported from the
+working repo's `d_interview_binning.py` and generalised: `core/thresholdreview.py` draws, the
+step supplies `evaluate(rollup) -> (bars, reach, untagged)`. **Locations evaluates through the
+whole hybrid rollover**, so its counts are what a rollup would really write, and a place with no
+direct bar of its own is drawn grey with the bar of the region that carried it in. `--bins`,
+`--ranges` and `--flat` change what is drawn; defaults in `advanced/<step>.yaml` under `compare`.
+
+**On the page** the three moves are numbered where the work is (`content.Choice`, a move that
+decides rather than runs). The rollup rule left "Settings for this step" — it belongs where the
+evidence for it is. The control asks for two numbers and shows the bars they come to; the method
+itself is behind *Use a different method*, opened only when the project is not on the recommended
+one.
+
+**Two hazards found while building this.** A status slot now lives inside the section it asks to
+be rebuilt, so it is replaced by that rebuild — and the replacement would announce the same
+finish again, forever (`common.note`/`finished_now`, with tests). And `settings.save` could not
+write `topics.sets.<set>.rollup` before a list had ever been tagged, because the scaffold ships
+`sets: {}` and nothing can be indented under a flow mapping (`settings._open_up`).
+
+Tests 609 → 630. Version 0.2.6.
+
+**Still to decide (Marlon).** The locations default is now the same as topics: `freq_width`, 5
+bands, 10–30%, applied to the direct-place rollover and the region rollover alike (it was 9 bands
+before). The hybrid rollover itself is unchanged and is the last panel of the comparison page.
+
+## 23. Merging `app` into `main` — handover (2026-07-30)
 
 Marlon has judged the app good enough to ship and is presenting it shortly. This section is
 written for whoever does the merge, and is the one place that has to be read first.

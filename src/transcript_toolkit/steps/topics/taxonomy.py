@@ -17,10 +17,16 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from ...core import thresholds
 from ...errors import ToolkitError
 from ...project import Project
 
 ID_RE = re.compile(r"^[a-z0-9_]+$")
+
+# What a topic list gets when it is first used: the toolkit's own default rollup rule, written
+# out so the setting is visible in config.yaml rather than implied by its absence.
+DEFAULT_ROLLUP = thresholds.DEFAULT.as_config()
+ROLLUP_LINE = "{ " + ", ".join(f"{k}: {v}" for k, v in DEFAULT_ROLLUP.items()) + " }"
 
 
 @dataclass(frozen=True)
@@ -33,6 +39,7 @@ class TopicSet:
     prompt: str | None       # optional per-set prompt file (config sets.<set>.prompt);
                              # None = the step-wide advanced `prompt` is used
     overrides: dict          # settings this set runs with instead of the step's (SET_OVERRIDES)
+    rollup: thresholds.Rollup  # how this list's clip tags become interview tags
 
 
 # A topic list is its own piece of work: a fine-grained list may want a stronger model or more
@@ -43,7 +50,6 @@ SET_OVERRIDES = ("model", "reasoning")
 
 TOPIC_SUFFIXES = (".csv", ".xlsx")
 EXAMPLE_STEM = "example_topics"          # the shipped template; not a usable set on its own
-DEFAULT_ROLLUP = "{ scheme: flat, threshold_pct: 30 }"
 
 
 def discover_topic_files(project: Project) -> dict[str, Path]:
@@ -106,15 +112,18 @@ def resolve_set(project: Project, cfg: dict, set_name: str | None) -> tuple[str,
         raise _no_set_error(project, cfg, set_name)
 
     file_rel = discovered[set_name].relative_to(project.root).as_posix()
-    entry = {"file": file_rel, "rollup": {"scheme": "flat", "threshold_pct": 30}}
+    entry = {"file": file_rel, "rollup": dict(DEFAULT_ROLLUP)}
     if register_topic_set(project, set_name, file_rel):
         print(f"Registered topic set '{set_name}' in config.yaml (file: {file_rel}, "
-              f"rollup: flat 30%). Edit it there to change how clip tags roll up to interviews.")
+              f"rollup: {thresholds.DEFAULT.describe()}). Run "
+              f"`toolkit topics thresholds --set {set_name}` to see what the alternatives "
+              f"would tag, and edit the rollup there to change it.")
     else:
         print(f"NOTE: could not add '{set_name}' to config.yaml automatically — using "
-              f"file: {file_rel} with a flat 30% rollup for this run.\n"
+              f"file: {file_rel} with the default rollup for this run.\n"
               f"      To make it permanent, add under `topics:` -> `sets:`:\n"
-              f"        {set_name}:\n          file: {file_rel}\n          rollup: {DEFAULT_ROLLUP}")
+              f"        {set_name}:\n          file: {file_rel}\n"
+              f"          rollup: {ROLLUP_LINE}")
     return set_name, entry
 
 
@@ -138,7 +147,7 @@ def register_topic_set(project: Project, name: str, file_rel: str) -> bool:
     if sets_before is None or not isinstance(sets_before, dict) or name in sets_before:
         return False
 
-    block = [f"    {name}:", f"      file: {file_rel}", f"      rollup: {DEFAULT_ROLLUP}"]
+    block = [f"    {name}:", f"      file: {file_rel}", f"      rollup: {ROLLUP_LINE}"]
     lines = text.splitlines()
 
     def top_level_end(start: int) -> int:
@@ -170,8 +179,7 @@ def register_topic_set(project: Project, name: str, file_rel: str) -> bool:
     expected = {**before, "topics": {**topics_before,
                                      "sets": {**sets_before,
                                               name: {"file": file_rel,
-                                                     "rollup": {"scheme": "flat",
-                                                                "threshold_pct": 30}}}}}
+                                                     "rollup": dict(DEFAULT_ROLLUP)}}}}
     if after != expected:
         return False
     path.write_text(new_text)
@@ -219,7 +227,9 @@ def load_topic_set(project: Project, cfg: dict, set_name: str | None = None) -> 
     return TopicSet(name=name, ids=[t["id"] for t in topics], topics=topics,
                     taxonomy_text="\n\n".join(blocks), source=path,
                     prompt=entry.get("prompt"),
-                    overrides={k: entry[k] for k in SET_OVERRIDES if entry.get(k) is not None})
+                    overrides={k: entry[k] for k in SET_OVERRIDES if entry.get(k) is not None},
+                    rollup=thresholds.parse(entry.get("rollup"),
+                                            f"config.yaml topics.sets.{name}.rollup"))
 
 
 def read_topic_rows(raw: list[list[str]], label: str) -> tuple[list[dict], list[str]]:

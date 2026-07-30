@@ -41,6 +41,12 @@ created by `toolkit init` carries its own `AGENTS.md` with rules for assisting e
   documentation of every setting and the app shows them verbatim (`core/settings.py`), so a
   yaml load/dump would delete the user's documentation. `settings.save` re-reads what it wrote
   and refuses unless exactly the named keys changed.
+- **One rollup rule, shared by topics and locations** (`core/thresholds.Rollup`). Config states a
+  `method` plus `bins` and `range`; the bars are *derived* from those, never hand-listed. Both
+  steps parse through `thresholds.parse` (which still reads the older `scheme:`/`thresholds:`
+  spelling) and both decision aids render through `core/thresholdreview.py`, which takes an
+  `evaluate(rollup)` from the step so the picture is the step's real tagging rather than a second
+  implementation of it.
 - Two path conventions that are easy to conflate: a **prompt name** is relative to `prompts/`
   (`clip_interview.md`), an **addendum path** is relative to the workspace
   (`prompts/prompt_addendums/house.md`, resolved by `steps/label` from the project root).

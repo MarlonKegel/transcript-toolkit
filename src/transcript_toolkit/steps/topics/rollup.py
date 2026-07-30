@@ -1,12 +1,14 @@
 """`toolkit topics rollup` — aggregate clip topic scores to interview (narrator) tags.
 
 An interview is tagged to a topic when the share of its clips ASSIGNED (top score, "does
-belong") to that topic clears a threshold. The threshold scheme comes from config
-(topics.sets.<set>.rollup): **flat** applies one bar to every topic; **binned** splits the
-topics into equal-width clip-frequency bands and gives the rarest band the lowest bar — an
-equalizing tendency that lifts rare topics off zero without flooding the common ones. Clips
-are pooled per narrator: session files combine via narrator_key; session-less ids are their
-own narrator. Deterministic — no LLM calls, re-run freely after `toolkit topics tag`.
+belong") to that topic clears a bar. Which bar is the rollup rule, from config
+(topics.sets.<set>.rollup) and described in `core/thresholds.py`: by default the topics are
+split into rarity bands and a rarer band clears a lower bar. Clips are pooled per narrator:
+session files combine via narrator_key; session-less ids are their own narrator. Deterministic
+— no LLM calls, re-run freely after `toolkit topics tag`.
+
+`toolkit topics thresholds` is the decision aid for that rule, and the order of the two is the
+order of the work: compare the rules, choose one, then roll up.
 """
 from __future__ import annotations
 
@@ -15,10 +17,9 @@ import pandas as pd
 from ...core.config import load_step_config, require
 from ...core.ids import narrator_key
 from ...core.tables import write_deliverable
-from ...core.thresholds import flat_thresholds, freq_width_thresholds
 from ...errors import ToolkitError
 from ...project import Project
-from .taxonomy import TopicSet, load_topic_set, resolve_set
+from .taxonomy import TopicSet, load_topic_set
 
 STEP = "topics"
 
@@ -48,29 +49,6 @@ def pooled_shares(project: Project, cfg: dict, tset: TopicSet):
     return counts, pct, freq, n_clips, n_sessions
 
 
-def scheme_thresholds(rollup_cfg: dict | None, freq: pd.Series, sset: str) -> tuple[pd.Series, str]:
-    """Per-topic threshold Series + a human-readable scheme description, from the set's
-    rollup config: {scheme: flat, threshold_pct: N} or {scheme: binned, thresholds: [...]}."""
-    if not rollup_cfg or rollup_cfg.get("scheme") is None:
-        raise ToolkitError(
-            f"config.yaml topics.sets.{sset}.rollup needs a scheme: "
-            f"{{scheme: flat, threshold_pct: N}} or {{scheme: binned, thresholds: [...]}}.")
-    scheme = rollup_cfg["scheme"]
-    if scheme == "flat":
-        pct0 = rollup_cfg.get("threshold_pct")
-        if pct0 is None:
-            raise ToolkitError(f"topics.sets.{sset}.rollup: scheme 'flat' needs threshold_pct.")
-        return flat_thresholds(freq, float(pct0)), f"flat {float(pct0):g}%"
-    if scheme == "binned":
-        bars = rollup_cfg.get("thresholds")
-        if not bars:
-            raise ToolkitError(f"topics.sets.{sset}.rollup: scheme 'binned' needs a thresholds list.")
-        return (freq_width_thresholds(freq, bars),
-                f"freq-width-binned {min(bars):g}-{max(bars):g}% ({len(bars)} bins)")
-    raise ToolkitError(f"Unknown rollup scheme {scheme!r} for set '{sset}'; "
-                       f"expected 'flat' or 'binned'.")
-
-
 def run_topics_rollup(project: Project, set_name: str | None = None) -> pd.DataFrame:
     cfg = load_step_config(project, STEP)
     require(cfg, ["score_values"], STEP)
@@ -78,10 +56,9 @@ def run_topics_rollup(project: Project, set_name: str | None = None) -> pd.DataF
     sset = tset.name
     tids = tset.ids
     name_by_id = {t["id"]: t["name"] for t in tset.topics}
-    _, entry = resolve_set(project, cfg, sset)
 
     counts, pct, freq, n_clips, n_sessions = pooled_shares(project, cfg, tset)
-    thr_by_topic, scheme_desc = scheme_thresholds(entry.get("rollup"), freq, sset)
+    thr_by_topic = tset.rollup.thresholds(freq)
     tagged = pct.ge(thr_by_topic, axis=1)
 
     # --- long: narrator x topic (full record; filter tagged==True for the tags) ------------
@@ -115,7 +92,7 @@ def run_topics_rollup(project: Project, set_name: str | None = None) -> pd.DataF
 
     # --- summary -----------------------------------------------------------------------------
     n_int = len(wide)
-    print(f"Topic rollup · set '{sset}' · thresholds: {scheme_desc}")
+    print(f"Topic rollup · set '{sset}' · {tset.rollup.describe()}")
     print(f"{n_int} interviews ({int(n_sessions.sum())} sessions / {int(n_clips.sum())} clips), "
           f"clips/interview {int(n_clips.min())}–{int(n_clips.max())} "
           f"(median {int(n_clips.median())})")

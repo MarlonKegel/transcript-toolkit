@@ -37,6 +37,25 @@ def _project(args):
     return find_project(getattr(args, "project", None))
 
 
+def _compare_flags(parser: argparse.ArgumentParser) -> None:
+    """What the two `thresholds` decision aids should draw. Omit them all and the aid uses what
+    advanced/<step>.yaml says under `compare`."""
+    parser.add_argument("--bins", metavar="N,N", default=None,
+                        help="how many rarity bands to compare, e.g. --bins 5,9")
+    parser.add_argument("--ranges", metavar="LO-HI,LO-HI", default=None,
+                        help="lowest-highest bar per range to compare, e.g. --ranges 10-30,20-40")
+    parser.add_argument("--flat", metavar="PCT,PCT", default=None,
+                        help="the single bars to compare for the flat method, e.g. --flat 20,30,40")
+
+
+def _compare(args) -> dict:
+    from .core import thresholds
+
+    return {"bins": thresholds.parse_bins(args.bins) if args.bins else None,
+            "ranges": thresholds.parse_ranges(args.ranges) if args.ranges else None,
+            "flat": thresholds.parse_flat(args.flat) if args.flat else None}
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="toolkit",
@@ -167,8 +186,10 @@ def build_parser() -> argparse.ArgumentParser:
     pt.add_argument("--set", dest="set_name", default=None, help=SET_HELP)
     pt.set_defaults(func=cmd_topics_rollup)
 
-    pt = tsub.add_parser("thresholds", parents=[common], help="decision aid for the rollup thresholds")
+    pt = tsub.add_parser("thresholds", parents=[common],
+                         help="compare rollup rules before choosing one (decision aid)")
     pt.add_argument("--set", dest="set_name", default=None, help=SET_HELP)
+    _compare_flags(pt)
     pt.set_defaults(func=cmd_topics_thresholds)
 
     pt = tsub.add_parser("annotate", parents=[common], help="re-render the per-interview review pages")
@@ -203,7 +224,9 @@ def build_parser() -> argparse.ArgumentParser:
     pl = lsub.add_parser("rollup", parents=[common], help="clip tags -> interview tags (hybrid scheme)")
     pl.set_defaults(func=cmd_locations_rollup)
 
-    pl = lsub.add_parser("thresholds", parents=[common], help="decision aid for the rollup scheme")
+    pl = lsub.add_parser("thresholds", parents=[common],
+                         help="compare rollup rules before choosing one (decision aid)")
+    _compare_flags(pl)
     pl.set_defaults(func=cmd_locations_thresholds)
 
     pl = lsub.add_parser("annotate", parents=[common], help="re-render the review page")
@@ -407,7 +430,7 @@ def cmd_topics_rollup(args) -> None:
 def cmd_topics_thresholds(args) -> None:
     from .steps.topics import run_topics_thresholds
 
-    run_topics_thresholds(_project(args), set_name=args.set_name)
+    run_topics_thresholds(_project(args), set_name=args.set_name, **_compare(args))
 
 
 def cmd_topics_annotate(args) -> None:
@@ -447,7 +470,7 @@ def cmd_locations_rollup(args) -> None:
 def cmd_locations_thresholds(args) -> None:
     from .steps.locations import run_locations_thresholds
 
-    run_locations_thresholds(_project(args))
+    run_locations_thresholds(_project(args), **_compare(args))
 
 
 def cmd_locations_annotate(args) -> None:

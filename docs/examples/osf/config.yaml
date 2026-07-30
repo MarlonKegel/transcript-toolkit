@@ -25,19 +25,20 @@ topics:
   sets:
     collection:
       file: topics/collection.xlsx
-      rollup: { scheme: flat, threshold_pct: 30 }
+      rollup: { method: flat, threshold_pct: 30 }
     filter:
       file: topics/filter.xlsx
       # The filter set has its own rubric (stricter: tag only specific + substantive mentions).
       # Copy this folder's tag_filter.md into your workspace's prompts/ for this to resolve.
       prompt: tag_filter.md
-      # 36 sparse topics: a flat bar floods common topics or zeroes rare ones, so use rarity bins.
-      rollup: { scheme: binned, thresholds: [10, 12.5, 15, 17.5, 20, 22.5, 25, 27.5, 30] }
+      # 36 sparse topics: a flat bar floods common topics or zeroes rare ones, so use rarity
+      # bands — 9 of them here, because the list is long enough for a fine ladder to be read.
+      rollup: { method: freq_width, bins: 9, range: [10, 30] }
 
 locations:
   model: gpt-5.6-luna
   reasoning: medium
-  rollup: { thresholds: [10, 12.5, 15, 17.5, 20, 22.5, 25, 27.5, 30] }
+  rollup: { method: freq_width, bins: 9, range: [10, 30] }
   relabel:                              # canonicalize model spellings / merges
     Czech Republic: Czechia
     Macedonia: North Macedonia

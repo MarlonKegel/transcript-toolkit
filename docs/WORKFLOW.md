@@ -87,13 +87,14 @@ toolkit summarize
 #   drop your topic list into topics/ first (collection.xlsx or .csv: name, description)
 toolkit topics tag --set collection --demo    # → review page opens → tune the list → re-demo
 toolkit topics tag --set collection
-toolkit topics thresholds --set collection    # decision aid for the interview-rollup thresholds
-toolkit topics rollup --set collection        # clip tags → interview tags
+toolkit topics thresholds --set collection    # compare how tags could be decided → a review page
+toolkit topics rollup --set collection        # apply it: clip tags → interview tags
 
 toolkit locations tag --demo   # works out of the box (built-in region list)
 toolkit locations tag
 toolkit locations map          # regions → countries
-toolkit locations rollup       # clip tags → interview tags
+toolkit locations thresholds   # compare how tags could be decided → a review page
+toolkit locations rollup       # apply it: clip tags → interview tags
 
 toolkit export                 # one xlsx in outputs/ with everything so far
 toolkit status                 # where things stand, any time

@@ -158,15 +158,50 @@ def status_chip(text: str, colour: str) -> None:
 
 # --- the run status panel ------------------------------------------------------------------
 
-def run_status(on_fix: Callable[[str], None] | None = None,
+DONE_CARD = "w-full py-1 px-2 shadow-none bg-transparent"
+
+
+def note(seen: dict, job) -> None:
+    """Record that this status slot has now laid eyes on `job`.
+
+    A run that was already over the first time a slot looked at it is marked as announced. That
+    is what keeps the page from rebuilding itself forever: a slot sits inside the section it asks
+    to be rebuilt, so finishing a run replaces the slot, and the replacement would otherwise see
+    the same finished run and ask for another rebuild.
+    """
+    if seen["id"] != job.id:
+        seen.update(id=job.id, revision=-1)
+        if seen["fresh"] and not job.live:
+            seen["finished"] = job.id
+    seen["fresh"] = False
+
+
+def finished_now(seen: dict, job) -> bool:
+    """Whether this is the moment to tell the page a run has ended — once per run, per slot."""
+    if job.live or seen["finished"] == job.id:
+        return False
+    seen["finished"] = job.id
+    return True
+
+
+def run_status(titles=None, on_fix: Callable[[str], None] | None = None,
                on_finished: Callable[[], None] | None = None, unit: str = "") -> None:
     """What the command that was just started is doing, drawn where it was started from.
 
+    `titles` is which runs this slot answers for — a page puts one under each thing it can
+    start, so the state always appears under the button that was pressed rather than at some
+    fixed place on the page. None means any run, for a page with only one.
+
     It reads the job off the server, so it is the same panel whether the run started a second
-    ago in this tab or an hour ago in a tab that has since been closed. Its output is not here:
-    that is the Terminal Viewer at the foot of the page.
+    ago in this tab or an hour ago in a tab that has since been closed. A finished run folds
+    back to a single line: the tick is worth keeping, the rest is not. Its output is never here
+    — that is the Terminal Viewer at the foot of the page.
     """
-    seen = {"id": None, "revision": -1, "finished": None}
+    # `fresh`: this slot has not seen a job yet. A slot now lives inside the section it asks to
+    # be rebuilt, so it is itself replaced when a run finishes — and the replacement must not
+    # announce that same finish again, or the page would rebuild itself forever.
+    seen = {"id": None, "revision": -1, "finished": None, "fresh": True}
+    wanted = None if titles is None else set(titles)
 
     with ui.card().classes("w-full") as card:
         header = ui.row().classes("items-center gap-2 w-full")
@@ -176,10 +211,13 @@ def run_status(on_fix: Callable[[str], None] | None = None,
 
     def redraw(job: jobs.Job) -> None:
         icon, colour, word = STATE_LOOK[job.state]
+        done = job.state == jobs.SUCCEEDED
+        card.classes(replace=DONE_CARD if done else "w-full")
         header.clear()
         with header:
-            ui.icon(icon).classes(colour)
-            ui.label(f"{job.title} — {word}").classes("font-medium break-words min-w-0")
+            ui.icon(icon).classes(colour).props("size=1.1rem" if done else "")
+            ui.label(f"{job.title} — {word}").classes(
+                "break-words min-w-0 " + ("text-sm opacity-70" if done else "font-medium"))
             ui.space()
             ui.label(f"{job.duration:.0f}s").classes("text-xs opacity-60 shrink-0")
             if job.live:
@@ -249,18 +287,16 @@ def run_status(on_fix: Callable[[str], None] | None = None,
 
     def tick() -> None:
         job = CONTEXT.jobs.current
-        card.set_visibility(job is not None)
-        if job is None:
+        mine = job is not None and (wanted is None or job.title in wanted)
+        card.set_visibility(mine)
+        if not mine:
             return
-        if seen["id"] != job.id:
-            seen.update(id=job.id, revision=-1)
+        note(seen, job)
         if job.revision != seen["revision"] or job.live or job.unanswered_question():
             seen["revision"] = job.revision
             redraw(job)
-        if not job.live and seen["finished"] != job.id:
-            seen["finished"] = job.id
-            if on_finished:                     # the page's own sections are now out of date
-                on_finished()
+        if finished_now(seen, job) and on_finished:
+            on_finished()                       # the page's own sections are now out of date
 
     async def _stop() -> None:
         try:

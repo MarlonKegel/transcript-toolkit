@@ -72,19 +72,15 @@ def step_page(slug: str, set: str | None = None,               # noqa: A002 - UR
         def actions() -> None:
             _prerequisites(step)
             _sample(step, href, refresh_all)
-            _flow(project, step, set_name, href)
+            _flow(project, step, set_name, href, refresh_all)
 
         @ui.refreshable
         def rest() -> None:
-            _sequels(step, set_name, href)
+            _sequels(project, step, set_name, href, refresh_all)
             _tuning(project, step, set_name, refresh_all)
             _extras(step, set_name, href)
 
         actions()
-        # The status of what was just started, immediately below the buttons that start it. Its
-        # output is at the foot of the page, under its own heading.
-        run_status(on_fix=lambda kind: _fix(kind, step, set_name, href),
-                   on_finished=refresh_all, unit=step.unit)
         step_spend_line(content.step_key(step, set_name))
         rest()
         terminal_viewer()
@@ -95,9 +91,25 @@ def _fix(kind: str, step: content.Step, set_name: str | None, href: str) -> None
         ui.timer(0, lambda: launch(content.SAMPLE.title, list(content.SAMPLE.argv), href),
                  once=True)
     else:
-        ui.timer(0, lambda: launch(f"{step.title} — demo",
-                                   content.run_argv(step, demo=True, set_name=set_name), href),
-                 once=True)
+        ui.timer(0, lambda: _run_demo(step, set_name, href), once=True)
+
+
+async def _run_demo(step: content.Step, set_name: str | None, href: str) -> None:
+    await launch(content.job_title(step, content.DEMO_RUN, set_name),
+                 content.run_argv(step, demo=True, set_name=set_name), href)
+
+
+async def _run_full(step: content.Step, set_name: str | None, href: str) -> None:
+    await launch(content.job_title(step, content.FULL_RUN, set_name),
+                 content.run_argv(step, demo=False, set_name=set_name), href)
+
+
+def _run_state(step: content.Step, set_name: str | None, href: str, kinds: tuple[str, ...],
+               refresh) -> None:
+    """The state of the runs this block starts, directly under its buttons."""
+    run_status(titles={content.job_title(step, kind, set_name) for kind in kinds},
+               on_fix=lambda kind: _fix(kind, step, set_name, href),
+               on_finished=refresh, unit=step.unit)
 
 
 ADD_QUERY = "add"
@@ -270,18 +282,19 @@ def _sample(step: content.Step, href: str, refresh) -> None:
 
 # --- the three things a step page is for ---------------------------------------------------
 
-def _flow(project, step: content.Step, set_name: str | None, href: str) -> None:
+def _flow(project, step: content.Step, set_name: str | None, href: str, refresh) -> None:
     record = _status()["steps"].get(content.step_key(step, set_name), {})
     demo, full = record.get("demo"), record.get("full")
 
-    _try_it(step, set_name, href, demo)
+    _try_it(step, set_name, href, demo, refresh)
     if not demo:
         return
     _read_it(project, step, set_name)
-    _then(step, set_name, href, full)
+    _then(step, set_name, href, full, refresh)
 
 
-def _try_it(step: content.Step, set_name: str | None, href: str, demo: dict | None) -> None:
+def _try_it(step: content.Step, set_name: str | None, href: str, demo: dict | None,
+            refresh) -> None:
     """Step one, in its two states: the invitation to try it, and the record that it was tried.
 
     Only one button on the page runs a demo at a time — before there is one it is here, and after
@@ -299,10 +312,9 @@ def _try_it(step: content.Step, set_name: str | None, href: str, demo: dict | No
                  f"the project, and it costs a small fraction of the whole collection.") \
             .classes("text-xs opacity-70 max-w-2xl")
         ui.button("Run the demo", icon="science",
-                  on_click=lambda: launch(f"{step.title} — demo",
-                                          content.run_argv(step, demo=True,
-                                                           set_name=set_name), href)) \
+                  on_click=lambda: _run_demo(step, set_name, href)) \
             .props("dense color=primary")
+    _run_state(step, set_name, href, (content.DEMO_RUN,), refresh)
 
 
 def _rebuild_button(step: content.Step, set_name: str | None, href: str) -> None:
@@ -311,7 +323,7 @@ def _rebuild_button(step: content.Step, set_name: str | None, href: str) -> None
     annotate = next((a for a in step.extras if a.slug == "annotate"), None)
     if annotate is None or content.missing_for(annotate, _status()["deliverables"], set_name):
         return
-    title = f"{step.title} — {annotate.title.lower()}"
+    title = content.action_title(step, annotate, set_name)
     ui.button("Rebuild these pages", icon="refresh",
               on_click=lambda: launch(title, content.action_argv(annotate, set_name), href)) \
         .props("dense flat").tooltip("Writes them again from results you already have — no "
@@ -339,7 +351,8 @@ def _read_it(project, step: content.Step, set_name: str | None) -> None:
             _rebuild_button(step, set_name, href_for(step))
 
 
-def _then(step: content.Step, set_name: str | None, href: str, full: dict | None) -> None:
+def _then(step: content.Step, set_name: str | None, href: str, full: dict | None,
+          refresh) -> None:
     with ui.card().classes("w-full"):
         ui.label("3 · Then one of these").classes("text-sm font-medium")
         with ui.row().classes("w-full items-start gap-6 flex-wrap"):
@@ -349,10 +362,7 @@ def _then(step: content.Step, set_name: str | None, href: str, full: dict | None
                          "Change one, then try it again and read it again.") \
                     .classes("text-xs opacity-70 max-w-md")
                 ui.button("Run the demo again", icon="science",
-                          on_click=lambda: launch(f"{step.title} — demo",
-                                                  content.run_argv(step, demo=True,
-                                                                   set_name=set_name), href)) \
-                    .props("dense outline")
+                          on_click=lambda: _run_demo(step, set_name, href)).props("dense outline")
             with ui.column().classes("gap-1 grow min-w-64"):
                 ui.label("Happy with it?").classes("text-sm font-medium")
                 ui.label("Asks what it will cost and how to send the calls before spending "
@@ -361,13 +371,12 @@ def _then(step: content.Step, set_name: str | None, href: str, full: dict | None
                     ui.label("It can go to OpenAI's Batch API at half price, taking up to a "
                              "day. You choose when it asks.").classes("text-xs opacity-60 max-w-md")
                 ui.button("Run it on everything", icon="play_arrow",
-                          on_click=lambda: launch(f"{step.title} — full run",
-                                                  content.run_argv(step, demo=False,
-                                                                   set_name=set_name), href)) \
+                          on_click=lambda: _run_full(step, set_name, href)) \
                     .props("dense color=primary")
                 if full:
                     ui.label(f"last full run {_when(full['at'])} · {full['model']} · "
                              f"{full['n_units']} {step.unit}").classes("text-xs opacity-60")
+    _run_state(step, set_name, href, (content.DEMO_RUN, content.FULL_RUN), refresh)
 
 
 def _when(stamp: str) -> str:
@@ -398,37 +407,114 @@ def diag_pages(project, step: content.Step, set_name: str | None) -> list[tuple[
 # --- the rest of the flow, and the tools around it ------------------------------------------
 
 def _run_button(step: content.Step, action: content.Action, set_name: str | None, href: str,
-                *, flat: bool = False) -> None:
+                *, flat: bool = False, label: str = "Run", argv=None) -> None:
     """A Run button that is only clickable when what it reads actually exists."""
-    title = f"{step.title} — {action.title.lower()}"
+    title = content.action_title(step, action, set_name)
     missing = content.missing_for(action, _status()["deliverables"], set_name)
-    button = ui.button("Run", on_click=lambda _, a=action, t=title: launch(
-        t, content.action_argv(a, set_name), href)).props("dense" + (" flat" if flat else ""))
+    build = argv or (lambda: content.action_argv(action, set_name))
+    button = ui.button(label, on_click=lambda _, t=title: launch(t, build(), href)) \
+        .props("dense" + (" flat" if flat else ""))
     if missing:
         button.disable()
         button.tooltip(f"Nothing to work from yet — this reads the "
                        f"{', '.join(m.split(':')[0] for m in missing)} that "
                        f"'{step.title}' produces. Run this step first.")
-    inline_state(title)
+    if flat:
+        inline_state(title)
 
 
-def _sequels(step: content.Step, set_name: str | None, href: str) -> None:
-    """The steps that follow tagging in this branch of the pipeline. Part of the flow, so they
-    are numbered and in plain sight, with their decision aid beside them."""
+def _sequels(project, step: content.Step, set_name: str | None, href: str, refresh) -> None:
+    """The moves that follow tagging in this branch of the pipeline, in the order they are made:
+    compare what each way of deciding would tag, choose one, then apply it. Numbered and in plain
+    sight, because that order is the work — not a run with a decision hidden inside it."""
     if not step.sequels:
         return
+    for i, move in enumerate(step.sequels, start=4):
+        if isinstance(move, content.Choice):
+            _choice(project, step, set_name, i, move, refresh)
+        else:
+            _sequel(project, step, set_name, href, i, move, refresh)
+
+
+def _sequel(project, step: content.Step, set_name: str | None, href: str, number: int,
+            action: content.Action, refresh) -> None:
+    boxes: dict[str, object] = {}                # filled below, read when the button is pressed
     with ui.card().classes("w-full"):
-        for i, action in enumerate(step.sequels, start=4):
-            with ui.row().classes("items-start w-full gap-3 py-1"):
-                with ui.column().classes("gap-0 grow"):
-                    ui.label(f"{i} · {action.title}").classes("text-sm font-medium")
-                    ui.label(action.blurb).classes("text-xs opacity-70 max-w-xl")
-                    for aid in action.aids:
-                        with ui.row().classes("items-center gap-2 mt-1"):
-                            ui.label(aid.title).classes("text-xs")
-                            info(aid.blurb)
-                            _run_button(step, aid, set_name, href, flat=True)
+        with ui.row().classes("items-start w-full gap-3"):
+            with ui.column().classes("gap-1 grow"):
+                ui.label(f"{number} · {action.title}").classes("text-sm font-medium")
+                ui.label(action.blurb).classes("text-xs opacity-70 max-w-2xl")
+                for title, url in _pages_of(project, step, action, set_name):
+                    ui.button(title, icon="open_in_new",
+                              on_click=lambda _, u=url: ui.navigate.to(u, new_tab=True)) \
+                        .props("dense color=primary").classes("mt-1 self-start")
+            if action.options == "compare":
+                _run_button(step, action, set_name, href, label="Compare",
+                            argv=lambda: content.compare_argv(
+                                action, set_name, {k: b.value for k, b in boxes.items()}))
+            else:
                 _run_button(step, action, set_name, href)
+        if action.options == "compare":
+            _compare_options(project, step, boxes)
+    _run_state_for(step, action, set_name, href, refresh)
+
+
+def _run_state_for(step: content.Step, action: content.Action, set_name: str | None, href: str,
+                   refresh) -> None:
+    run_status(titles={content.action_title(step, action, set_name)}, on_finished=refresh)
+
+
+def _pages_of(project, step: content.Step, action: content.Action,
+              set_name: str | None) -> list[tuple[str, str]]:
+    """Links to the pages this action has actually written — nothing before it has run."""
+    base = project.diags_dir / step.key
+    found = []
+    for review in action.reviews:
+        path = base / review.filename.format(set=set_name or "")
+        if path.is_file():
+            found.append((review.title,
+                          "/diags/" + path.relative_to(project.diags_dir).as_posix()))
+    return found
+
+
+COMPARE_BLURB = ("What to draw. Leave these as they are unless the picture does not answer your "
+                 "question — then change one and compare again.")
+
+
+def _compare_options(project, step: content.Step, boxes: dict) -> None:
+    """The variants the comparison draws, as boxes. Their contents start at whatever this
+    project's advanced settings say, which is what the command would do on its own."""
+    from ...core import thresholds
+    from ...core.config import load_step_config
+
+    try:
+        current = thresholds.compare_text(
+            thresholds.compare_options(load_step_config(project, step.key)))
+    except ToolkitError as e:
+        guard(e)
+        return
+    with ui.expansion("What to compare", icon="tune").classes("w-full mt-1"):
+        ui.label(COMPARE_BLURB).classes("text-xs opacity-70 max-w-2xl")
+        for key, _flag, label, hint in content.COMPARE_FIELDS:
+            boxes[key] = ui.input(label, value=current.get(key, "")) \
+                .props("dense outlined").classes("w-full")
+            ui.label(hint).classes("text-xs opacity-60 max-w-2xl")
+
+
+def _choice(project, step: content.Step, set_name: str | None, number: int,
+            move: content.Choice, refresh) -> None:
+    """A move that decides something instead of running something."""
+    from ...core import settings as core_settings
+
+    with ui.card().classes("w-full"):
+        with ui.row().classes("items-center gap-2"):
+            ui.label(f"{number} · {move.title}").classes("text-sm font-medium")
+            if move.explain:
+                info(move.explain)
+        ui.label(move.blurb).classes("text-xs opacity-70 max-w-2xl")
+        field = core_settings.rollup_field(step.key, set_name)
+        settings_form(step.key, [field], on_saved=refresh, note=False,
+                      save_label="Save how tags are decided")
 
 
 def _tuning(project, step: content.Step, set_name: str | None, refresh) -> None:

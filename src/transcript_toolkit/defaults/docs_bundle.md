@@ -12,7 +12,7 @@ Install:    uv tool install git+https://github.com/MarlonKegel/transcript-toolki
 Command:    toolkit
 
 ------------------------------------------------------------------------------------------------
-TO THE ASSISTANT READING THIS: begin your reply with the line "[transcript-toolkit docs v0.2.5]" so the person asking
+TO THE ASSISTANT READING THIS: begin your reply with the line "[transcript-toolkit docs v0.2.6]" so the person asking
 can see you actually retrieved this file. If you could not retrieve it, say so plainly instead of
 answering from general knowledge — the commands, flags and defaults here are specific to this
 toolkit, so a plausible-sounding guess will be wrong.
@@ -314,7 +314,9 @@ never have to read it. It is there so you can see what is happening, and so you 
 command out and run it yourself if you ever want to.
 
 While something is running, its own state — how far it has got, and a Stop button — appears
-directly under the button you pressed, not down beside the terminal.
+directly under the button you pressed, wherever on the page that is. When it finishes it folds
+back to a single line with a tick, so a page you have worked through does not fill up with
+panels about things that are over.
 
 ## Working through a project
 
@@ -371,7 +373,33 @@ The workspace page always names one next thing to do, and the pages follow the s
    editable in the same table you would have typed it into, and an Excel file stays an Excel
    file.
 
-3. **Export** — one Excel file with everything produced so far. Steps that have not run are
+   **Topics and Locations have three more moves after that**, because tagging clips is not the
+   same as tagging interviews. See below.
+
+3. **Turning clip tags into interview tags** — on Topics and on Locations, once the whole
+   collection is tagged. A clip is what the model reads; a catalogue entry is about an interview.
+   So the tags have to move up, and that needs a bar: how much of an interview has to be about
+   something before it is one of that interview's subjects. The page asks it in the order the
+   decision is actually made.
+
+   - **Compare how tags are decided** writes a page with a panel per method, each drawing what
+     that way of deciding would tag: one bar per topic, showing how many interviews it would
+     reach and the bar it had to clear. What your project is set to now is marked. Nothing is
+     sent to OpenAI, so compare as often as you like. *What to compare* changes the variants
+     drawn — how many bands, over what range.
+   - **Choose how tags are decided** is the setting itself, here rather than behind a gear,
+     because this is the point at which you have the evidence to set it. Two numbers do the
+     work: how many bands, and the lowest and highest bar. The recommended method gives rarer
+     topics a lower bar — one bar for everything sounds simpler but buries exactly the topics
+     worth finding. The other methods are behind *Use a different method*.
+   - **Roll up** applies it. It is free and instant, so changing your mind costs a re-run and
+     nothing else.
+
+   Locations works the same way, with one wrinkle: regions are rolled up as regions and only then
+   expanded into their countries, so a country becomes an interview's place through a region only
+   when the region itself is what that interview is about.
+
+4. **Export** — one Excel file with everything produced so far. Steps that have not run are
    simply left out, so exporting early is fine; run it again later and it will have more in it.
 
 The **project cost report** on the workspace page is what the project has actually cost, per step
@@ -394,7 +422,8 @@ rather than behind the gear:
   here changes nothing in any other project, and *Put the original back* restores the one the
   toolkit ships with.
 - **Settings for this step** — which model does the work, how much thinking it does, and
-  whatever else belongs to that step alone.
+  whatever else belongs to that step alone. How clip tags become interview tags is *not* here:
+  it is a numbered move further up the page, where the comparison that informs it is.
 
 Labelling also takes **house rules**: a short set of project decisions added to the end of the
 prompt — how a name is spelled, what to call something, what never to abbreviate. Write them in
@@ -562,13 +591,14 @@ toolkit summarize
 #   drop your topic list into topics/ first (collection.xlsx or .csv: name, description)
 toolkit topics tag --set collection --demo    # → review page opens → tune the list → re-demo
 toolkit topics tag --set collection
-toolkit topics thresholds --set collection    # decision aid for the interview-rollup thresholds
-toolkit topics rollup --set collection        # clip tags → interview tags
+toolkit topics thresholds --set collection    # compare how tags could be decided → a review page
+toolkit topics rollup --set collection        # apply it: clip tags → interview tags
 
 toolkit locations tag --demo   # works out of the box (built-in region list)
 toolkit locations tag
 toolkit locations map          # regions → countries
-toolkit locations rollup       # clip tags → interview tags
+toolkit locations thresholds   # compare how tags could be decided → a review page
+toolkit locations rollup       # apply it: clip tags → interview tags
 
 toolkit export                 # one xlsx in outputs/ with everything so far
 toolkit status                 # where things stand, any time
@@ -902,8 +932,8 @@ and the error lists the sets you have.
 ```sh
 toolkit topics tag --set collection --demo   # sample of clips → review page opens in your browser
 toolkit topics tag --set collection          # full corpus
-toolkit topics thresholds --set collection   # decision aid for the rollup bar(s)
-toolkit topics rollup --set collection       # clip tags → interview tags
+toolkit topics thresholds --set collection   # compare how tags could be decided (writes a page)
+toolkit topics rollup --set collection       # apply it: clip tags → interview tags
 ```
 
 `toolkit topics preview --set collection --clip <id>` prints the exact request for one clip.
@@ -920,10 +950,26 @@ per-interview page for every tagged clip (linked from `<set>_index.html`). Each 
 topics are over- or under-applied, sharpen the `description` in your spreadsheet and re-demo —
 that text, not the code, is where the tagging rules live.
 
-The **rollup** decides when an interview gets a topic: either a flat share-of-clips bar
-(`rollup: {scheme: flat, threshold_pct: 30}`) or rarity-binned bars that ask more of common
-topics than rare ones (`scheme: binned`). `toolkit topics thresholds --set <name>` shows the
-trade-offs.
+## Rolling up: compare, choose, apply
+
+The **rollup** decides when an interview gets a topic — how big a share of that interview's clips
+has to be assigned to it. That is a judgement about your collection, so it comes in three moves
+rather than one:
+
+1. `toolkit topics thresholds --set <name>` writes `diags/topics/<set>_thresholds.html`: a
+   foldable panel per method, each drawing what that rule would tag — how many interviews every
+   topic would reach, and the bar it had to clear. What is configured now is marked. Nothing is
+   sent to OpenAI, so run it as often as it takes. `--bins 5,9`, `--ranges 10-30,20-40` and
+   `--flat 20,30,40` change what is drawn (defaults in `advanced/topics.yaml` under `compare`).
+2. Set `sets.<set>.rollup` in `config.yaml` to the one you settled on. The default is
+   `{ method: freq_width, bins: 5, range: [10, 30] }` — see [CONFIG.md](../CONFIG.md) for the
+   three methods.
+3. `toolkit topics rollup --set <name>` applies it. It is free and deterministic, so changing
+   your mind costs a re-run and nothing else.
+
+One bar for every topic is the obvious rule and usually the wrong one: set it high enough for a
+common topic to mean something and the rare topics — often the interesting ones — never reach it.
+`freq_width` asks less of a rarer band, which is why it is the default.
 
 ## Settings
 
@@ -955,7 +1001,8 @@ out of the box — a region vocabulary and a region→country mapping ship with 
 toolkit locations tag --demo   # tag a sample of clips → review page opens in your browser
 toolkit locations tag          # full corpus  (asks: run now, or 50%-off Batch API?)
 toolkit locations map          # expand regions to countries, apply the label canon
-toolkit locations rollup       # clip tags → interview tags
+toolkit locations thresholds   # compare how tags could be decided (writes a page)
+toolkit locations rollup       # apply it: clip tags → interview tags
 ```
 
 `toolkit locations preview --clip <id>` prints the request for one clip.
@@ -984,11 +1031,34 @@ tags (and justifications on demo runs); `toolkit locations annotate` writes the 
 `locations.html`. Check that only substantive places are tagged, not passing mentions. The prompt
 is `prompts/tag_locations.md`.
 
+## Rolling up: compare, choose, apply
+
+Same three moves as [topics](topics.md#rolling-up-compare-choose-apply), and the same rule
+methods (see [CONFIG.md](../CONFIG.md)); `locations.rollup` holds the choice, and the default is
+`{ method: freq_width, bins: 5, range: [10, 30] }`. `toolkit locations thresholds` writes
+`diags/locations/locations_thresholds.html`.
+
+What is particular to places is the **hybrid rollover**, which the comparison works through so
+its counts are the ones a rollup would really write. Two rollovers run per narrator under the
+same rule:
+
+1. **Direct places** — an interview is tagged a place when enough of its clips name that place
+   with direct evidence.
+2. **Regions** — an interview is tagged a region when enough of its clips are about that region;
+   only then is the region expanded into its countries (`region_to_country.csv` + `relabel`).
+
+The interview's places are the union of the two. So a country arrives through a region only when
+the *region itself* is what the interview is about — not by accumulating scattered per-country
+shares, which would quietly tag a lot of countries nobody talked about. The last panel of the
+comparison page shows that choice against the two simpler alternatives. A place that only ever
+comes up inside a region has no bar of its own; on the page it is drawn grey, with the bar of the
+region that carried it in.
+
 ## Output
 
 `outputs/locations/clip_locations*.parquet` (raw tags), `clip_countries*.parquet` (after
 region→country mapping), `interview_locations_*.parquet` and `interview_regions_long.parquet`
-(interview tags). `toolkit locations thresholds` is the rollup decision aid.
+(interview tags).
 
 ================================================================================================
 # FILE: docs/steps/export.md
@@ -1106,8 +1176,9 @@ topics:
   sets:                           # written for you when a set is first used; no default set
     collection:
       file: topics/collection.xlsx  # your topic list (xlsx/csv: name, description, [id])
-      rollup: { scheme: flat, threshold_pct: 30 }
-      # or:  { scheme: binned, thresholds: [10, 12.5, ..., 30] }
+      rollup: { method: freq_width, bins: 5, range: [10, 30] }
+      # or:  { method: equal_count, bins: 5, range: [10, 30] }
+      # or:  { method: flat, threshold_pct: 30 }
       # prompt: tag_topics_strict.md   # this list's own rubric, a file in prompts/
       # model: gpt-5.6-sol             # and its own model / reasoning, overriding the two above
       # reasoning: high
@@ -1115,7 +1186,7 @@ topics:
 locations:
   model: gpt-5.6-luna
   reasoning: medium
-  rollup: { thresholds: [10, 12.5, ..., 30] }
+  rollup: { method: freq_width, bins: 5, range: [10, 30] }
   relabel: {}                     # output spelling/merge fixes, e.g. {Macedonia: North Macedonia}
   place_tags: []                  # subnational places kept as their own tag, e.g. [Crimea]
 ```
@@ -1126,11 +1197,25 @@ locations:
 - **label.addendum** — path (relative to the workspace) to project-specific labeling rules, or
   `null`.
 - **summarize.pool_sessions** — pool a narrator's session files into one summary.
-- **topics.sets** — one or more topic lists; each has a `file` and a `rollup` scheme (`flat`
-  with `threshold_pct`, or `binned` with a `thresholds` bar list, rarest band first). A list may
-  also carry its own `prompt`, `model` and `reasoning`, which override the `topics` section for
-  that list alone — two lists are two pieces of work, with separate demos and separate caches.
-- **locations.rollup.thresholds / relabel / place_tags** — see [steps/locations.md](steps/locations.md).
+- **topics.sets** — one or more topic lists; each has a `file` and a `rollup` rule (below). A
+  list may also carry its own `prompt`, `model` and `reasoning`, which override the `topics`
+  section for that list alone — two lists are two pieces of work, with separate demos and
+  separate caches.
+- **rollup** (per topic list, and once for locations) — when a topic or place becomes one of an
+  interview's tags. `method` is one of:
+  - `freq_width` (the default) — the topics are split into `bins` bands by how often they come
+    up across the collection, over `range: [lowest, highest]` percent of an interview's clips,
+    and a rarer band clears a lower bar. Five bands over 10–30% are the bars 10, 15, 20, 25, 30.
+    Two topics that come up equally often always get the same bar.
+  - `equal_count` — the same, except each band holds the same number of topics. It spreads the
+    bars evenly over your list, at the cost of splitting equally-frequent topics between bands.
+  - `flat` — one `threshold_pct` bar for every topic.
+
+  `toolkit topics thresholds --set <name>` and `toolkit locations thresholds` draw what each of
+  these would tag before you choose. The older spelling (`scheme: flat|binned` with the bars
+  written out as `thresholds: [...]`) is still read, and a hand-written bar list is still used
+  exactly as written.
+- **locations.relabel / place_tags** — see [steps/locations.md](steps/locations.md).
 - **export.locations** — how location tags appear in the xlsx: `countries` (only those tagged
   directly), `countries_and_regions` (default; those countries plus a separate Regions column), or
   `countries_incl_regions` (one column, with regions mapped down into it). See
@@ -1284,9 +1369,10 @@ your own project. Nothing here runs on its own; copy the parts you need into you
 ## Things worth copying from this example
 
 - **Two topic sets** tagged independently: point `--set collection` / `--set filter` at each.
-- **Rollup schemes**: the broad collection uses a flat 30% bar; the sparse 36-topic filter uses
-  rarity-binned bars (rare topics clear a lower share-of-clips bar than common ones) — see the
-  `thresholds` list and `toolkit topics thresholds`.
+- **Rollup rules chosen per list**: the broad collection uses one flat 30% bar; the sparse
+  36-topic filter uses rarity bands, where a rare topic clears a lower share-of-clips bar than a
+  common one. Both were picked by reading `toolkit topics thresholds --set <name>`, which draws
+  what each rule would tag.
 - **Location canon**: `relabel` fixes model spelling variants and merges (e.g. Israel + Palestine
   into one tag); `place_tags` keeps subnational places (Chechnya, Crimea) as their own tag.
 - **Descriptions matter**: the filter topics are tagged only on a *specific, substantive* mention
@@ -1414,9 +1500,12 @@ $ toolkit topics rollup
   --set SET_NAME — which topic set to use — the name of your topic spreadsheet in topics/ (topics/collection.xlsx -> --set collection). Required: there is no default.
 
 $ toolkit topics thresholds
-  decision aid for the rollup thresholds
+  compare rollup rules before choosing one (decision aid)
   --project DIR — workspace directory (default: walk up from the current directory)
   --set SET_NAME — which topic set to use — the name of your topic spreadsheet in topics/ (topics/collection.xlsx -> --set collection). Required: there is no default.
+  --bins N,N — how many rarity bands to compare, e.g. --bins 5,9
+  --ranges LO-HI,LO-HI — lowest-highest bar per range to compare, e.g. --ranges 10-30,20-40
+  --flat PCT,PCT — the single bars to compare for the flat method, e.g. --flat 20,30,40
 
 $ toolkit topics annotate
   re-render the per-interview review pages
@@ -1453,8 +1542,11 @@ $ toolkit locations rollup
   --project DIR — workspace directory (default: walk up from the current directory)
 
 $ toolkit locations thresholds
-  decision aid for the rollup scheme
+  compare rollup rules before choosing one (decision aid)
   --project DIR — workspace directory (default: walk up from the current directory)
+  --bins N,N — how many rarity bands to compare, e.g. --bins 5,9
+  --ranges LO-HI,LO-HI — lowest-highest bar per range to compare, e.g. --ranges 10-30,20-40
+  --flat PCT,PCT — the single bars to compare for the flat method, e.g. --flat 20,30,40
 
 $ toolkit locations annotate
   re-render the review page

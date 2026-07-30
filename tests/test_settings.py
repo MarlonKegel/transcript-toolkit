@@ -87,7 +87,8 @@ EVERY_KIND = [
     ("summarize.pool_sessions", False),
     ("import.interviewer_labels", ["Q", "Q1", "Q2"]),
     ("import.other_labels", []),
-    ("locations.rollup.thresholds", [5, 7.5, 10]),
+    ("locations.rollup", {"method": "equal_count", "bins": 9, "range": [20, 40]}),
+    ("locations.rollup", {"method": "flat", "threshold_pct": 25}),
     ("locations.relabel", {"Czech Republic": "Czechia"}),
     ("locations.place_tags", ["Chechnya", "Crimea"]),
     ("label.addendum", "prompt_addendums/label_addendum.md"),
@@ -136,9 +137,9 @@ def test_a_setting_that_is_not_in_the_file_yet_is_added(project):
 
 def test_a_whole_missing_section_is_added(project):
     project.config_path.write_text("clip:\n  model: a\n")
-    settings.save(project, {"locations.rollup.thresholds": [10, 20]})
+    settings.save(project, {"locations.place_tags": ["Chechnya"]})
     assert yaml.safe_load(project.config_path.read_text()) == {
-        "clip": {"model": "a"}, "locations": {"rollup": {"thresholds": [10, 20]}}}
+        "clip": {"model": "a"}, "locations": {"place_tags": ["Chechnya"]}}
 
 
 def test_a_trailing_comment_stays_on_its_own_line(project):
@@ -220,3 +221,19 @@ def test_every_step_page_has_something_to_show(project):
     for step in ("clip", "label", "summarize", "topics", "locations", "export", "import"):
         assert settings.for_step(step), step
     assert settings.for_step(settings.PROJECT)
+
+
+def test_a_topic_lists_rollup_saves_before_the_list_has_ever_been_tagged(project):
+    """The scaffold ships `sets: {}`, and choosing how tags are decided is offered on the page
+    from the start. Writing under an empty flow mapping is not valid YAML, so the braces come
+    off — otherwise the save could only refuse."""
+    rule = {"method": "equal_count", "bins": 7, "range": [15, 35]}
+    settings.save(project, {"topics.sets.collection.rollup": rule})
+    loaded = yaml.safe_load(project.config_path.read_text())
+    assert loaded["topics"]["sets"] == {"collection": {"rollup": rule}}
+    assert loaded["topics"]["model"]                         # nothing else disturbed
+    for line in project.config_path.read_text().splitlines():
+        if "Filled in automatically" in line:
+            break
+    else:
+        raise AssertionError("the comments under `sets:` were lost")

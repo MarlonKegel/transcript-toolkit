@@ -152,7 +152,7 @@ def test_an_action_with_nothing_to_read_is_reported_as_unavailable():
 
 def test_per_set_actions_ask_about_their_own_set():
     topics = content.BY_SLUG["topics"]
-    rollup = next(a for a in topics.sequels if a.slug == "rollup")
+    rollup = next(a for a in content.runnable(topics) if a.slug == "rollup")
     assert content.missing_for(rollup, ["topics:collection"], "collection") == []
     assert content.missing_for(rollup, ["topics:other"], "collection") == ["topics:collection"]
 
@@ -164,10 +164,9 @@ def test_every_action_that_reads_a_deliverable_declares_it():
                        ("locations", "map"), ("locations", "rollup"), ("locations", "annotate"),
                        ("locations", "thresholds"), ("label", "preview")}
     for step in content.STEPS:
-        for action in (*step.sequels, *step.extras):
-            for one in (action, *action.aids):
-                if (step.slug, one.slug) in reads_something:
-                    assert one.needs, f"{step.slug} {one.slug} declares no prerequisite"
+        for action in content.runnable(step):
+            if (step.slug, action.slug) in reads_something:
+                assert action.needs, f"{step.slug} {action.slug} declares no prerequisite"
 
 
 def test_the_things_nobody_needs_are_out_of_the_way():
@@ -182,10 +181,23 @@ def test_the_things_nobody_needs_are_out_of_the_way():
     assert "survey" in [a.slug for a in locations.extras]
 
 
-def test_a_threshold_aid_sits_with_the_rollup_it_informs():
-    """Picking a threshold is a decision made while rolling up, so the aid belongs beside that
-    button rather than in a list of other things the step can do."""
+def test_rolling_up_is_compare_then_choose_then_apply():
+    """The order is the work. Comparing what each way of deciding would tag comes first, then
+    choosing one, and only then applying it — a rollup with the decision buried inside it is the
+    thing this replaced."""
     for slug in ("topics", "locations"):
-        rollup = next(a for a in content.BY_SLUG[slug].sequels if a.slug == "rollup")
-        assert [aid.slug for aid in rollup.aids] == ["thresholds"]
+        moves = content.BY_SLUG[slug].sequels
+        order = [m.setting if isinstance(m, content.Choice) else m.slug for m in moves]
+        assert order[-3:] == ["thresholds", "rollup", "rollup"]
+        compare = next(m for m in moves if getattr(m, "slug", "") == "thresholds")
+        assert compare.reviews and compare.options == "compare"
         assert "thresholds" not in [a.slug for a in content.BY_SLUG[slug].extras]
+
+
+def test_the_comparison_leaves_a_page_to_read():
+    """A decision aid whose whole output is a line in the terminal is not one."""
+    for slug in ("topics", "locations"):
+        compare = next(m for m in content.BY_SLUG[slug].sequels
+                       if getattr(m, "slug", "") == "thresholds")
+        assert [r.filename for r in compare.reviews] == \
+            [f"{'{set}' if slug == 'topics' else slug}_thresholds.html"]

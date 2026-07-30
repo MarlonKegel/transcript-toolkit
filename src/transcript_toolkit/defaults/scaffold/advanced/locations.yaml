@@ -11,6 +11,13 @@ demo_seed: 0
 poll_interval_s: 4
 max_total_wait_s: 600          # give up on one stuck call; re-run resumes free
 
+# What `toolkit locations thresholds` draws, per rollup method. A run can override any of these
+# with --bins / --ranges / --flat.
+compare:
+  bins: [5, 9]                    # how many rarity bands, for the two binned methods
+  ranges: [[10, 30], [20, 40]]    # lowest and highest bar, per range compared
+  flat: [20, 30, 40]              # the single bars compared for the flat method
+
 # `toolkit locations survey` (optional offline NER pass; needs `pip install transcript-toolkit[survey]`
 # plus the spaCy model and a GeoNames dump — see docs/steps/locations.md).
 survey:

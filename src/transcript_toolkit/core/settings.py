@@ -63,7 +63,6 @@ FIELDS: tuple[Field, ...] = (
 
     Field("locations.model", "Model", MODEL, "locations"),
     Field("locations.reasoning", "Thinking effort", CHOICE, "locations", REASONING_LEVELS),
-    Field("locations.rollup.thresholds", "Region rollup bars", NUMBERS, "locations"),
     Field("locations.relabel", "Spellings to standardise", PAIRS, "locations"),
     Field("locations.place_tags", "Places tagged in their own right", WORDS, "locations"),
 
@@ -75,6 +74,22 @@ BY_PATH = {f.path: f for f in FIELDS}
 
 def for_step(step: str) -> list[Field]:
     return [f for f in FIELDS if f.step == step]
+
+
+# The rollup rule is not edited beside a step's model and thinking effort: it is the last move of
+# the step's own flow, chosen after looking at what each rule would tag. So it is a field the
+# pages ask for by name rather than one `for_step` hands out.
+ROLLUP_LABEL = "How tags are decided"
+
+LOCATIONS_ROLLUP = Field("locations.rollup", ROLLUP_LABEL, ROLLUP, "locations")
+
+
+def rollup_field(step: str, set_name: str | None = None) -> Field:
+    """Where this step keeps its rollup rule. Topics keeps one per topic list, because two lists
+    are two pieces of work and a coarse list has no business dictating a fine one's bar."""
+    if step == "topics":
+        return Field(f"topics.sets.{set_name}.rollup", ROLLUP_LABEL, ROLLUP, "topics")
+    return LOCATIONS_ROLLUP
 
 
 def set_fields(set_name: str) -> list[Field]:
@@ -89,7 +104,6 @@ def set_fields(set_name: str) -> list[Field]:
         Field(f"{base}.model", "Model", MODEL, "topics", fallback="topics.model"),
         Field(f"{base}.reasoning", "Thinking effort", CHOICE, "topics", REASONING_LEVELS,
               fallback="topics.reasoning"),
-        Field(f"{base}.rollup", "How clip topics become interview topics", ROLLUP, "topics"),
     ]
 
 
@@ -256,6 +270,19 @@ def _insert(lines: list[str], lo: int, hi: int, keys: list[str], value, indent: 
     return lines[:hi] + _new_block(keys, value, indent) + lines[hi:]
 
 
+def _open_up(lines: list[str], at: int) -> None:
+    """`sets: {}` -> `sets:`, so something can be written underneath it.
+
+    The scaffold ships an empty mapping wherever the toolkit fills a section in later. Written as
+    `{}` it takes a value on its own line, and an indented block under it is not valid YAML —
+    which is what emptying the braces makes it again. Any comment on the line stays.
+    """
+    head, rest = lines[at].split(":", 1)
+    body, comment = _split_comment(rest)
+    if body.strip() == "{}":
+        lines[at] = f"{head}:" + (f"    {comment.strip()}" if comment.strip() else "")
+
+
 def set_value(text: str, path: str, value) -> str:
     """config.yaml with one setting changed and everything else, comments included, as it was."""
     lines = text.split("\n")
@@ -268,6 +295,7 @@ def set_value(text: str, path: str, value) -> str:
             return "\n".join(_insert(lines, lo, hi, keys[depth:], value, indent))
         if depth == len(keys) - 1:
             return "\n".join(_replace(lines, at, indent, value))
+        _open_up(lines, at)
         lo, hi = at + 1, _block_end(lines, at, indent)
     raise ToolkitError(f"Nothing to change for {path}.")
 

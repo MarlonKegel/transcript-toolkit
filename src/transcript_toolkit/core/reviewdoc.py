@@ -73,6 +73,22 @@ a { color:var(--accent); }
 pre { background:var(--bg); border:1px solid var(--line); border-radius:6px;
   padding:.75rem 1rem; font-size:.82rem; line-height:1.5;
   white-space:pre-wrap; overflow-wrap:anywhere; }
+/* Foldable panels: a long page of alternatives, with only the one you are on open. */
+details { border:1px solid var(--line); border-radius:8px; background:var(--card);
+  margin:0 0 .75rem; padding:0 1rem; }
+details[open] { padding-bottom:1rem; }
+summary { cursor:pointer; padding:.75rem 0; font-weight:650; font-size:1.02rem;
+  list-style-position:outside; }
+summary .meta { font-weight:400; }
+details .lead { color:var(--muted); font-size:.88rem; margin:.25rem 0 .75rem; max-width:60ch; }
+.tag { display:inline-block; border-radius:4px; font-size:.7rem; font-weight:700;
+  padding:.05em .45em; margin-left:.5rem; color:#fff; background:var(--score);
+  vertical-align:middle; letter-spacing:.02em; }
+.tag.now { background:var(--q); }
+/* Figures are wide: let one scroll inside itself rather than the whole page sideways. */
+.figure { overflow-x:auto; margin:.5rem 0 0; }
+.figure img { display:block; max-width:100%; height:auto; border-radius:6px;
+  background:#fff; }
 """
 
 
@@ -118,6 +134,30 @@ def para(idx: int, ts: str, role: str, speech: str) -> str:
     ts_html = f'<span class="ts">{esc(ts)}</span>' if ts else ""
     return (f'<p class="para"><span class="idx">{idx}</span>'
             f'{ts_html}{role_badge(role)} {esc(speech)}</p>')
+
+
+def panel(title: str, body: str, *, lead: str = "", tag: str = "", tag_class: str = "",
+          open_: bool = False) -> str:
+    """A foldable section. Used where a page offers alternatives to compare: all of them are on
+    the page, but only the one being looked at takes up room."""
+    chip = f'<span class="tag {tag_class}">{esc(tag)}</span>' if tag else ""
+    intro = f'<p class="lead">{esc(lead)}</p>\n' if lead else ""
+    return (f'<details{" open" if open_ else ""}>\n<summary>{esc(title)}{chip}</summary>\n'
+            f"{intro}{body}\n</details>")
+
+
+def figure(src: str, alt: str) -> str:
+    """A generated plot, scrolling inside its own box on a narrow screen."""
+    return f'<div class="figure"><img src="{esc(src)}" alt="{esc(alt)}"></div>'
+
+
+def table(headers: list[str], rows: list[list[str]], numeric: set[int] = frozenset()) -> str:
+    """A plain table. `numeric` is the column indexes to right-align."""
+    def cells(values, tag: str) -> str:
+        return "".join(f'<{tag}{" class=\"num\"" if i in numeric else ""}>{esc(v)}</{tag}>'
+                       for i, v in enumerate(values))
+    body = "\n".join(f"<tr>{cells(r, 'td')}</tr>" for r in rows)
+    return f"<table>\n<tr>{cells(headers, 'th')}</tr>\n{body}\n</table>"
 
 
 def write_index(path: Path, title: str, entries: list[tuple[str, str, str]]) -> Path:
