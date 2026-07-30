@@ -436,3 +436,59 @@ def test_the_region_vocabulary_is_editable_in_the_app(server):
     _, body = get(server, "/step/locations")
     assert "The regions the model may use" in body
     assert "Eastern Europe" in body and "Save these regions" in body
+
+
+def test_a_run_that_would_do_nothing_is_greyed_out_and_says_why(server, workspace):
+    """Pressing Run and having nothing happen is what makes people wonder whether it worked.
+    Every call is cached, so the toolkit would re-run happily and change nothing — the button
+    says so instead, and the way to re-make the review pages is still there."""
+    from transcript_toolkit.state import record_demo, record_full
+    from transcript_toolkit.steps.freshness import current_fingerprint
+
+    _, before = get(server, "/step/clip")
+    assert "already run on the whole collection" not in before
+
+    was = workspace.state_path.read_text() if workspace.state_path.exists() else None
+    now = current_fingerprint(workspace, "clip")
+    out = workspace.outputs_dir / "clips"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "clips.parquet").write_text("x")
+    record_demo(workspace, "clip", now, units=["a"],
+                diag=str(workspace.diags_dir / "clip"))
+    record_full(workspace, "clip", now, model="m", n_units=99)
+    try:
+        _, body = get(server, "/step/clip")
+        assert "already run on the whole collection" in body     # Run it on everything
+        assert "already run on these interviews" in body         # Run the demo again
+        assert "Rebuild these pages" in body
+    finally:
+        (out / "clips.parquet").unlink()
+        if was is None:
+            workspace.state_path.unlink(missing_ok=True)
+        else:
+            workspace.state_path.write_text(was)
+
+
+def test_more_transcripts_than_the_last_run_covered_keeps_the_button_live(server, workspace):
+    """Nothing about the instructions changed, so the fingerprint still matches — but there are
+    interviews nobody has clipped, and calling that done would leave them out."""
+    from transcript_toolkit.state import record_demo, record_full
+    from transcript_toolkit.steps.freshness import current_fingerprint
+
+    was = workspace.state_path.read_text() if workspace.state_path.exists() else None
+    now = current_fingerprint(workspace, "clip")
+    out = workspace.outputs_dir / "clips"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "clips.parquet").write_text("x")
+    record_demo(workspace, "clip", now, units=["a"], diag=str(workspace.diags_dir / "clip"))
+    record_full(workspace, "clip", now, model="m", n_units=1)
+    try:
+        _, body = get(server, "/step/clip")
+        assert "already run on the whole collection" not in body
+        assert "more in the collection now than that run covered" in body
+    finally:
+        (out / "clips.parquet").unlink()
+        if was is None:
+            workspace.state_path.unlink(missing_ok=True)
+        else:
+            workspace.state_path.write_text(was)

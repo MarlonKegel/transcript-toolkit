@@ -301,19 +301,65 @@ def _sample(step: content.Step, href: str, refresh) -> None:
 
 # --- the three things a step page is for ---------------------------------------------------
 
+DONE_DEMO = ("It has already run on these {unit}, and nothing that would change the answer has "
+             "been edited since — the prompt, the model and this step's settings are all as they "
+             "were. Running it again would send the same calls and get the same result back.\n\n"
+             "Change something below and this comes back.")
+
+DONE_FULL = ("It has already run on the whole collection, and nothing that would change the "
+             "answer has been edited since — the prompt, the model and this step's settings are "
+             "all as they were. Running it again would send nothing and cost nothing.\n\n"
+             "To re-make the review pages from these results, use 'Rebuild these pages'. To get "
+             "different results, change something below first.")
+
+MORE_TO_DO = ("The last full run covered {covered} {unit}; there are {units} now. Running it "
+              "again does the new ones only — the rest are already paid for.")
+
+
+def _freshness(project, step: content.Step, set_name: str | None) -> dict:
+    """Whether running this step again would produce anything new (steps/freshness.py)."""
+    from ...steps.freshness import freshness
+
+    try:
+        return freshness(project, step.key, set_name)
+    except (ToolkitError, OSError):
+        return {"demo": "none", "full": "none"}
+
+
 def _flow(project, step: content.Step, set_name: str | None, href: str, refresh) -> None:
     record = _status()["steps"].get(content.step_key(step, set_name), {})
     demo, full = record.get("demo"), record.get("full")
+    fresh = _freshness(project, step, set_name)
 
-    _try_it(step, set_name, href, demo, refresh)
+    _try_it(step, set_name, href, demo, fresh, refresh)
     if not demo:
         return
     _read_it(project, step, set_name)
-    _then(step, set_name, href, full, refresh)
+    _then(step, set_name, href, full, fresh, refresh)
+
+
+def _run_again_button(label: str, step: content.Step, set_name: str | None, href: str, *,
+                      full: bool, state: str, props: str) -> None:
+    """A Run button that says so when pressing it would achieve nothing.
+
+    The toolkit would happily re-run: every call is cached, so it would cost nothing and change
+    nothing. But a button that looks live and then does nothing is the thing that makes people
+    wonder whether it worked, so it is disabled and the reason is on it.
+    """
+    from ...steps import freshness as fresh_mod
+
+    button = ui.button(label, icon="play_arrow" if full else "science",
+                       on_click=(lambda: _run_full(step, set_name, href)) if full
+                       else (lambda: _run_demo(step, set_name, href))).props(props)
+    if state == fresh_mod.CURRENT:
+        button.disable()
+        button.tooltip((DONE_FULL if full else DONE_DEMO).format(unit=step.unit))
+    elif state == fresh_mod.PARTIAL:
+        button.tooltip("Some of this is already done — running it again does only what is new.")
 
 
 def _try_it(step: content.Step, set_name: str | None, href: str, demo: dict | None,
-            refresh) -> None:
+            fresh: dict, refresh) -> None:
     """Step one, in its two states: the invitation to try it, and the record that it was tried.
 
     Only one button on the page runs a demo at a time — before there is one it is here, and after
@@ -330,9 +376,8 @@ def _try_it(step: content.Step, set_name: str | None, href: str, demo: dict | No
         ui.label(f"Runs on a few {step.unit} only and writes review pages. Nothing is saved to "
                  f"the project, and it costs a small fraction of the whole collection.") \
             .classes("text-xs opacity-70 max-w-2xl")
-        ui.button("Run the demo", icon="science",
-                  on_click=lambda: _run_demo(step, set_name, href)) \
-            .props("dense color=primary")
+        _run_again_button("Run the demo", step, set_name, href, full=False,
+                          state=fresh["demo"], props="dense color=primary")
     _run_state(step, set_name, href, (content.DEMO_RUN,), refresh)
 
 
@@ -371,7 +416,9 @@ def _read_it(project, step: content.Step, set_name: str | None) -> None:
 
 
 def _then(step: content.Step, set_name: str | None, href: str, full: dict | None,
-          refresh) -> None:
+          fresh: dict, refresh) -> None:
+    from ...steps import freshness as fresh_mod
+
     with ui.card().classes("w-full"):
         ui.label("3 · Then one of these").classes("text-sm font-medium")
         with ui.row().classes("w-full items-start gap-6 flex-wrap"):
@@ -380,8 +427,8 @@ def _then(step: content.Step, set_name: str | None, href: str, full: dict | None
                 ui.label("The prompt and the settings for this step are further down this page. "
                          "Change one, then try it again and read it again.") \
                     .classes("text-xs opacity-70 max-w-md")
-                ui.button("Run the demo again", icon="science",
-                          on_click=lambda: _run_demo(step, set_name, href)).props("dense outline")
+                _run_again_button("Run the demo again", step, set_name, href, full=False,
+                                  state=fresh["demo"], props="dense outline")
             with ui.column().classes("gap-1 grow min-w-64"):
                 ui.label("Happy with it?").classes("text-sm font-medium")
                 ui.label("Asks what it will cost and how to send the calls before spending "
@@ -389,12 +436,14 @@ def _then(step: content.Step, set_name: str | None, href: str, full: dict | None
                 if step.batch:
                     ui.label("It can go to OpenAI's Batch API at half price, taking up to a "
                              "day. You choose when it asks.").classes("text-xs opacity-60 max-w-md")
-                ui.button("Run it on everything", icon="play_arrow",
-                          on_click=lambda: _run_full(step, set_name, href)) \
-                    .props("dense color=primary")
+                _run_again_button("Run it on everything", step, set_name, href, full=True,
+                                  state=fresh["full"], props="dense color=primary")
                 if full:
                     ui.label(f"last full run {_when(full['at'])} · {full['model']} · "
                              f"{full['n_units']} {step.unit}").classes("text-xs opacity-60")
+                if fresh["full"] == fresh_mod.PARTIAL:
+                    ui.label("There is more in the collection now than that run covered.") \
+                        .classes("text-xs tk-caution max-w-md")
     _run_state(step, set_name, href, (content.DEMO_RUN, content.FULL_RUN), refresh)
 
 
@@ -425,9 +474,19 @@ def diag_pages(project, step: content.Step, set_name: str | None) -> list[tuple[
 
 # --- the rest of the flow, and the tools around it ------------------------------------------
 
+DONE_DERIVED = ("This has already run on what is there now, and nothing it reads has changed "
+                "since — so it would write the same files again. Change a setting, or run the "
+                "step it reads from, and this comes back.")
+
+
 def _run_button(step: content.Step, action: content.Action, set_name: str | None, href: str,
-                *, flat: bool = False, label: str = "Run", argv=None) -> None:
-    """A Run button that is only clickable when what it reads actually exists."""
+                *, flat: bool = False, label: str = "Run", argv=None, done: bool = False) -> None:
+    """A Run button that is only clickable when it would do something.
+
+    Two ways it would not: what it reads is not there yet, or it has already run over exactly
+    that and nothing has changed since. Both say so on the button rather than leaving it to be
+    found out by pressing.
+    """
     title = content.action_title(step, action, set_name)
     missing = content.missing_for(action, _status()["deliverables"], set_name)
     build = argv or (lambda: content.action_argv(action, set_name))
@@ -438,6 +497,9 @@ def _run_button(step: content.Step, action: content.Action, set_name: str | None
         button.tooltip(f"Nothing to work from yet — this reads the "
                        f"{', '.join(m.split(':')[0] for m in missing)} that "
                        f"'{step.title}' produces. Run this step first.")
+    elif done:
+        button.disable()
+        button.tooltip(DONE_DERIVED)
     if flat:
         inline_state(title)
 
@@ -472,16 +534,30 @@ def _sequel(project, step: content.Step, set_name: str | None, href: str, number
                               on_click=lambda _, u=url: ui.navigate.to(u, new_tab=True)) \
                         .props("dense color=primary").classes("mt-1 self-start")
             if action.options == "compare":
+                # Never disabled: comparing again with different variants is what it is for.
                 _run_button(step, action, set_name, href, label="Compare",
                             argv=lambda: content.compare_argv(
                                 action, set_name, {k: b.value for k, b in boxes.items()}))
             else:
-                _run_button(step, action, set_name, href)
+                _run_button(step, action, set_name, href,
+                            done=_already_done(project, step, action, set_name))
         if action.options == "compare":
             _compare_options(project, step, boxes)
         if action.setting == "rollup":
             _rollup_rule(step, set_name, refresh)
     _run_state_for(step, action, set_name, href, refresh)
+
+
+def _already_done(project, step: content.Step, action: content.Action,
+                  set_name: str | None) -> bool:
+    """Whether this free, deterministic move has already been made over exactly what is there."""
+    from ...steps import freshness as fresh_mod
+
+    try:
+        return fresh_mod.derived_state(project, step.key, action.slug, set_name) == \
+            fresh_mod.CURRENT
+    except (ToolkitError, OSError):
+        return False
 
 
 def _rollup_rule(step: content.Step, set_name: str | None, refresh) -> None:

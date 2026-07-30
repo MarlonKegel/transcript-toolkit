@@ -49,6 +49,28 @@ def gather_status(project: Project) -> dict:
     }
 
 
+FRESH_WORDS = {
+    ("current", "current"): "up to date",
+    ("current", "partial"): "more to run: the collection has grown",
+    ("current", "stale"): "run it on everything",
+    ("current", "none"): "run it on everything",
+    ("stale", "current"): "demo it again: the prompt or settings changed",
+    ("stale", "stale"): "demo it again: the prompt or settings changed",
+    ("stale", "partial"): "demo it again: the prompt or settings changed",
+    ("stale", "none"): "demo it again: the prompt or settings changed",
+}
+
+
+def _freshness(project: Project, step_key: str) -> str:
+    """Whether running this step again would do anything — the same answer the app greys its
+    buttons on (steps/freshness.py), said in words here."""
+    from .freshness import freshness
+
+    step, _, set_name = step_key.partition(":")
+    state = freshness(project, step, set_name or None)
+    return FRESH_WORDS.get((state["demo"], state["full"]), "demo it")
+
+
 def run_status(project: Project, as_json: bool = False) -> None:
     info = gather_status(project)
     if as_json:
@@ -68,7 +90,7 @@ def run_status(project: Project, as_json: bool = False) -> None:
             demo_txt = f"demo {demo['at'][:10]}" if demo else "no demo"
             full_txt = (f"full {full['at'][:10]} ({full['model']}, {full['n_units']})"
                         if full else "no full run")
-            print(f"  {step_key:<16} {demo_txt:<20} {full_txt}")
+            print(f"  {step_key:<16} {demo_txt:<20} {full_txt:<38} {_freshness(project, step_key)}")
 
     print("\nPrompts (edit these in prompts/, or restore one with "
           "`toolkit init --reset-prompt NAME`):")

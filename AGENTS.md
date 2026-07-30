@@ -41,6 +41,11 @@ created by `toolkit init` carries its own `AGENTS.md` with rules for assisting e
   documentation of every setting and the app shows them verbatim (`core/settings.py`), so a
   yaml load/dump would delete the user's documentation. `settings.save` re-reads what it wrote
   and refuses unless exactly the named keys changed.
+- **"Would running this again do anything?" is `steps/freshness.py`,** and it is the only place
+  allowed to answer. It compares a step's recorded fingerprint against what `_context` would
+  hash now, and it is what greys the app's Run buttons and what `toolkit status` prints. Being
+  wrong towards "done" is expensive (a half-tagged collection nobody notices), so it also checks
+  that the step's own output is still on disk and that the collection has not outgrown the run.
 - **One rollup rule, shared by topics and locations** (`core/thresholds.Rollup`). Config states a
   `method` plus `bins` and `range`; the bars are *derived* from those, never hand-listed. Both
   steps parse through `thresholds.parse` (which still reads the older `scheme:`/`thresholds:`

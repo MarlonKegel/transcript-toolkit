@@ -116,6 +116,17 @@ The workspace page always names one next thing to do, and the pages follow the s
    or a setting and it will ask for a fresh demo, because the old one no longer tells you what
    you would get.
 
+   **A button that would do nothing is greyed out and says so.** Once a step has run over
+   everything and nothing that would change the answer has been edited since, running it again
+   would send the same calls, get the same answers back out of the cache, and write the same
+   files. Hover it and it says that, and what to change to get a different result. Change
+   anything — the prompt, the model, a setting, the topic list — and it comes back by itself.
+   So do the things that stay useful: *Rebuild these pages* is never greyed out, and neither is
+   the comparison, which is meant to be run again with different numbers. Two cases deliberately
+   keep the button live: results you have deleted (re-running puts them back, and the calls are
+   already paid for), and a collection that has grown since the last full run — then it says
+   there is more to do, and running it again does only the new part.
+
    **Topics** needs a topic list first. Write one in the app — one row per topic, a name and a
    description of what belongs under it — or upload a spreadsheet you already have. What you
    type is kept as you go, and the first time you save it asks what to call the list. The

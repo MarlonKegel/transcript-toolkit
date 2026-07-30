@@ -916,7 +916,41 @@ Round 5 landed and he used it. Everything here came out of that.
 
 Tests 633 → 638. Version 0.2.8.
 
-## 24. Merging `app` into `main` — handover (2026-07-30)
+## 24. Feedback round 7 (2026-07-30) — a button that would do nothing says so
+
+*"'Run it on everything' should be greyed out when it was already run on everything and the
+prompt and settings haven't changed. Same for Run the Demo and any other button like this…
+Where it makes sense, please retain the rebuild or regenerate button."*
+
+**`steps/freshness.py`** answers it, and is the only place that does. A step already records the
+fingerprint of every demo and every full run — `cache_key` over model, reasoning and the exact
+instructions — so `current_fingerprint()` calls the step's own `_context` and compares. No second
+implementation to drift, no API calls.
+
+**Being wrong towards "done" is the expensive direction**, so two guards:
+
+- **The step's own output has to still be on disk** (`WRITES`). Deliberately *not* `toolkit
+  status`'s deliverable list: that reports `locations` once `clip_countries.parquet` exists, and
+  `locations map` writes that one command later — judging the tagging by it would call the step
+  undone straight after it was paid for. (`stage.ran_fully` documents the same trap.)
+- **The collection must not have outgrown the run.** The fingerprint says nothing about how many
+  interviews there are, so importing more leaves it matching while there is real work to do. A
+  full run whose `n_units` is below the current count is `partial`: button live, with a line
+  saying there is more.
+
+**What stays live on purpose**: *Rebuild these pages* (that is the fix for stale pages, and he
+asked for it explicitly), the threshold comparison (running it again with different numbers is
+what it is for), and anything whose results have been deleted.
+
+**The free deterministic moves** — `topics rollup`, `locations map`, `locations rollup` — are
+judged by mtime instead (`DERIVED`): output present and newer than everything it reads,
+config.yaml included. Any settings save re-enables them, which is the harmless direction.
+
+`toolkit status` gained the same column, so the CLI knows what the app knows.
+
+Tests 638 → 654. Version 0.2.9.
+
+## 25. Merging `app` into `main` — handover (2026-07-30)
 
 Marlon has judged the app good enough to ship and is presenting it shortly. This section is
 written for whoever does the merge, and is the one place that has to be read first.

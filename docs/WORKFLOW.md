@@ -97,7 +97,7 @@ toolkit locations thresholds   # compare how tags could be decided → a review 
 toolkit locations rollup       # apply it: clip tags → interview tags
 
 toolkit export                 # one xlsx in outputs/ with everything so far
-toolkit status                 # where things stand, any time
+toolkit status                 # where things stand, and what each step is waiting for
 toolkit cost                   # what has been spent so far
 ```
 
