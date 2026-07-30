@@ -33,17 +33,10 @@ class Action:
     preview: str = ""               # renders in the app as a table: "chunks" | "batches"
     reviews: tuple[Review, ...] = ()   # pages it writes, linked once they are there
     options: str = ""               # extra controls the app draws for it: "compare"
-
-
-@dataclass(frozen=True)
-class Choice:
-    """A move in a step's flow that runs nothing: a setting to decide, in the place in the order
-    where deciding it is what comes next. The rollup rule is the one of these — it is chosen
-    after reading the comparison, not while browsing settings."""
-    title: str
-    blurb: str
-    setting: str                    # which setting: core/settings.rollup_field
-    explain: str = ""
+    # A setting decided at this point in the flow rather than among the step's settings, because
+    # the move before it is what shows you how to decide it. "rollup" is the only one: you pick
+    # the rule and run it with that rule, which is one move, not two.
+    setting: str = ""
 
 
 @dataclass(frozen=True)
@@ -62,9 +55,9 @@ class Step:
     deliverable: str = ""           # name in gather_status()["deliverables"]
     needs: tuple[str, ...] = ()     # deliverables that must exist first
     reviews: tuple[Review, ...] = field(default_factory=tuple)
-    # The moves that follow tagging, in order — Actions to run and Choices to make. Numbered on
-    # the page, because the order is the work: compare, choose, then apply.
-    sequels: tuple[Action | Choice, ...] = field(default_factory=tuple)
+    # The moves that follow tagging, in order. Numbered on the page, because the order is the
+    # work: see what each way of deciding would tag, then roll up with the one you picked.
+    sequels: tuple[Action, ...] = field(default_factory=tuple)
     extras: tuple[Action, ...] = field(default_factory=tuple)       # occasional, at the bottom
     review_hint: str = ""           # what to look for in the review pages, before spending
 
@@ -90,13 +83,15 @@ BATCHING_EXPLAINER = (
 
 ROLLUP_EXPLAINER = (
     "Clips are what the model reads, but a catalogue entry is about an interview. So the tags on "
-    "a clip have to become tags on the interview it came from, and that needs a bar: how much of "
-    "an interview has to be about something before it is one of that interview's subjects.\n\n"
-    "One bar for everything is the obvious answer and the wrong one. Set it high enough that a "
-    "common subject means something, and the subjects that only come up now and then never reach "
-    "it — so the rare ones, which are usually the interesting ones, vanish from the catalogue.\n\n"
+    "a clip have to become tags on the interview it came from, and that needs a threshold: how "
+    "much of an interview has to be about something before it is one of that interview's "
+    "subjects.\n\n"
+    "One threshold for everything is the obvious answer and the wrong one. Set it high enough "
+    "that a common subject means something, and the subjects that only come up now and then "
+    "never reach it — so the rare ones, which are usually the interesting ones, vanish from the "
+    "catalogue.\n\n"
     "The recommended alternative sorts the subjects by how often they come up across the whole "
-    "collection, splits them into bands, and asks less of a rarer band. Nothing is invented: a "
+    "collection, splits them into bins, and asks less of a rarer bin. Nothing is invented: a "
     "topic still has to be a real share of the interview. It just is not measured against the "
     "collection's busiest subject."
 )
@@ -104,12 +99,13 @@ ROLLUP_EXPLAINER = (
 # The controls the app draws beside a `thresholds` run, and the flags they become. Nothing else
 # in app/ may name a flag, so the compare options are described here and nowhere else.
 COMPARE_FIELDS = (
-    ("bins", "--bins", "Bands to compare",
-     "How many rarity bands to split the topics into. More bands means a finer ladder of bars."),
+    ("bins", "--bins", "Bins to compare",
+     "How many rarity bins to split the topics into. More bins means a finer ladder of "
+     "thresholds."),
     ("ranges", "--ranges", "Ranges to compare",
-     "The lowest and the highest bar, per range. Write them as 10-30, separated by commas."),
-    ("flat", "--flat", "Single bars to compare",
-     "The one-bar-for-everything percentages to draw beside the banded ones."),
+     "The lowest and the highest threshold, per range. Write them as 10-30, comma separated."),
+    ("flat", "--flat", "Flat thresholds to compare",
+     "The one-threshold-for-everything percentages to draw beside the binned ones."),
 )
 
 
@@ -215,21 +211,19 @@ STEPS: tuple[Step, ...] = (
         review_hint="Read the justifications: where a score looks wrong, the topic's description "
                     "in your topic list is usually what needs changing, not the prompt.",
         sequels=(
-            Action("thresholds", "Compare how tags are decided",
+            Action("thresholds", "Decide how to go from clip tags to interview tags",
                    "A topic becomes one of an interview's tags once enough of that interview's "
-                   "clips were assigned to it — and 'enough' is your decision. This draws what "
+                   "clips were tagged with it — and 'enough' is your decision. This draws what "
                    "each way of deciding would tag, side by side. Nothing is sent to OpenAI.",
                    ("topics", "thresholds"), needs_set=True, needs=("topics:{set}",),
                    reviews=(Review("{set}_thresholds.html", "Open the comparison"),),
-                   options="compare"),
-            Choice("Choose how tags are decided",
-                   "Set the one you settled on, having looked at the comparison. Changing it "
-                   "changes nothing until you roll up again — this step is free to redo.",
-                   "rollup", explain=ROLLUP_EXPLAINER),
+                   options="compare", explain=ROLLUP_EXPLAINER),
             Action("rollup", "Roll up to interview tags",
-                   "Apply it: turn the per-clip scores into one set of tags per interview. Run "
-                   "this after tagging the whole collection.",
-                   ("topics", "rollup"), needs_set=True, needs=("topics:{set}",)),
+                   "Set the rule you settled on and apply it: the per-clip scores become one set "
+                   "of tags per interview. Free and instant, so changing your mind costs a "
+                   "re-run and nothing else.",
+                   ("topics", "rollup"), needs_set=True, needs=("topics:{set}",),
+                   setting="rollup"),
         ),
         extras=(
             Action("annotate", "Re-render review pages",
@@ -249,21 +243,18 @@ STEPS: tuple[Step, ...] = (
                    "Turn each region tag into the countries it covers, and settle on one "
                    "spelling per place. Run this after tagging the whole collection.",
                    ("locations", "map"), needs=("locations",)),
-            Action("thresholds", "Compare how tags are decided",
+            Action("thresholds", "Decide how to go from clip tags to interview tags",
                    "A place becomes one of an interview's places once enough of that "
                    "interview's clips talk about it — and 'enough' is your decision. This draws "
                    "what each way of deciding would tag, side by side. Nothing is sent to OpenAI.",
                    ("locations", "thresholds"), needs=("locations",),
                    reviews=(Review("locations_thresholds.html", "Open the comparison"),),
-                   options="compare"),
-            Choice("Choose how tags are decided",
-                   "Set the one you settled on, having looked at the comparison. The same rule "
-                   "applies to regions, which are rolled up as regions and only then expanded "
-                   "into their countries.",
-                   "rollup", explain=ROLLUP_EXPLAINER),
+                   options="compare", explain=ROLLUP_EXPLAINER),
             Action("rollup", "Roll up to interview places",
-                   "Apply it: turn the per-clip places into one set per interview.",
-                   ("locations", "rollup"), needs=("locations",)),
+                   "Set the rule you settled on and apply it: the per-clip places become one set "
+                   "per interview. The same rule applies to regions, which are rolled up as "
+                   "regions and only then expanded into their countries.",
+                   ("locations", "rollup"), needs=("locations",), setting="rollup"),
         ),
         extras=(
             Action("annotate", "Re-render review page",
@@ -281,9 +272,8 @@ BY_SLUG = {s.slug: s for s in STEPS}
 
 
 def runnable(step: Step) -> list[Action]:
-    """Every button on a step's page below the demo: the sequels that run something, and the
-    extras. Choices are not in here — they decide something rather than run something."""
-    return [move for move in (*step.sequels, *step.extras) if isinstance(move, Action)]
+    """Every button on a step's page below the demo: the sequels and the extras."""
+    return [*step.sequels, *step.extras]
 
 
 def step_key(step: Step, set_name: str | None = None) -> str:

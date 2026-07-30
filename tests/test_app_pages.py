@@ -346,8 +346,11 @@ def test_the_workspace_page_reports_what_the_project_has_cost(server):
 
 
 def test_a_step_page_says_what_that_step_has_cost(server):
+    """Beside the heading, in the same place on every step page: what this has already cost is
+    asked before deciding to spend more, not after scrolling past the buttons that spend."""
     _, body = get(server, "/step/clip")
-    assert "This step has cost" in body and "8.00 so far (1 call)" in body
+    assert "This step so far" in body and "8.00" in body and "1 call" in body
+    assert body.index("This step so far") < body.index("1 · Try it")
 
 
 def test_topic_lists_get_a_tab_each_and_a_way_to_add_another(server):
@@ -385,28 +388,28 @@ def test_the_settings_url_still_works_and_opens_the_panel(server):
     assert "Settings are in the panel on the right" in body
 
 
-def test_rolling_up_reads_as_compare_then_choose_then_apply(server):
+def test_rolling_up_is_deciding_then_doing(server):
     """Deciding when a topic becomes an interview's tag used to happen inside the rollup, from a
-    number nobody had been shown the consequences of. Now the page asks for it in the order the
-    decision is made, and the comparison that informs it comes first."""
+    number nobody had been shown the consequences of. Now the comparison that informs it comes
+    first, and choosing the rule is part of the run that uses it — not a move of its own."""
     _, body = get(server, "/step/topics?set=collection")
-    order = ["4 · Compare how tags are decided", "5 · Choose how tags are decided",
-             "6 · Roll up to interview tags"]
+    order = ["4 · Decide how to go from clip tags to interview tags",
+             "5 · Roll up to interview tags"]
     positions = [body.index(text) for text in order]
     assert positions == sorted(positions), order
-    assert "What to compare" in body and "Bands to compare" in body
+    assert "6 ·" not in body
+    assert "What to compare" in body and "Bins to compare" in body
 
 
 def test_the_rollup_rule_is_two_numbers_and_the_method_is_folded_away(server):
     """Most projects should never change the method, so the page asks for the two things they
     should tune and keeps the rest out of the way."""
     _, body = get(server, "/step/topics?set=collection")
-    assert "Bands" in body and "Use a different method" in body
-    assert "Bars: 10%, 15%, 20%, 25%, 30%" in body          # what those numbers come to
-    assert "A lower bar for rarer topics — recommended" in body
-    # and it is not also sitting in the step's settings, where it was before
-    settings_at = body.index("Settings for this step")
-    assert body.index("Use a different method") < settings_at
+    assert "Bins" in body and "Use a different method" in body
+    assert "Thresholds: 10%, 15%, 20%, 25%, 30%" in body    # what those numbers come to
+    assert "A lower threshold for rarer topics — recommended" in body
+    # it sits inside the move that applies it, not among the settings that change the tagging
+    assert body.index("Settings for this step") < body.index("Use a different method")
 
 
 def test_the_state_of_a_run_sits_under_the_thing_that_starts_it(server):
@@ -414,13 +417,22 @@ def test_the_state_of_a_run_sits_under_the_thing_that_starts_it(server):
     step 4, describing neither."""
     _, body = get(server, "/step/topics?set=collection")
     # the demo's own state is above the moves that follow tagging, not below them
-    assert body.index("1 · Try it") < body.index("4 · Compare how tags are decided")
-    assert body.index("Terminal Viewer") > body.index("6 · Roll up to interview tags")
+    assert body.index("1 · Try it") < body.index("From clip tags to interview tags")
+    assert body.index("Terminal Viewer") > body.index("5 · Roll up to interview tags")
 
 
 def test_locations_rolls_up_the_same_way(server):
     _, body = get(server, "/step/locations")
-    order = ["4 · Expand regions into countries", "5 · Compare how tags are decided",
-             "6 · Choose how tags are decided", "7 · Roll up to interview places"]
+    order = ["4 · Expand regions into countries",
+             "5 · Decide how to go from clip tags to interview tags",
+             "6 · Roll up to interview places"]
     positions = [body.index(text) for text in order]
     assert positions == sorted(positions), order
+
+
+def test_the_region_vocabulary_is_editable_in_the_app(server):
+    """It is to locations what the topic list is to topics: the vocabulary the tagging is done
+    against, and the first thing to change when the tags are wrong."""
+    _, body = get(server, "/step/locations")
+    assert "The regions the model may use" in body
+    assert "Eastern Europe" in body and "Save these regions" in body

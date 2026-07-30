@@ -41,11 +41,11 @@ def _compare_flags(parser: argparse.ArgumentParser) -> None:
     """What the two `thresholds` decision aids should draw. Omit them all and the aid uses what
     advanced/<step>.yaml says under `compare`."""
     parser.add_argument("--bins", metavar="N,N", default=None,
-                        help="how many rarity bands to compare, e.g. --bins 5,9")
+                        help="how many rarity bins to compare, e.g. --bins 5,9")
     parser.add_argument("--ranges", metavar="LO-HI,LO-HI", default=None,
-                        help="lowest-highest bar per range to compare, e.g. --ranges 10-30,20-40")
+                        help="lowest-highest threshold per range, e.g. --ranges 10-30,20-40")
     parser.add_argument("--flat", metavar="PCT,PCT", default=None,
-                        help="the single bars to compare for the flat method, e.g. --flat 20,30,40")
+                        help="single thresholds to compare for the flat method, e.g. --flat 20,30")
 
 
 def _compare(args) -> dict:

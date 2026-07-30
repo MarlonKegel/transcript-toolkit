@@ -72,18 +72,19 @@ locations:
   separate caches.
 - **rollup** (per topic list, and once for locations) — when a topic or place becomes one of an
   interview's tags. `method` is one of:
-  - `freq_width` (the default) — the topics are split into `bins` bands by how often they come
+  - `freq_width` (the default) — the topics are split into `bins` bins by how often they come
     up across the collection, over `range: [lowest, highest]` percent of an interview's clips,
-    and a rarer band clears a lower bar. Five bands over 10–30% are the bars 10, 15, 20, 25, 30.
-    Two topics that come up equally often always get the same bar.
-  - `equal_count` — the same, except each band holds the same number of topics. It spreads the
-    bars evenly over your list, at the cost of splitting equally-frequent topics between bands.
-  - `flat` — one `threshold_pct` bar for every topic.
+    and a rarer bin gets a lower threshold. Five bins over 10–30% are the thresholds 10, 15, 20,
+    25, 30. Two topics that come up equally often always get the same threshold.
+  - `equal_count` — the same, except each bin holds the same number of topics. It spreads the
+    thresholds evenly over your list, at the cost of splitting equally-frequent topics between
+    bins.
+  - `flat` — one `threshold_pct` threshold for every topic.
 
   `toolkit topics thresholds --set <name>` and `toolkit locations thresholds` draw what each of
-  these would tag before you choose. The older spelling (`scheme: flat|binned` with the bars
-  written out as `thresholds: [...]`) is still read, and a hand-written bar list is still used
-  exactly as written.
+  these would tag before you choose. The older spelling (`scheme: flat|binned` with the
+  thresholds written out as `thresholds: [...]`) is still read, and a hand-written list is still
+  used exactly as written.
 - **locations.relabel / place_tags** — see [steps/locations.md](steps/locations.md).
 - **export.locations** — how location tags appear in the xlsx: `countries` (only those tagged
   directly), `countries_and_regions` (default; those countries plus a separate Regions column), or

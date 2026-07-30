@@ -130,27 +130,33 @@ The workspace page always names one next thing to do, and the pages follow the s
    editable in the same table you would have typed it into, and an Excel file stays an Excel
    file.
 
-   **Topics and Locations have three more moves after that**, because tagging clips is not the
+   **Locations** has a vocabulary of its own in the same place: *The regions the model may use*.
+   It is a strict list — the model cannot answer with anything that is not on it — so it is the
+   first thing to change when the region tags are wrong. Saving also says which of those regions
+   the country mapping has no entry for, because *Expand regions into countries* stops at one it
+   does not know.
+
+   **Topics and Locations have two more moves after that**, because tagging clips is not the
    same as tagging interviews. See below.
 
-3. **Turning clip tags into interview tags** — on Topics and on Locations, once the whole
-   collection is tagged. A clip is what the model reads; a catalogue entry is about an interview.
-   So the tags have to move up, and that needs a bar: how much of an interview has to be about
-   something before it is one of that interview's subjects. The page asks it in the order the
-   decision is actually made.
+3. **From clip tags to interview tags** — on Topics and on Locations, once the whole collection
+   is tagged. A clip is what the model reads; a catalogue entry is about an interview. So the
+   tags have to move up, and that needs a threshold: how much of an interview has to be about
+   something before it is one of that interview's subjects.
 
-   - **Compare how tags are decided** writes a page with a panel per method, each drawing what
-     that way of deciding would tag: one bar per topic, showing how many interviews it would
-     reach and the bar it had to clear. What your project is set to now is marked. Nothing is
-     sent to OpenAI, so compare as often as you like. *What to compare* changes the variants
-     drawn — how many bands, over what range.
-   - **Choose how tags are decided** is the setting itself, here rather than behind a gear,
-     because this is the point at which you have the evidence to set it. Two numbers do the
-     work: how many bands, and the lowest and highest bar. The recommended method gives rarer
-     topics a lower bar — one bar for everything sounds simpler but buries exactly the topics
-     worth finding. The other methods are behind *Use a different method*.
-   - **Roll up** applies it. It is free and instant, so changing your mind costs a re-run and
-     nothing else.
+   - **Decide how to go from clip tags to interview tags** writes a page with a panel per method,
+     each drawing what that way of deciding would tag: one bar per topic, showing how many
+     interviews it would reach and the threshold it had to clear. The two binned methods are
+     drawn as a grid — one row per number of bins, one column per range — so both can be read at
+     once. Whatever your saved results were rolled up with is marked; a rule you have set but not
+     yet applied is not, because it has not happened yet. Nothing is sent to OpenAI, so compare
+     as often as you like. *What to compare* changes what is drawn.
+   - **Roll up to interview tags** is where you set the rule and apply it — one move, because
+     they are one decision. Two numbers do the work: how many bins, and the lowest and highest
+     threshold. The recommended method gives rarer topics a lower threshold; one threshold for
+     everything sounds simpler but buries exactly the topics worth finding. The other methods
+     are behind *Use a different method*. Rolling up is free and instant, so changing your mind
+     costs a re-run and nothing else.
 
    Locations works the same way, with one wrinkle: regions are rolled up as regions and only then
    expanded into their countries, so a country becomes an interview's place through a region only
@@ -161,8 +167,9 @@ The workspace page always names one next thing to do, and the pages follow the s
 
 The **project cost report** on the workspace page is what the project has actually cost, per step
 and in total. It counts every call ever made in it, demos included, so it is money that has left
-the account rather than an estimate. Each step page carries its own line of it, next to the
-buttons that spend. (In Terminal: `toolkit cost`.)
+the account rather than an estimate. Every step page carries its own share of it beside the
+heading, in the same place each time — what something has already cost is asked before deciding
+to spend more. (In Terminal: `toolkit cost`.)
 
 At the foot of each step page, **Extra tools** holds the things that are not part of a normal
 run: rebuilding review pages from results you already have, and seeing how a long interview will
@@ -180,7 +187,7 @@ rather than behind the gear:
   toolkit ships with.
 - **Settings for this step** — which model does the work, how much thinking it does, and
   whatever else belongs to that step alone. How clip tags become interview tags is *not* here:
-  it is a numbered move further up the page, where the comparison that informs it is.
+  it belongs to the rollup, which is further down, next to the comparison that informs it.
 
 Labelling also takes **house rules**: a short set of project decisions added to the end of the
 prompt — how a name is spelled, what to call something, what never to abbreviate. Write them in

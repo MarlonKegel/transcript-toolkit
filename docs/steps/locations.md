@@ -20,7 +20,9 @@ toolkit locations rollup       # apply it: clip tags → interview tags
 
 - `locations/regions.yaml` — the region names the model may use (a strict list; ships with a UN
   Geoscheme-based default plus common historical/political regions). Editing it changes both the
-  prompt and the allowed outputs, so they never drift.
+  prompt and the allowed outputs, so they never drift. **In the app**: *The regions the model may
+  use*, on the Locations page — it also says which of them `region_to_country.csv` has no
+  countries for, since `map` refuses a region it does not know.
 - `locations/region_to_country.csv` — how each region expands to countries in the `map` step.
 - `config.yaml` → `locations.relabel` — spelling/merge fixes applied to model output (e.g.
   `Czech Republic: Czechia`). `locations.place_tags` — subnational places to keep as their own
@@ -40,10 +42,10 @@ tags (and justifications on demo runs); `toolkit locations annotate` writes the 
 `locations.html`. Check that only substantive places are tagged, not passing mentions. The prompt
 is `prompts/tag_locations.md`.
 
-## Rolling up: compare, choose, apply
+## Rolling up: decide, then do
 
-Same three moves as [topics](topics.md#rolling-up-compare-choose-apply), and the same rule
-methods (see [CONFIG.md](../CONFIG.md)); `locations.rollup` holds the choice, and the default is
+Same moves as [topics](topics.md#rolling-up-decide-then-do), and the same rule methods (see
+[CONFIG.md](../CONFIG.md)); `locations.rollup` holds the choice, and the default is
 `{ method: freq_width, bins: 5, range: [10, 30] }`. `toolkit locations thresholds` writes
 `diags/locations/locations_thresholds.html`.
 

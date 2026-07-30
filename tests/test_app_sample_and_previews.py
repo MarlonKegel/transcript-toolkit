@@ -181,16 +181,16 @@ def test_the_things_nobody_needs_are_out_of_the_way():
     assert "survey" in [a.slug for a in locations.extras]
 
 
-def test_rolling_up_is_compare_then_choose_then_apply():
-    """The order is the work. Comparing what each way of deciding would tag comes first, then
-    choosing one, and only then applying it — a rollup with the decision buried inside it is the
-    thing this replaced."""
+def test_rolling_up_is_deciding_then_doing():
+    """The order is the work. Seeing what each way of deciding would tag comes first; picking
+    the rule is part of the run that uses it, not a move of its own — a rollup with the decision
+    buried inside it and no way to see it is the thing this replaced."""
     for slug in ("topics", "locations"):
         moves = content.BY_SLUG[slug].sequels
-        order = [m.setting if isinstance(m, content.Choice) else m.slug for m in moves]
-        assert order[-3:] == ["thresholds", "rollup", "rollup"]
-        compare = next(m for m in moves if getattr(m, "slug", "") == "thresholds")
-        assert compare.reviews and compare.options == "compare"
+        assert [m.slug for m in moves][-2:] == ["thresholds", "rollup"]
+        compare = next(m for m in moves if m.slug == "thresholds")
+        assert compare.reviews and compare.options == "compare" and compare.explain
+        assert next(m for m in moves if m.slug == "rollup").setting == "rollup"
         assert "thresholds" not in [a.slug for a in content.BY_SLUG[slug].extras]
 
 

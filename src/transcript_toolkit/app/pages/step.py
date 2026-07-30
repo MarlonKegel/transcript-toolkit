@@ -23,10 +23,11 @@ from ..context import CONTEXT
 from .common import (guard, info, inline_state, launch, run_status, section, shell,
                      terminal_viewer)
 from .prompts import prompt_editor
+from .regions import regions_editor
 from .sample import BLURB as SAMPLE_BLURB
 from .sample import needed_here, sample_section
 from .settings_form import settings_form
-from .spend import step_spend_line
+from .spend import step_spend_box
 from .topics_editor import editor
 
 SET_QUERY = "set"
@@ -55,14 +56,13 @@ def step_page(slug: str, set: str | None = None,               # noqa: A002 - UR
         ui.page_title(f"{step.title} — Transcript Toolkit")
         project = CONTEXT.require_project()
 
-        set_name = None
+        # The heading, and what this step has cost beside it — the same place on every step
+        # page, at the top where the question is asked, not wherever the buttons happened to end.
+        set_name = _chosen_set(step, set) if step.per_set else None
+        _heading(step, set_name)
         if step.per_set:
-            section(step.title, step.blurb)
-            set_name = _topic_lists(step, set, add)
-            if set_name is None:
+            if _topic_lists(step, set_name, add) is None:
                 return
-        else:
-            section(step.title, step.blurb)
 
         def refresh_all() -> None:
             actions.refresh()
@@ -76,14 +76,33 @@ def step_page(slug: str, set: str | None = None,               # noqa: A002 - UR
 
         @ui.refreshable
         def rest() -> None:
-            _sequels(project, step, set_name, href, refresh_all)
+            # The settings first: they change what the tagging produces. The rollup comes after,
+            # because it reads what the tagging produced.
             _tuning(project, step, set_name, refresh_all)
+            _sequels(project, step, set_name, href, refresh_all)
             _extras(step, set_name, href)
 
         actions()
-        step_spend_line(content.step_key(step, set_name))
         rest()
         terminal_viewer()
+
+
+def _chosen_set(step: content.Step, asked: str | None) -> str | None:
+    """Which topic list this page is about, before anything is drawn — the heading needs it."""
+    try:
+        sets = CONTEXT.topic_sets()
+    except ToolkitError:
+        return None
+    return asked if asked in sets else (sets[0] if sets else None)
+
+
+def _heading(step: content.Step, set_name: str | None) -> None:
+    with ui.row().classes("w-full items-start justify-between gap-4 flex-wrap mt-2"):
+        with ui.column().classes("gap-0 grow min-w-64"):
+            ui.label(step.title).classes("text-xl font-medium")
+            ui.label(step.blurb).classes("text-sm opacity-70")
+        if set_name or not step.per_set:
+            step_spend_box(content.step_key(step, set_name))
 
 
 def _fix(kind: str, step: content.Step, set_name: str | None, href: str) -> None:
@@ -425,15 +444,16 @@ def _run_button(step: content.Step, action: content.Action, set_name: str | None
 
 def _sequels(project, step: content.Step, set_name: str | None, href: str, refresh) -> None:
     """The moves that follow tagging in this branch of the pipeline, in the order they are made:
-    compare what each way of deciding would tag, choose one, then apply it. Numbered and in plain
-    sight, because that order is the work — not a run with a decision hidden inside it."""
+    see what each way of deciding would tag, then roll up with the one you picked. Numbered and
+    in plain sight, because that order is the work — not a run with a decision hidden inside it."""
     if not step.sequels:
         return
-    for i, move in enumerate(step.sequels, start=4):
-        if isinstance(move, content.Choice):
-            _choice(project, step, set_name, i, move, refresh)
-        else:
-            _sequel(project, step, set_name, href, i, move, refresh)
+    section("From clip tags to interview tags",
+            "A clip is what the model reads; a catalogue entry is about an interview. These "
+            "turn one into the other, and are worth running only once the whole collection "
+            "has been tagged.")
+    for i, action in enumerate(step.sequels, start=4):
+        _sequel(project, step, set_name, href, i, action, refresh)
 
 
 def _sequel(project, step: content.Step, set_name: str | None, href: str, number: int,
@@ -442,7 +462,10 @@ def _sequel(project, step: content.Step, set_name: str | None, href: str, number
     with ui.card().classes("w-full"):
         with ui.row().classes("items-start w-full gap-3"):
             with ui.column().classes("gap-1 grow"):
-                ui.label(f"{number} · {action.title}").classes("text-sm font-medium")
+                with ui.row().classes("items-center gap-2"):
+                    ui.label(f"{number} · {action.title}").classes("text-sm font-medium")
+                    if action.explain:
+                        info(action.explain)
                 ui.label(action.blurb).classes("text-xs opacity-70 max-w-2xl")
                 for title, url in _pages_of(project, step, action, set_name):
                     ui.button(title, icon="open_in_new",
@@ -456,7 +479,22 @@ def _sequel(project, step: content.Step, set_name: str | None, href: str, number
                 _run_button(step, action, set_name, href)
         if action.options == "compare":
             _compare_options(project, step, boxes)
+        if action.setting == "rollup":
+            _rollup_rule(step, set_name, refresh)
     _run_state_for(step, action, set_name, href, refresh)
+
+
+def _rollup_rule(step: content.Step, set_name: str | None, refresh) -> None:
+    """The rule this rollup will use, inside the move that uses it.
+
+    It is not among the step's settings: those change what the tagging produces, and this changes
+    what is made of what it produced. Setting it and running it is one move, not two.
+    """
+    from ...core import settings as core_settings
+
+    with ui.column().classes("w-full gap-1 mt-2 pt-2 tk-divide"):
+        settings_form(step.key, [core_settings.rollup_field(step.key, set_name)],
+                      on_saved=refresh, note=False, save_label="Save this rule")
 
 
 def _run_state_for(step: content.Step, action: content.Action, set_name: str | None, href: str,
@@ -501,22 +539,6 @@ def _compare_options(project, step: content.Step, boxes: dict) -> None:
             ui.label(hint).classes("text-xs opacity-60 max-w-2xl")
 
 
-def _choice(project, step: content.Step, set_name: str | None, number: int,
-            move: content.Choice, refresh) -> None:
-    """A move that decides something instead of running something."""
-    from ...core import settings as core_settings
-
-    with ui.card().classes("w-full"):
-        with ui.row().classes("items-center gap-2"):
-            ui.label(f"{number} · {move.title}").classes("text-sm font-medium")
-            if move.explain:
-                info(move.explain)
-        ui.label(move.blurb).classes("text-xs opacity-70 max-w-2xl")
-        field = core_settings.rollup_field(step.key, set_name)
-        settings_form(step.key, [field], on_saved=refresh, note=False,
-                      save_label="Save how tags are decided")
-
-
 def _tuning(project, step: content.Step, set_name: str | None, refresh) -> None:
     """The things that change what this step produces, on the step's own page: what it is told to
     do, and the settings it runs with. For topics these belong to the chosen list, not to the
@@ -530,6 +552,11 @@ def _tuning(project, step: content.Step, set_name: str | None, refresh) -> None:
         _prompt(project, step, set_name, refresh)
     if per_list:
         _edit_set(step, project, set_name)
+    if step.key == "locations":
+        # The list of regions is to locations what the topic list is to topics: the vocabulary
+        # the tagging is done against, and the first thing to change when the tags are wrong.
+        with ui.expansion("The regions the model may use", icon="public").classes("w-full"):
+            regions_editor(on_saved=refresh)
 
 
 def _prompt(project, step: content.Step, set_name: str | None, refresh) -> None:

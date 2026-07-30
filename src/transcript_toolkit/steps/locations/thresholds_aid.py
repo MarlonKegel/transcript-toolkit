@@ -22,15 +22,11 @@ from ...core.config import load_step_config, require
 from ...core.ids import narrator_key
 from ...errors import ToolkitError
 from ...project import Project
+from ...state import rolled_up_with
 from .map import load_region_map
 from .rollup import locations_rollup, rollover
 
 STEP = "locations"
-
-LEAD = ("Every rule below tags an interview with a place once enough of that interview's clips "
-        "talk about it. They differ in how 'enough' is decided, and the difference is largest "
-        "for the places that come up least. Pick the one whose picture you would be happy to "
-        "publish, then set it under 'Choose how tags are decided' and roll up.")
 
 HYBRID_LEAD = (
     "How a region becomes an interview's places, which is a separate question from where the bar "
@@ -51,7 +47,10 @@ def run_locations_thresholds(project: Project, bins: list[int] | None = None,
                              flat: list[float] | None = None) -> None:
     cfg = load_step_config(project, STEP)
     require(cfg, ["region_map_file"], STEP)
-    current = locations_rollup(cfg)
+    configured = locations_rollup(cfg)
+    # What the interview tags on disk were built with, not what config.yaml currently says.
+    applied = rolled_up_with(project, STEP)
+    current = thresholds.parse(applied, "the last rollup") if applied else None
     session_regex = load_step_config(project, "import")["session_regex"]
     region_map = load_region_map(project.root / cfg["region_map_file"])
     relabel = dict(cfg.get("relabel") or {})
@@ -102,20 +101,22 @@ def run_locations_thresholds(project: Project, bins: list[int] | None = None,
             options[name] = given
 
     panels = thresholdreview.build(options, current, evaluate, thresholds.PLACES)
-    said = current.describe(thresholds.PLACES)
+    said = (f"your results were built with {current.describe(thresholds.PLACES)}" if current
+            else "nothing has been rolled up yet")
     print(f"Comparing rollup rules · {n_int} interviews · {len(cw)} clips · {len(labels)} places")
-    print(f"What you have now: {said}")
+    print(f"Set in config.yaml: {configured.describe(thresholds.PLACES)} — {said}")
     thresholdreview.report(panels, n_int)
 
-    schemes = _schemes(final, direct, regs, n_clips, current, region_map, relabel)
+    schemes = _schemes(final, direct, regs, n_clips, current or configured, region_map, relabel)
     _report_schemes(schemes, n_int)
     out = thresholdreview.write(
         project.diags_dir / STEP, "locations",
-        title="Locations · choosing how tags are decided",
-        subtitle=f"{len(labels)} places · {n_int} interviews · what you have now: {said}",
-        panels=panels, order=order, freq=freq, n_int=n_int, lead=LEAD,
+        title="Locations · deciding how clip tags become interview tags",
+        subtitle=f"{len(labels)} places · {n_int} interviews · {said}",
+        panels=panels, order=order, freq=freq, n_int=n_int,
+        choose="Roll up to interview places",
         extra=reviewdoc.panel("How regions become an interview's places",
-                              _scheme_table(schemes, n_int), lead=HYBRID_LEAD))
+                              _scheme_table(schemes, n_int), lead=HYBRID_LEAD, aside=True))
     print(f"\nWrote {out}")
 
 

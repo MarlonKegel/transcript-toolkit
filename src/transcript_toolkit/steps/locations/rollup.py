@@ -25,6 +25,7 @@ from ...core.ids import narrator_key
 from ...core.tables import write_deliverable
 from ...errors import ToolkitError
 from ...project import Project
+from ...state import record_rollup
 from .map import check_regions_known, load_region_map
 
 STEP = "locations"
@@ -137,6 +138,9 @@ def run_locations_rollup(project: Project) -> pd.DataFrame:
                       sort_by=["interview_key", "label"])
     write_deliverable(rlong, out_dir / "interview_regions_long.parquet",
                       sort_by=["interview_key", "region"])
+    # So the decision aid can mark the rule these results were built with, rather than the one
+    # sitting in config.yaml — which may be something you have chosen but not yet applied.
+    record_rollup(project, STEP, rollup.as_config())
 
     n_int = len(wide)
     print(f"Hybrid rollover · {rollup.describe(thresholds.PLACES)} "

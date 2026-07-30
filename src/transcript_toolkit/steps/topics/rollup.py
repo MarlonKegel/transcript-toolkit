@@ -19,6 +19,7 @@ from ...core.ids import narrator_key
 from ...core.tables import write_deliverable
 from ...errors import ToolkitError
 from ...project import Project
+from ...state import record_rollup
 from .taxonomy import TopicSet, load_topic_set
 
 STEP = "topics"
@@ -89,6 +90,9 @@ def run_topics_rollup(project: Project, set_name: str | None = None) -> pd.DataF
                       sort_by=["interview_key", "topic_id"])
     write_deliverable(wide, out_dir / f"{sset}_interview_topics_wide.parquet",
                       sort_by="interview_key")
+    # So the decision aid can mark the rule these results were built with, rather than the one
+    # sitting in config.yaml — which may be something you have chosen but not yet applied.
+    record_rollup(project, f"{STEP}:{sset}", tset.rollup.as_config())
 
     # --- summary -----------------------------------------------------------------------------
     n_int = len(wide)

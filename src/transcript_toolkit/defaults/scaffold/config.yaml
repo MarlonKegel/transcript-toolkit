@@ -64,11 +64,11 @@ topics:
   # `rollup` decides when a topic becomes one of an interview's tags: how big a share of that
   # interview's clips has to be assigned to it. Run `toolkit topics thresholds --set <name>`
   # to see what each of these would tag before choosing one.
-  #   freq_width  — recommended. The topics are split into `bins` bands by how often they come
+  #   freq_width  — recommended. The topics are split into `bins` bins by how often they come
   #                 up across the collection, over `range: [lowest, highest]` percent, and a
-  #                 rarer band clears a lower bar.
-  #   equal_count — the same, except each band holds the same number of topics.
-  #   flat        — one `threshold_pct` bar for every topic.
+  #                 rarer bin gets a lower threshold.
+  #   equal_count — the same, except each bin holds the same number of topics.
+  #   flat        — one `threshold_pct` threshold for every topic.
   # A set may also bring its own rubric when its tagging rules differ from the default prompt,
   # and its own model and reasoning when it is harder or easier work than the others:
   #   prompt: tag_topics_strict.md        # a file in prompts/
@@ -91,11 +91,11 @@ locations:
   # clips has to talk about it. The same rule applies to regions, which are rolled up as
   # regions and only then expanded into their countries. Run `toolkit locations thresholds`
   # to see what each of these would tag before choosing one.
-  #   freq_width  — recommended. The places are split into `bins` bands by how often they come
+  #   freq_width  — recommended. The places are split into `bins` bins by how often they come
   #                 up across the collection, over `range: [lowest, highest]` percent, and a
-  #                 rarer band clears a lower bar.
-  #   equal_count — the same, except each band holds the same number of places.
-  #   flat        — one `threshold_pct` bar for every place.
+  #                 rarer bin gets a lower threshold.
+  #   equal_count — the same, except each bin holds the same number of places.
+  #   flat        — one `threshold_pct` threshold for every place.
   rollup: { method: freq_width, bins: 5, range: [10, 30] }
   # Spellings to settle on, so one place is one place across the whole collection.
   relabel: {}                      # e.g. { Czech Republic: Czechia, Macedonia: North Macedonia }

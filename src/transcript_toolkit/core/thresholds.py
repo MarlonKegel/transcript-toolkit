@@ -1,20 +1,20 @@
 """How a clip-level tag becomes an interview-level tag: the rollup rule, in one place.
 
-An interview is tagged when the share of its clips carrying that tag clears a bar. The question
-is which bar, and the answer is a *method* rather than a hand-written list of numbers:
+An interview is tagged when the share of its clips carrying that tag clears a threshold. The
+question is which threshold, and the answer is a *method* rather than a hand-written list:
 
-  freq_width   — the recommended one. The items are split into equal-width bands by how often
-                 they come up across the collection, and a rarer band clears a lower bar. Rare
-                 topics get off zero without common ones being tagged everywhere. Two items that
-                 come up equally often always share a bar.
-  equal_count  — the same idea, but each band holds the same NUMBER of items rather than covering
+  freq_width   — the recommended one. The items are split into equal-width bins by how often
+                 they come up across the collection, and a rarer bin clears a lower threshold.
+                 Rare topics get off zero without common ones being tagged everywhere. Two items
+                 that come up equally often always share a threshold.
+  equal_count  — the same idea, but each bin holds the same NUMBER of items rather than covering
                  the same width of frequency. Two equally-frequent items can land in different
-                 bands and get different bars, which is why it is the advanced option.
-  flat         — one bar for every item. Simple to explain; rare items rarely clear it.
+                 bins and be judged differently, which is why it is the advanced option.
+  flat         — one threshold for every item. Simple to explain; rare items rarely clear it.
 
-A binned method is described by how many bands and over what range (`bins`, `range: [lo, hi]`),
-and the bars are derived from those — evenly spaced, rarest band first. 5 bins over 10-30% is
-[10, 15, 20, 25, 30]; 9 bins is [10, 12.5, ..., 30]. Topics and locations share all of this.
+A binned method is described by how many bins and over what range (`bins`, `range: [lo, hi]`),
+and the thresholds are derived from those — evenly spaced, rarest bin first. 5 bins over 10-30%
+is [10, 15, 20, 25, 30]; 9 bins is [10, 12.5, ..., 30]. Topics and locations share all of this.
 """
 from __future__ import annotations
 
@@ -31,25 +31,25 @@ METHODS = (FREQ_WIDTH, EQUAL_COUNT, FLAT)
 # One wording, in one place, so the settings control and the comparison page cannot disagree.
 # `{item}` / `{items}` are what is being tagged: topics on one page, places on the other.
 METHOD_LABEL = {
-    FREQ_WIDTH: "A lower bar for rarer {items}",
-    EQUAL_COUNT: "A lower bar for rarer {items}, in equal-sized groups",
-    FLAT: "One bar for every {item}",
+    FREQ_WIDTH: "A lower threshold for rarer {items}",
+    EQUAL_COUNT: "A lower threshold for rarer {items}, in equal-sized bins",
+    FLAT: "Flat threshold for all {items}",
 }
 METHOD_BLURB = {
     FREQ_WIDTH:
         "The recommended one. The {items} are sorted by how often they come up across the whole "
-        "collection and split into bands of equal width; the rarest band clears the lowest bar "
+        "collection and split into bins of equal width; the rarest bin gets the lowest threshold "
         "and the commonest the highest. A {item} that only comes up here and there can still "
         "become an interview's tag, without the common ones being tagged everywhere. Two {items} "
-        "that come up equally often always get the same bar.",
+        "that come up equally often always get the same threshold.",
     EQUAL_COUNT:
-        "The same idea, except every band holds the same number of {items} rather than covering "
-        "the same range of frequency. It spreads the bars evenly over your list, but two {items} "
-        "that come up exactly as often can end up in different bands and be judged differently. "
-        "Worth comparing; not the one to start with.",
+        "The same idea, except every bin holds the same number of {items} rather than covering "
+        "the same range of frequency. It spreads the thresholds evenly over your list, but two "
+        "{items} that come up exactly as often can end up in different bins and be judged "
+        "differently. Worth comparing; not the one to start with.",
     FLAT:
         "Every {item} needs the same share of an interview's clips. It is the easiest to explain "
-        "to a reader, and the reason for the other two: at a bar high enough to keep common "
+        "to a reader, and the reason for the other two: at a threshold high enough to keep common "
         "{items} meaningful, rare {items} almost never reach it.",
 }
 
@@ -59,9 +59,9 @@ TOPICS, PLACES = "topics", "places"
 SINGULAR = {TOPICS: "topic", PLACES: "place"}
 
 
-def phrase(text: str, items: str = TOPICS) -> str:
+def phrase(text: str, items: str = TOPICS, **extra) -> str:
     """One of the wordings above, about whatever this step tags."""
-    return text.format(item=SINGULAR[items], items=items)
+    return text.format(item=SINGULAR[items], items=items, **extra)
 
 
 def method_label(method: str, items: str = TOPICS) -> str:
@@ -71,7 +71,8 @@ def method_label(method: str, items: str = TOPICS) -> str:
 def method_blurb(method: str, items: str = TOPICS) -> str:
     return phrase(METHOD_BLURB[method], items)
 
-# Where a new project starts: rarity bins, five bands, 10-30% of an interview's clips.
+
+# Where a new project starts: five rarity bins, thresholds from 10% to 30% of an interview's clips.
 DEFAULT_BINS = 5
 DEFAULT_RANGE = (10.0, 30.0)
 DEFAULT_FLAT_PCT = 30.0
@@ -92,19 +93,19 @@ class Rollup:
     low: float = DEFAULT_RANGE[0]
     high: float = DEFAULT_RANGE[1]
     threshold_pct: float = DEFAULT_FLAT_PCT
-    # A hand-written bar list, from the older `thresholds: [...]` spelling. Kept verbatim when
-    # present: the bars somebody wrote out by hand are not always evenly spaced, and silently
-    # regularising them would change their results.
+    # A hand-written threshold list, from the older `thresholds: [...]` spelling. Kept verbatim
+    # when present: thresholds somebody wrote out by hand are not always evenly spaced, and
+    # silently regularising them would change their results.
     explicit: tuple[float, ...] = field(default=())
 
     def bars(self) -> list[float]:
-        """The bars this rule applies, lowest (rarest band) first."""
+        """The thresholds this rule applies, lowest (rarest bin) first."""
         if self.explicit:
             return list(self.explicit)
         return spread(self.low, self.high, self.bins)
 
     def thresholds(self, freq: pd.Series) -> pd.Series:
-        """item -> the bar it has to clear, given how often each item comes up."""
+        """item -> the threshold it has to clear, given how often each item comes up."""
         if self.method == FLAT:
             return flat_thresholds(freq, self.threshold_pct)
         if self.method == FREQ_WIDTH:
@@ -117,11 +118,12 @@ class Rollup:
     def describe(self, items: str = TOPICS) -> str:
         """One line naming the rule, for a run's own summary."""
         if self.method == FLAT:
-            return f"one bar of {number(self.threshold_pct)}% for every {SINGULAR[items]}"
-        word = "equal-count bins" if self.method == EQUAL_COUNT else "rarity bins"
+            return f"a flat {number(self.threshold_pct)}% threshold for all {items}"
+        word = "equal-sized bins" if self.method == EQUAL_COUNT else "bins"
         bars = self.bars()
-        return (f"{word}: {len(bars)} bands from {number(bars[0])}% to {number(bars[-1])}%"
-                + (" (bars written out by hand)" if self.explicit else ""))
+        return (f"{len(bars)} rarity {word}, thresholds "
+                f"{number(bars[0])}–{number(bars[-1])}%"
+                + (" (written out by hand)" if self.explicit else ""))
 
     def as_config(self) -> dict:
         """What to write into config.yaml for this rule."""
@@ -141,9 +143,9 @@ def number(value: float):
 
 
 def spread(low: float, high: float, bins: int) -> list[float]:
-    """`bins` evenly spaced bars from low to high, inclusive of both ends."""
+    """`bins` evenly spaced thresholds from low to high, inclusive of both ends."""
     if bins < 1:
-        raise ToolkitError(f"A rollup needs at least one band, not {bins}.")
+        raise ToolkitError(f"A rollup needs at least one bin, not {bins}.")
     if bins == 1:
         return [number(low)]
     step = (float(high) - float(low)) / (bins - 1)
@@ -151,19 +153,19 @@ def spread(low: float, high: float, bins: int) -> list[float]:
 
 
 def freq_width_thresholds(freq: pd.Series, thresholds) -> pd.Series:
-    """Equal-WIDTH frequency bands: item -> bar. `thresholds` is the bar list, rarest first."""
+    """Equal-WIDTH frequency bins: item -> threshold. `thresholds` is the list, rarest bin first."""
     thr = sorted(float(t) for t in thresholds)
     bins = pd.cut(freq, bins=len(thr), labels=False, include_lowest=True)   # 0..k-1, 0 = rarest
     return bins.map(lambda b: float(thr[int(b)]))
 
 
 def equal_count_thresholds(freq: pd.Series, thresholds) -> pd.Series:
-    """Equal-COUNT bands: the items are split into groups of (near-)equal size by frequency rank,
-    rarest group -> lowest bar. Ties break by first occurrence, so two items that come up equally
-    often can land in different groups — the reason freq-width is the recommended method.
+    """Equal-COUNT bins: the items are split into bins of (near-)equal size by frequency rank,
+    rarest bin -> lowest threshold. Ties break by first occurrence, so two items that come up
+    equally often can land in different bins — the reason freq-width is the recommended method.
 
-    A list shorter than the bar list gets one group per item, over bars spread across the range:
-    an eight-topic list compared at nine bands is an ordinary thing to ask for.
+    A list shorter than the threshold list gets one bin per item, over thresholds spread across
+    the range: an eight-topic list compared at nine bins is an ordinary thing to ask for.
     """
     thr = sorted(float(t) for t in thresholds)
     if freq.empty:
@@ -172,8 +174,8 @@ def equal_count_thresholds(freq: pd.Series, thresholds) -> pd.Series:
     if groups == 1:
         return pd.Series(thr[0], index=freq.index, dtype=float)
     picked = [thr[round(i * (len(thr) - 1) / (groups - 1))] for i in range(groups)]
-    bands = pd.qcut(freq.rank(method="first"), q=groups, labels=False)
-    return bands.map(lambda b: picked[int(b)]).astype(float)
+    bins_ = pd.qcut(freq.rank(method="first"), q=groups, labels=False)
+    return bins_.map(lambda b: picked[int(b)]).astype(float)
 
 
 def flat_thresholds(freq: pd.Series, threshold_pct: float) -> pd.Series:
@@ -185,7 +187,7 @@ def flat_thresholds(freq: pd.Series, threshold_pct: float) -> pd.Series:
 def parse(raw, where: str) -> Rollup:
     """The rollup rule config states, or the default when it states none.
 
-    Accepts the older spelling as well (`scheme: flat|binned` with a `thresholds:` bar list),
+    Accepts the older spelling as well (`scheme: flat|binned` with a `thresholds:` list),
     because projects made before the methods existed are still in use.
     """
     if raw is None or raw == {}:
@@ -214,7 +216,7 @@ def parse(raw, where: str) -> Rollup:
     low, high = _range(raw.get("range"), where)
     bins = raw.get("bins", DEFAULT_BINS)
     if not isinstance(bins, int) or isinstance(bins, bool) or bins < 1:
-        raise ToolkitError(f"{where}.bins must be a whole number of bands, got {bins!r}.")
+        raise ToolkitError(f"{where}.bins must be a whole number of bins, got {bins!r}.")
     return Rollup(method=method, bins=bins, low=low, high=high)
 
 
@@ -237,8 +239,8 @@ def _range(raw, where: str) -> tuple[float, float]:
         raise ToolkitError(f"{where}.range must be two percentages, [lowest, highest].")
     low, high = (_percent(v, f"{where}.range") for v in raw)
     if high <= low:
-        raise ToolkitError(f"{where}.range: the highest bar ({number(high)}%) must be above the "
-                           f"lowest ({number(low)}%).")
+        raise ToolkitError(f"{where}.range: the highest threshold ({number(high)}%) must be above "
+                           f"the lowest ({number(low)}%).")
     return low, high
 
 
@@ -256,7 +258,7 @@ def _percent(value, where: str) -> float:
 # --- what the decision aid compares -----------------------------------------------------------
 
 def compare_options(cfg: dict) -> dict:
-    """Which variants `toolkit ... thresholds` draws: bin counts, ranges, and flat bars.
+    """Which variants `toolkit ... thresholds` draws: bin counts, ranges, and flat thresholds.
 
     From the step's advanced config (`compare:`), falling back to the shipped defaults so a
     project made before this existed still gets a full comparison.
@@ -283,9 +285,9 @@ def parse_bins(text: str) -> list[int]:
         try:
             out.append(int(part))
         except ValueError as e:
-            raise ToolkitError(f"--bins: {part!r} is not a whole number of bands.") from e
+            raise ToolkitError(f"--bins: {part!r} is not a whole number of bins.") from e
     if not out:
-        raise ToolkitError("--bins needs at least one number of bands, e.g. --bins 5,9")
+        raise ToolkitError("--bins needs at least one number of bins, e.g. --bins 5,9")
     return out
 
 

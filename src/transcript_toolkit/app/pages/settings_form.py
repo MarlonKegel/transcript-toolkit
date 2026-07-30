@@ -217,9 +217,9 @@ def _pairs(was: dict) -> Callable[[], dict]:
 def _rollup(was: dict, step: str) -> Callable[[], dict]:
     """When a topic (or a place) becomes one of an interview's tags.
 
-    Two things are tuned here and everything else is a consequence of them: how many rarity bands
-    the topics are split into, and the range the bars run over. The bars themselves are worked out
-    from those, so nobody has to write out a list of numbers and keep it evenly spaced.
+    Two things are tuned here and everything else is a consequence of them: how many rarity bins
+    the topics are split into, and the range the thresholds run over. The thresholds themselves are
+    worked out from those, so nobody writes out a list of numbers and keeps it evenly spaced.
 
     The method sits behind a fold, opened only when the project is not on the recommended one.
     Most projects should never have to think about it, and `toolkit topics thresholds` is where
@@ -234,7 +234,7 @@ def _rollup(was: dict, step: str) -> Callable[[], dict]:
     binned = ui.column().classes("gap-1")
     with binned:
         with ui.row().classes("items-center gap-2 flex-wrap"):
-            bins_box = ui.number("Bands", min=1, max=20, step=1, precision=0,
+            bins_box = ui.number("Bins", min=1, max=20, step=1, precision=0,
                                  value=current.bins).props("dense outlined").classes("w-28")
             ui.label("from").classes("text-sm opacity-70")
             low_box = ui.number(min=0.5, max=100, step=0.5, value=current.low) \
@@ -265,7 +265,8 @@ def _rollup(was: dict, step: str) -> Callable[[], dict]:
         binned.set_visibility(not flat)
         flat_box.set_visibility(flat)
         says.set_text(thresholds.method_blurb(choice.value, items))
-        derived.set_text(f"Bars: {_bars_text(bins_box.value, low_box.value, high_box.value)}")
+        derived.set_text(
+            f"Thresholds: {_bars_text(bins_box.value, low_box.value, high_box.value)}")
 
     for box in (choice, bins_box, low_box, high_box):
         box.on_value_change(show)
@@ -283,7 +284,7 @@ def _rollup(was: dict, step: str) -> Callable[[], dict]:
 
 
 def _bars_text(bins, low, high) -> str:
-    """The bars the numbers above would produce, so what is being set is visible while it is set."""
+    """The thresholds those numbers come to, so what is being set is visible while it is set."""
     from ...core import thresholds
 
     try:

@@ -92,20 +92,23 @@ def cost_report(report: dict | None = None) -> None:
             ui.label(report["note"]).classes("text-xs tk-caution whitespace-pre-line")
 
 
-def step_spend_line(step_key: str) -> None:
-    """One line for a step's own page: what this step has cost, and the project total."""
+def step_spend_box(step_key: str) -> None:
+    """What this step has cost, beside its heading.
+
+    In the same place on every step page, and at the top: what something has already cost is
+    asked before deciding to spend more, not after scrolling past the buttons that spend.
+    """
     from ...steps.cost import spent_on
 
     report = report_or_none()
     if report is None:
         return
     entry = spent_on(report, step_key)
-    with ui.row().classes("items-center gap-2"):
-        if entry:
-            ui.label(f"This step has cost {money(entry['usd'])} so far "
-                     f"({calls(entry['calls'])}).").classes("text-xs opacity-70")
-        else:
-            ui.label("This step has not been billed for anything yet.") \
-                .classes("text-xs opacity-70")
+    with ui.card().classes("py-2 px-3 gap-0 items-end shrink-0"):
+        with ui.row().classes("items-center gap-1"):
+            ui.label("This step so far").classes("text-xs opacity-60")
+            info(EXPLAINER)
+        ui.label(money(entry["usd"]) if entry else "$0.00").classes("text-lg font-medium")
+        ui.label(calls(entry["calls"]) if entry else "nothing billed yet") \
+            .classes("text-xs opacity-60")
         ui.link("project cost report", "/workspace#cost").classes("text-xs")
-        info(EXPLAINER)

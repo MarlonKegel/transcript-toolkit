@@ -85,6 +85,12 @@ details .lead { color:var(--muted); font-size:.88rem; margin:.25rem 0 .75rem; ma
   padding:.05em .45em; margin-left:.5rem; color:#fff; background:var(--score);
   vertical-align:middle; letter-spacing:.02em; }
 .tag.now { background:var(--q); }
+/* A footnote to the panels above, not another one of them: no card, quieter, set apart. */
+details.aside { background:transparent; border:0; border-top:1px solid var(--line);
+  border-radius:0; padding:0; margin:1.75rem 0 0; }
+details.aside > summary { font-weight:400; font-size:.88rem; color:var(--muted);
+  padding:.6rem 0 0; }
+details.aside[open] { padding-bottom:0; }
 /* Figures are wide: let one scroll inside itself rather than the whole page sideways. */
 .figure { overflow-x:auto; margin:.5rem 0 0; }
 .figure img { display:block; max-width:100%; height:auto; border-radius:6px;
@@ -136,14 +142,19 @@ def para(idx: int, ts: str, role: str, speech: str) -> str:
             f'{ts_html}{role_badge(role)} {esc(speech)}</p>')
 
 
-def panel(title: str, body: str, *, lead: str = "", tag: str = "", tag_class: str = "",
-          open_: bool = False) -> str:
+def panel(title: str, body: str, *, lead: str = "", tags: list[tuple[str, str]] = (),
+          open_: bool = False, aside: bool = False) -> str:
     """A foldable section. Used where a page offers alternatives to compare: all of them are on
-    the page, but only the one being looked at takes up room."""
-    chip = f'<span class="tag {tag_class}">{esc(tag)}</span>' if tag else ""
+    the page, but only the one being looked at takes up room.
+
+    `aside` marks one that is not an alternative — a footnote to the set rather than a member of
+    it — and it is styled so that it does not read as another thing to choose between.
+    """
+    chips = "".join(f'<span class="tag {kind}">{esc(text)}</span>' for text, kind in tags)
     intro = f'<p class="lead">{esc(lead)}</p>\n' if lead else ""
-    return (f'<details{" open" if open_ else ""}>\n<summary>{esc(title)}{chip}</summary>\n'
-            f"{intro}{body}\n</details>")
+    classes = ' class="aside"' if aside else ""
+    return (f'<details{classes}{" open" if open_ else ""}>\n'
+            f"<summary>{esc(title)}{chips}</summary>\n{intro}{body}\n</details>")
 
 
 def figure(src: str, alt: str) -> str:

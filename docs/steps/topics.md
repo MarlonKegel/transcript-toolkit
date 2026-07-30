@@ -68,26 +68,28 @@ per-interview page for every tagged clip (linked from `<set>_index.html`). Each 
 topics are over- or under-applied, sharpen the `description` in your spreadsheet and re-demo —
 that text, not the code, is where the tagging rules live.
 
-## Rolling up: compare, choose, apply
+## Rolling up: decide, then do
 
 The **rollup** decides when an interview gets a topic — how big a share of that interview's clips
-has to be assigned to it. That is a judgement about your collection, so it comes in three moves
-rather than one:
+has to be tagged with it. That is a judgement about your collection, so look before choosing:
 
 1. `toolkit topics thresholds --set <name>` writes `diags/topics/<set>_thresholds.html`: a
    foldable panel per method, each drawing what that rule would tag — how many interviews every
-   topic would reach, and the bar it had to clear. What is configured now is marked. Nothing is
-   sent to OpenAI, so run it as often as it takes. `--bins 5,9`, `--ranges 10-30,20-40` and
+   topic would reach, and the threshold it had to clear. The binned methods are drawn as a grid,
+   one row per number of bins and one column per range, so both dimensions can be read at once.
+   Whatever your saved results were rolled up with is marked; a rule you have set but not yet
+   applied is not, because it is a plan rather than a state of the project. Nothing is sent to
+   OpenAI, so run it as often as it takes. `--bins 5,9`, `--ranges 10-30,20-40` and
    `--flat 20,30,40` change what is drawn (defaults in `advanced/topics.yaml` under `compare`).
-2. Set `sets.<set>.rollup` in `config.yaml` to the one you settled on. The default is
-   `{ method: freq_width, bins: 5, range: [10, 30] }` — see [CONFIG.md](../CONFIG.md) for the
-   three methods.
-3. `toolkit topics rollup --set <name>` applies it. It is free and deterministic, so changing
-   your mind costs a re-run and nothing else.
+2. Set `sets.<set>.rollup` in `config.yaml` to the one you settled on — the default is
+   `{ method: freq_width, bins: 5, range: [10, 30] }`, and [CONFIG.md](../CONFIG.md) has the
+   three methods — then `toolkit topics rollup --set <name>`. It is free and deterministic, so
+   changing your mind costs a re-run and nothing else. (In the app these are one move: you set
+   the rule inside the button that applies it.)
 
-One bar for every topic is the obvious rule and usually the wrong one: set it high enough for a
-common topic to mean something and the rare topics — often the interesting ones — never reach it.
-`freq_width` asks less of a rarer band, which is why it is the default.
+One threshold for every topic is the obvious rule and usually the wrong one: set it high enough
+for a common topic to mean something and the rare topics — often the interesting ones — never
+reach it. `freq_width` asks less of a rarer bin, which is why it is the default.
 
 ## Settings
 

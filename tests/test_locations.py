@@ -387,7 +387,7 @@ def test_thresholds_aid_compares_every_method(project, capsys):
 
     run_locations_thresholds(project)
     out = capsys.readouterr().out
-    assert "What you have now: rarity bins: 5 bands from 10% to 30%" in out
+    assert "nothing has been rolled up yet" in out
     for method in ("freq_width", "equal_count", "flat"):
         assert (project.diags_dir / "locations" / "plots" / f"locations_{method}.png").exists()
 

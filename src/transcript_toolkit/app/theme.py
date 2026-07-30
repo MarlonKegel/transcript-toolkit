@@ -62,6 +62,9 @@ body.body--dark .q-field--outlined .q-field__control {{ background:#101A24; }}
 .tk-terminal {{ background:{PAPER_DARK}; color:{CREAM}; }}
 .tk-row + .tk-row {{ border-top:1px solid {EDGE}; }}
 body.body--dark .tk-row + .tk-row {{ border-top-color:{EDGE_DARK}; }}
+/* A quiet rule inside a card, where one block of it is a different kind of thing. */
+.tk-divide {{ border-top:1px solid {EDGE}; }}
+body.body--dark .tk-divide {{ border-top-color:{EDGE_DARK}; }}
 """
 
 # A list long enough to need scrolling, sized so about a dozen rows show at once — enough to see

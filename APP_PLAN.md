@@ -897,7 +897,26 @@ ref the install named, so an `@app` install keeps following `app` after the merg
 bands, 10–30%, applied to the direct-place rollover and the region rollover alike (it was 9 bands
 before). The hybrid rollover itself is unchanged and is the last panel of the comparison page.
 
-## 23. Merging `app` into `main` — handover (2026-07-30)
+## 23. Feedback round 6 (2026-07-30) — the comparison page, read properly
+
+Round 5 landed and he used it. Everything here came out of that.
+
+| # | What he asked for | What changed |
+|---|---|---|
+| 1 | "what you have now" still showed after he changed the rule and re-ran the comparison, though he had never rolled up | **The tag now means the saved results, not config.yaml.** `state.record_rollup` writes the rule each rollup ran with; the aid reads that. Nothing is marked before a first rollup — a rule you have set is a plan, not a state of the project. |
+| 2 | Keep "recommended" when "what you have now" is on the same panel | `reviewdoc.panel` takes a list of tags; the recommended one no longer loses its chip to the current one. |
+| 3 | Merge "5 · Choose" and "6 · Roll up" | One move. `Action.setting = "rollup"` draws the rule inside the card that applies it; `content.Choice` is gone. |
+| 4 | Rename step 4, and step 5 in line with it | "Decide how to go from clip tags to interview tags" / "Roll up to interview tags", under a section heading "From clip tags to interview tags". |
+| 5 | Settings ("Change how X is tagged", the prompt, the topic list) belong **above** the rollup | They change what the tagging produces; the rollup reads what it produced. `rest()` draws `_tuning` first. |
+| 6 | The cost line is in a different place on every step page | `step_spend_box` — a small box beside the step heading, same place on every page, above everything. |
+| 7 | The lead text and "How to read these" should be one short paragraph, and neither should look like a panel of plots | One `LEAD`, at the top, not folded. "The numbers behind the pictures" → "The same comparison as a table", styled `details.aside`: no card, quieter, set off by a rule. |
+| 8 | "bar" → "threshold", "bands"/"groups" → "bins", "One bar for every topic" → "Flat threshold for all topics" | Swept through `core/thresholds` (the one place the wording lives), the settings control, the CLI help, the scaffold comments and the docs. |
+| 9 | The four binned variants should be a 2×2 grid, not a row of four | `Panel.grid` is rows of bins × columns of ranges. Whatever the results were rolled up with is folded into those axes rather than appended, so it can be read along both. Constrained layout, because a two-row grid left a hand's width of blank paper under a tight-bbox suptitle. |
+| 10 | Edit the acceptable regions in the app | `app/pages/regions.py`: `locations/regions.yaml` as a text field on the Locations page, beside the prompt. It refuses an empty list and duplicates, keeps the file's own header comment, and names any region `region_to_country.csv` has no entry for — `map` refuses one it does not know, so that is a warning here rather than a failed run later. |
+
+Tests 633 → 638. Version 0.2.8.
+
+## 24. Merging `app` into `main` — handover (2026-07-30)
 
 Marlon has judged the app good enough to ship and is presenting it shortly. This section is
 written for whoever does the merge, and is the one place that has to be read first.

@@ -354,25 +354,68 @@ def test_thresholds_aid_compares_every_method(project, capsys):
     write_hand_wide(project)
     run_topics_thresholds(project, "main")
     out = capsys.readouterr().out
-    assert "What you have now: rarity bins: 5 bands from 10% to 30%" in out
+    assert "nothing has been rolled up yet" in out
     for method in ("freq_width", "equal_count", "flat"):
         assert (project.diags_dir / "topics" / "plots" / f"main_{method}.png").exists()
 
     page = (project.diags_dir / "topics" / "main_thresholds.html").read_text()
     for method in thresholds.METHODS:                   # one foldable panel per method
         assert f"<summary>{thresholds.method_label(method, thresholds.TOPICS)}" in page
-    assert "what you have now" in page                  # the configured rule is marked as such
     assert 'src="plots/main_freq_width.png"' in page
+    # one explanation, up top, not folded away behind a summary like the panels of plots
+    assert page.count("<summary>") == len(thresholds.METHODS) + 1     # + the table
+    assert "This is where you decide what counts as enough" in page
+
+
+def test_nothing_is_marked_as_yours_until_you_have_rolled_up(project):
+    """A rule sitting in config.yaml is a plan. Marking it as what your results were built with
+    is a lie until a rollup has actually been run with it — which is exactly the moment somebody
+    changes the setting, re-runs the comparison, and sees the old answer still labelled theirs."""
+    write_hand_wide(project)
+    run_topics_thresholds(project, "main")
+    page = (project.diags_dir / "topics" / "main_thresholds.html").read_text()
+    assert "what your results were built with" not in page
+
+    set_entry(project, rollup={"method": "flat", "threshold_pct": 30})
+    run_topics_rollup(project, "main")
+    run_topics_thresholds(project, "main")
+    page = (project.diags_dir / "topics" / "main_thresholds.html").read_text()
+    assert "what your results were built with" in page
+    # ...and it is the flat panel that carries it, while freq-width keeps saying "recommended"
+    flat_at = page.index(thresholds.method_label("flat"))
+    assert "what your results were built with" in page[flat_at:flat_at + 300]
+    recommended_at = page.index(thresholds.method_label(thresholds.RECOMMENDED))
+    assert "recommended" in page[recommended_at:recommended_at + 300]
+
+
+def test_the_recommended_tag_survives_being_the_one_you_use(project):
+    write_hand_wide(project)
+    run_topics_rollup(project, "main")                  # the scaffold default is freq-width
+    run_topics_thresholds(project, "main")
+    page = (project.diags_dir / "topics" / "main_thresholds.html").read_text()
+    at = page.index(thresholds.method_label(thresholds.RECOMMENDED))
+    assert "recommended" in page[at:at + 300]
+    assert "what your results were built with" in page[at:at + 300]
 
 
 def test_thresholds_aid_takes_what_to_compare(project):
     write_hand_wide(project)
     run_topics_thresholds(project, "main", bins=[3], ranges=[(20.0, 40.0)], flat=[50.0])
     page = (project.diags_dir / "topics" / "main_thresholds.html").read_text()
-    assert "3 bands · 20–40%" in page and "50% for every topic" in page
-    assert "9 bands" not in page
-    # ...and what the project is set to is on the page whether or not it was asked for
-    assert "5 bands · 10–30%" in page
+    assert "3 bins · 20–40%" in page and "50% for every topic" in page
+    assert "9 bins" not in page
+
+
+def test_what_your_results_used_is_drawn_even_if_you_did_not_ask_for_it(project):
+    """It is the thing being compared against, so it has to be in the grid — folded into the
+    axes rather than tacked on the end, so it can be read along both dimensions."""
+    write_hand_wide(project)
+    set_entry(project, rollup={"method": "freq_width", "bins": 3, "range": [15, 35]})
+    run_topics_rollup(project, "main")
+    run_topics_thresholds(project, "main", bins=[5], ranges=[(10.0, 30.0)])
+    page = (project.diags_dir / "topics" / "main_thresholds.html").read_text()
+    assert "3 bins · 15–35%" in page and "5 bins · 10–30%" in page
+    assert "3 bins · 10–30%" in page and "5 bins · 15–35%" in page     # the full grid
 
 
 def test_annotate_writes_per_interview_html(project):
