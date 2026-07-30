@@ -234,7 +234,9 @@ toolkit app --install-launcher --port 8378
 the whole project or the installation — a setting that belongs to one step is on that step's page:
 
 - the project's name
-- which version you have, and whether a newer one exists
+- which version you have, whether a newer one exists, and **Update to the most recent
+  version** — then quit the app and open it again, because the copy already running keeps
+  using the old version until you do
 - the button that rebuilds the desktop app
 - where the project's files are, and a button that shows the folder in Finder
 - **Delete this project**, which asks you to type DELETE and tells you how many transcripts and

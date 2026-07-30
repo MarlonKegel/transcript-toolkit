@@ -83,7 +83,7 @@ def _version(active: str):
             notice.text = message.strip() if message else "This is the latest version."
             notice.classes(replace="text-xs opacity-80 whitespace-pre-line")
 
-        ui.button("Install the latest version", icon="system_update",
+        ui.button("Update to the most recent version", icon="system_update",
                   on_click=lambda: launch_global("Update", ["update"], active)).props("dense flat")
         ui.label("After updating, quit the app below and open it again — the running app keeps "
                  "using the old version until you do.").classes("text-xs opacity-60")

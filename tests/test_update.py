@@ -82,17 +82,56 @@ def test_update_command_shells_out_to_uv(monkeypatch, capsys):
     upd._cache_path().write_text('{"checked_at": 0, "latest": "9.9.9"}')
 
     upd.run_update()
-    assert calls == [["uv", "tool", "upgrade", "transcript-toolkit"]]
+    assert calls == [["/usr/bin/uv", "tool", "upgrade", "transcript-toolkit"]]
     assert not upd._cache_path().exists()          # stale "newer version available" note cleared
     assert "toolkit --version" in capsys.readouterr().out
 
 
 def test_update_without_uv_explains_rather_than_guessing(monkeypatch):
-    import shutil as _shutil
     from transcript_toolkit.errors import ToolkitError
-    monkeypatch.setattr(_shutil, "which", lambda name: None)
+    monkeypatch.setattr(upd, "uv_path", lambda: None)
     with pytest.raises(ToolkitError, match="uv is not installed"):
         upd.run_update()
+
+
+def test_uv_is_found_where_it_lives_when_it_is_not_on_the_path(monkeypatch, tmp_path):
+    """A Mac app opened from the Dock inherits launchd's PATH — /usr/bin:/bin:/usr/sbin:/sbin —
+    so uv is not on it and the update button could only ever fail. Looking in the places uv
+    installs itself is what makes the button work from the Dock as well as from Terminal."""
+    import shutil as _shutil
+
+    bin_dir = tmp_path / ".local" / "bin"
+    bin_dir.mkdir(parents=True)
+    uv = bin_dir / "uv"
+    uv.write_text("#!/bin/sh\n")
+    uv.chmod(0o755)
+
+    monkeypatch.setattr(_shutil, "which", lambda name: None)     # nothing on PATH
+    monkeypatch.setattr(upd, "UV_DIRS", (str(bin_dir),))
+    assert upd.uv_path() == str(uv)
+
+    monkeypatch.setattr(upd, "UV_DIRS", (str(tmp_path / "nowhere"),))
+    assert upd.uv_path() is None
+
+
+def test_the_uv_on_the_path_wins(monkeypatch):
+    """Whoever is typing has a PATH, and the uv on it is the one they mean."""
+    import shutil as _shutil
+
+    monkeypatch.setattr(_shutil, "which", lambda name: "/somewhere/else/uv")
+    assert upd.uv_path() == "/somewhere/else/uv"
+
+
+def test_the_upgrade_runs_the_uv_that_was_found(monkeypatch):
+    """Not the bare word `uv`: with no PATH to resolve it against, that is the failure again."""
+    import subprocess
+
+    seen = []
+    monkeypatch.setattr(upd, "uv_path", lambda: "/opt/homebrew/bin/uv")
+    monkeypatch.setattr(subprocess, "run",
+                        lambda cmd, **kw: seen.append(cmd) or subprocess.CompletedProcess(cmd, 0))
+    upd.run_update()
+    assert seen == [["/opt/homebrew/bin/uv", "tool", "upgrade", "transcript-toolkit"]]
 
 
 def test_failed_upgrade_is_reported(monkeypatch):

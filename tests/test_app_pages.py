@@ -330,7 +330,7 @@ def test_the_version_check_does_not_run_on_every_page(server, monkeypatch):
     """The drawer is built on every page and the check calls GitHub. Doing it per page load
     would put a network round trip behind every click."""
     _, body = get(server, "/step/clip")
-    assert "Install the latest version" in body      # the drawer is there
+    assert "Update to the most recent version" in body      # the drawer is there
     assert "checking for a newer version" not in body       # but it has not gone looking
 
 

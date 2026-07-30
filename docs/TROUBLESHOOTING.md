@@ -80,8 +80,15 @@ toolkit's price table. Update the toolkit (`uv tool upgrade transcript-toolkit`)
 model to `defaults/pricing.yaml`. Runs are not blocked by this — the spend estimate just shows
 "cost unknown".
 
-**How do I update the toolkit?** `toolkit update`. (It runs `uv tool upgrade
-transcript-toolkit` for you. `toolkit upgrade` works too.)
+**How do I update the toolkit?** `toolkit update`, or **Update to the most recent version**
+behind the gear in the app. (It runs `uv tool upgrade transcript-toolkit` for you. `toolkit
+upgrade` works too.) In the app, quit and open it again afterwards — the copy already running
+keeps using the old version until you do.
+
+**The update button says uv is not installed, but I installed with uv.** Update to 0.2.7 or
+later (`uv tool upgrade transcript-toolkit` in Terminal, once). An app opened from the Dock gets
+almost no `PATH` from macOS, so earlier versions could not find uv from there even though it was
+sitting in `~/.local/bin`. The toolkit now looks for it where it lives.
 
 **How much have I spent?** `toolkit cost` (all steps) or `toolkit cost <step>` is the project's
 cost report, and the app shows the same figures on the workspace page. Each line is priced at the

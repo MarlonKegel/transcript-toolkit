@@ -883,6 +883,16 @@ write `topics.sets.<set>.rollup` before a list had ever been tagged, because the
 
 Tests 609 → 630. Version 0.2.6.
 
+**Round 5a, straight after (v0.2.7).** *"Install the latest version" fails with "uv is not
+installed" — is that because we haven't merged?* **No.** An app opened from the Dock inherits
+launchd's environment, whose `PATH` is only `/usr/bin:/bin:/usr/sbin:/sbin`, so `shutil.which
+("uv")` found nothing even though uv was in `~/.local/bin`. `app/launcher.py` had already
+documented this and bakes in an absolute path for `toolkit`; `core/update.py` had not. It now
+has `uv_path()`, which tries `PATH` first and then the places uv installs itself, and runs that
+absolute path. Merging would not have changed anything. The button is also renamed **Update to
+the most recent version**. Note for whoever is asked next: `uv tool upgrade` re-fetches whatever
+ref the install named, so an `@app` install keeps following `app` after the merge.
+
 **Still to decide (Marlon).** The locations default is now the same as topics: `freq_width`, 5
 bands, 10–30%, applied to the direct-place rollover and the region rollover alike (it was 9 bands
 before). The hybrid rollover itself is unchanged and is the last panel of the comparison page.
