@@ -10,14 +10,22 @@ from ..state import load_state
 
 
 def _corpus(project: Project) -> dict:
+    # `data/unsynced/` is a pile of its own that `toolkit import` never reads, so counting it
+    # here would report a collection bigger than the one that was imported — and adding a file
+    # to it would keep saying the collection needed importing again.
     docx = sorted(p.relative_to(project.data_dir).as_posix()
-                  for p in project.data_dir.rglob("*.docx") if not p.name.startswith("~$"))
+                  for p in project.data_dir.rglob("*.docx")
+                  if not p.name.startswith("~$") and project.unsynced_dir not in p.parents)
     imported = project.paragraphs_path.exists()
     stale = False
     if imported and docx:
         newest_docx = max((project.data_dir / d).stat().st_mtime for d in docx)
         stale = newest_docx > project.paragraphs_path.stat().st_mtime
-    return {"docx_files": len(docx), "imported": imported, "import_stale": stale}
+    unsynced = sorted(p.name for p in project.unsynced_dir.rglob("*.docx")
+                      if not p.name.startswith("~$")) if project.unsynced_dir.is_dir() else []
+    return {"docx_files": len(docx), "imported": imported, "import_stale": stale,
+            "unsynced_files": len(unsynced),
+            "unsynced_imported": project.unsynced_paragraphs_path.exists()}
 
 
 def _deliverables(project: Project) -> list[str]:
@@ -81,6 +89,11 @@ def run_status(project: Project, as_json: bool = False) -> None:
     if info.get("import_stale"):
         imp = "   (transcripts changed since import — re-run `toolkit import`)"
     print(f"Transcripts in data/: {info['docx_files']} .docx{imp}")
+    if info.get("unsynced_files"):
+        note = ("" if info.get("unsynced_imported")
+                else "   (not yet read in — run `toolkit import --unsynced`)")
+        print(f"Never SYNC'd, in data/unsynced/: {info['unsynced_files']} .docx — summaries "
+              f"only{note}")
 
     if info["steps"]:
         print("\nSteps:")

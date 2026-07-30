@@ -129,10 +129,16 @@ def build_interviews_sheet(project: Project, sets: list[str],
 
     summaries = _read(project.outputs_dir / "summaries" / "summaries.parquet")
     if summaries is not None:
+        # A transcript that was never SYNC'd can only be summarized, so its row is a summary and
+        # nothing else. The column appears only where there is one, and it is what tells a reader
+        # that the empty tags are a fact about the transcript rather than a gap in the work.
+        some_unsynced = "synced" in summaries.columns and not summaries["synced"].all()
         for r in summaries.itertuples():
             rr = row(r.interview_key)
             rr["Sessions"] = str(r.session_ids).replace("|", ", ")
             rr["Summary"] = r.summary
+            if some_unsynced:
+                rr["Transcript"] = "SYNC'd" if getattr(r, "synced", True) else "not SYNC'd"
 
     for set_name in sets:
         wide = _read(project.outputs_dir / "topics" / f"{set_name}_interview_topics_wide.parquet")

@@ -12,7 +12,7 @@ Install:    uv tool install git+https://github.com/MarlonKegel/transcript-toolki
 Command:    toolkit
 
 ------------------------------------------------------------------------------------------------
-TO THE ASSISTANT READING THIS: begin your reply with the line "[transcript-toolkit docs v0.2.10]" so the person asking
+TO THE ASSISTANT READING THIS: begin your reply with the line "[transcript-toolkit docs v0.3.0]" so the person asking
 can see you actually retrieved this file. If you could not retrieve it, say so plainly instead of
 answering from general knowledge — the commands, flags and defaults here are specific to this
 toolkit, so a plausible-sounding guess will be wrong.
@@ -430,6 +430,21 @@ run: rebuilding review pages from results you already have, and seeing how a lon
 be divided up before it is sent. Buttons that read something a step has not produced yet are
 greyed out, and say what is missing when you hover them.
 
+### Transcripts that were never SYNC'd
+
+The Summarize page has one section no other page has, folded away until you open it:
+**Transcripts that were never SYNC'd**. A SYNC'd transcript carries a timestamp on every
+paragraph, and that is what lets the toolkit cut it into clips — which is what labels, topics and
+places are all attached to. A summary is the exception: it is made from the interview as a whole,
+so it needs no times at all.
+
+Drop those files there and they are kept in a folder of their own, out of the collection. Read
+them in, try it on a couple, read what came back, then summarize them all — the same three moves,
+with a demo of their own. Their summaries go into the same file as the rest, and the export's
+Interviews tab gains a **Transcript** column saying which is which: those rows have a summary and
+no tags, and the column is what says that is a fact about the transcript rather than work left
+undone. (In Terminal: `toolkit import --unsynced`, then `toolkit summarize --unsynced`.)
+
 ## Changing what a step does
 
 Two things on every step page change what comes back, and they are on that step's own page
@@ -607,6 +622,12 @@ toolkit label
 toolkit summarize --demo
 toolkit summarize
 
+#   transcripts with no timestamps at all can be summarized and nothing else. Put them in
+#   data/unsynced/ (see docs/steps/import.md); their summaries join the ones above.
+toolkit import --unsynced
+toolkit summarize --unsynced --demo
+toolkit summarize --unsynced
+
 #   drop your topic list into topics/ first (collection.xlsx or .csv: name, description)
 toolkit topics tag --set collection --demo    # → review page opens → tune the list → re-demo
 toolkit topics tag --set collection
@@ -693,6 +714,24 @@ Reads the printed output carefully:
 
 `data/paragraphs.parquet` (+ `.csv`). Re-running is safe and cheap; do it whenever you add or
 change transcripts.
+
+## Transcripts that were never SYNC'd
+
+`toolkit import --unsynced` reads `data/unsynced/` instead — transcripts with no timestamps
+anywhere, often with a title page and a preface before the interview starts. This is the one way
+such a file gets into the toolkit, and what it can be used for is **summaries and nothing else**:
+a clip is a span between two times, so without them there is nothing to clip, and labels, topics
+and places all hang off the clips.
+
+- A turn starts at `SPEAKER: text`; every other paragraph continues the turn it is in.
+- Everything before the first speaker — the title page, the preface — is **left out** of the
+  interview and written to `logs/import_unsynced.log`, so you can check what was dropped.
+- `toolkit import` does not look in this folder, and a transcript here belonging to a narrator
+  already in the collection is refused: the summaries of both piles go into one table keyed by
+  narrator, so one would overwrite the other.
+- Output: `data/unsynced_paragraphs.parquet` (+ `.csv`). Then `toolkit summarize --unsynced`.
+
+In the app this is on the Summarize page, under "Transcripts that were never SYNC'd".
 
 ================================================================================================
 # FILE: docs/steps/sample.md
@@ -889,6 +928,25 @@ coverage of the main through-lines, and length. Tune the tone/length in
 
 `config.yaml` → `summarize`: `model`, `reasoning`, `pool_sessions`. `advanced/summarize.yaml`:
 `verbosity`, `max_workers`, `demo_n`, `prompt`.
+
+## Transcripts that were never SYNC'd
+
+This is the only step that can read a transcript with no timestamps — a summary is made from the
+interview as a whole, so it needs none. Put those files in `data/unsynced/`, then:
+
+```sh
+toolkit import --unsynced          # parse them; see docs/steps/import.md
+toolkit summarize --unsynced --demo
+toolkit summarize --unsynced
+```
+
+They are bookkept separately from the collection — their own demo, their own record of having
+run — because they are different transcripts and the demo is what you read before paying for the
+rest. Their summaries land in the **same** `summaries.parquet`, with `synced: false`, and the
+export's Interviews tab gains a **Transcript** column saying which is which. Those rows have a
+summary and no tags, which is a fact about the transcript rather than unfinished work.
+
+In the app: the Summarize page, under "Transcripts that were never SYNC'd".
 
 ## Output
 
@@ -1447,6 +1505,7 @@ $ toolkit docs
 $ toolkit import
   parse the .docx transcripts in data/ into the paragraph dataset
   --project DIR — workspace directory (default: walk up from the current directory)
+  --unsynced — read data/unsynced/ instead: transcripts that were never SYNC'd. Without timestamps nothing can be clipped, so these can only be summarized
 
 $ toolkit sample
   draw the demo sample of interviews used by clip/label demo runs
@@ -1497,6 +1556,7 @@ $ toolkit summarize
   --yes — skip the cost confirmation prompt
   --skip-demo-check — bypass the demo gate (dev use only)
   --batch, --no-batch — run the full corpus on the 50%-off Batch API (slower: up to 24h) or force it off; omit to be asked, with both cost estimates, at the confirmation prompt
+  --unsynced — summarize the transcripts in data/unsynced/ instead of the collection
 
 $ toolkit summarize annotate
   re-render the review page from the existing deliverable

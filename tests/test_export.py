@@ -216,3 +216,24 @@ def test_no_dropdown_note(project, capsys):
     _clips(project)
     run_export(project)
     assert "multi-select" not in capsys.readouterr().out
+
+
+def test_a_transcript_that_was_never_syncd_says_so_in_the_export(project):
+    """Its row is a summary and nothing else, because there are no clips to tag. The column is
+    what stops that reading as unfinished work — and it appears only where there is one."""
+    _clips(project)
+    rows = [{"interview_key": "fake_beta", "session_ids": "fake_beta", "n_sessions": 1,
+             "n_paragraphs": 5, "total_words": 100, "summary": "An abstract.",
+             "summary_word_count": 2, "synced": True, "model": "m", "reasoning_effort": "r"}]
+    _write(project, "summaries/summaries.parquet", pd.DataFrame(rows))
+    run_export(project)
+    assert "Transcript" not in _sheets(project.outputs_dir / "export.xlsx")["Interviews"][0]
+
+    rows.append({**rows[0], "interview_key": "fake_gamma", "session_ids": "fake_gamma",
+                 "synced": False})
+    _write(project, "summaries/summaries.parquet", pd.DataFrame(rows))
+    run_export(project)
+    sheet = _sheets(project.outputs_dir / "export.xlsx")["Interviews"]
+    header = sheet[0]
+    said = {r[header.index("Interview")]: r[header.index("Transcript")] for r in sheet[1:]}
+    assert said == {"fake_beta": "SYNC'd", "fake_gamma": "not SYNC'd"}

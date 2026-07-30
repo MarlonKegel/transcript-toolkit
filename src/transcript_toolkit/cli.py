@@ -22,6 +22,9 @@ SET_HELP = ("which topic set to use — the name of your topic spreadsheet in to
 BATCH_HELP = ("run the full corpus on the 50%%-off Batch API (slower: up to 24h) or force it off; "
               "omit to be asked, with both cost estimates, at the confirmation prompt")
 
+UNSYNCED_HELP = ("read data/unsynced/ instead: transcripts that were never SYNC'd. Without "
+                 "timestamps nothing can be clipped, so these can only be summarized")
+
 
 def _common() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
@@ -103,6 +106,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("import", parents=[common],
                        help="parse the .docx transcripts in data/ into the paragraph dataset")
+    p.add_argument("--unsynced", action="store_true", help=UNSYNCED_HELP)
     p.set_defaults(func=cmd_import)
 
     p = sub.add_parser("sample", parents=[common],
@@ -152,6 +156,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--skip-demo-check", action="store_true",
                    help="bypass the demo gate (dev use only)")
     p.add_argument("--batch", action=argparse.BooleanOptionalAction, default=None, help=BATCH_HELP)
+    p.add_argument("--unsynced", action="store_true",
+                   help="summarize the transcripts in data/unsynced/ instead of the collection")
     p.set_defaults(func=cmd_summarize)
     ssub = p.add_subparsers(dest="action", metavar="")
     pa = ssub.add_parser("annotate", parents=[common],
@@ -324,9 +330,9 @@ def cmd_docs(args) -> None:
 
 
 def cmd_import(args) -> None:
-    from .steps.import_ import run_import
+    from .steps.import_ import run_import, run_import_unsynced
 
-    run_import(_project(args))
+    (run_import_unsynced if args.unsynced else run_import)(_project(args))
 
 
 def cmd_sample(args) -> None:
@@ -395,7 +401,8 @@ def cmd_summarize(args) -> None:
                   if args.interview else None)
     run_summarize(_project(args), demo=args.demo, interviews=interviews,
                   pool_sessions=args.pool_sessions, yes=args.yes,
-                  skip_demo_check=args.skip_demo_check, batch=args.batch)
+                  skip_demo_check=args.skip_demo_check, batch=args.batch,
+                  unsynced=args.unsynced)
 
 
 def cmd_summarize_annotate(args) -> None:

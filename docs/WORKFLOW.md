@@ -84,6 +84,12 @@ toolkit label
 toolkit summarize --demo
 toolkit summarize
 
+#   transcripts with no timestamps at all can be summarized and nothing else. Put them in
+#   data/unsynced/ (see docs/steps/import.md); their summaries join the ones above.
+toolkit import --unsynced
+toolkit summarize --unsynced --demo
+toolkit summarize --unsynced
+
 #   drop your topic list into topics/ first (collection.xlsx or .csv: name, description)
 toolkit topics tag --set collection --demo    # → review page opens → tune the list → re-demo
 toolkit topics tag --set collection

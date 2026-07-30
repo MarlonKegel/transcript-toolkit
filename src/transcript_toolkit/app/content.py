@@ -269,6 +269,46 @@ STEPS: tuple[Step, ...] = (
 BY_SLUG = {s.slug: s for s in STEPS}
 
 
+# --- transcripts that were never SYNC'd -------------------------------------------------------
+# The one way into the toolkit for a transcript with no timestamps, and it is reached from the
+# Summarize page and nowhere else: a clip is a span between two times, so a summary is the only
+# thing that can be made from one. Its own folder, its own demo, its own record of having run —
+# but the summaries themselves land in the same file as the collection's.
+
+UNSYNCED = "unsynced"
+UNSYNCED_TITLE = "Transcripts that were never SYNC'd"
+UNSYNCED_STEP_KEY = f"summarize:{UNSYNCED}"
+
+UNSYNCED_BLURB = (
+    "A SYNC'd transcript carries a timestamp on every paragraph, and that is what lets the "
+    "toolkit cut it into clips — which is what labels, topics and places are all attached to. "
+    "Without them there are no clips, so there is nothing to label and nothing to tag.\n\n"
+    "A summary is the exception: it is made from the interview as a whole, so it needs no times "
+    "at all. Transcripts put here are summarized and nothing else, and their summaries go into "
+    "the same file as the rest — marked, so a reader can see why those rows have a summary and "
+    "no tags."
+)
+
+UNSYNCED_IMPORT = Action(
+    slug="unsynced-import", title="Read them in",
+    blurb="Parse them into a table of their own, and check the speakers came out right. "
+          "Nothing is sent to OpenAI.",
+    argv=("import", "--unsynced"),
+)
+
+UNSYNCED_REVIEWS = (Review("demo_unsynced_summaries.html", "Open the demo summaries"),
+                    Review("summaries.html", "Open the summaries"))
+
+
+def unsynced_argv(*, demo: bool) -> list[str]:
+    """`toolkit summarize --unsynced`, the same shape as any other run command."""
+    return ["summarize", "--unsynced", *(["--demo"] if demo else [])]
+
+
+def unsynced_job_title(kind: str) -> str:
+    return f"Summarize · not SYNC'd — {kind}"
+
+
 def runnable(step: Step) -> list[Action]:
     """Every button on a step's page below the demo: the sequels and the extras."""
     return [*step.sequels, *step.extras]

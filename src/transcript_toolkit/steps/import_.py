@@ -11,6 +11,11 @@ without one — but then a clip's start/end time falls back to the speaker-turn'
 per-clip timing is coarser. Import measures this per transcript and warns when timestamps are
 per-turn-only. Details (that fallback, plus paragraphs before the first speaker turn) go to
 logs/import_warnings.log.
+
+`--unsynced` is the one way into the toolkit for a transcript with no timestamps at all
+(`run_import_unsynced`). It reads `data/unsynced/` into a table of its own, and only
+`toolkit summarize --unsynced` ever looks at that table: a clip is a span between two times, so
+without them there is nothing to clip, label or tag.
 """
 from __future__ import annotations
 
@@ -19,7 +24,7 @@ from pathlib import Path
 import pandas as pd
 
 from ..core.config import load_step_config, require
-from ..core.docx import parse_docx_paragraphs, paragraphs_to_records
+from ..core.docx import parse_docx_paragraphs, parse_untimed_paragraphs, paragraphs_to_records
 from ..core.ids import interview_id_from_filename, narrator_key
 from ..errors import ToolkitError
 from ..project import Project
@@ -32,27 +37,43 @@ EXPECTED_FORMAT_HINT = (
 
 def find_docx_files(project: Project) -> list[Path]:
     files = sorted(p for p in project.data_dir.rglob("*.docx")
-                   if not p.name.startswith("~$"))  # Word lock files
+                   if not p.name.startswith("~$")            # Word lock files
+                   and project.unsynced_dir not in p.parents)   # summaries only; see below
     if not files:
         raise ToolkitError(f"No .docx transcripts found under {project.data_dir}/")
     return files
+
+
+def find_unsynced_files(project: Project) -> list[Path]:
+    files = sorted(p for p in project.unsynced_dir.rglob("*.docx")
+                   if not p.name.startswith("~$"))
+    if not files:
+        raise ToolkitError(
+            f"No .docx transcripts found under {project.unsynced_dir}/\n"
+            f"That folder is for transcripts that were never SYNC'd — they can only be "
+            f"summarized. SYNC'd transcripts belong in {project.data_dir}/ instead.")
+    return files
+
+
+def _ids_for(files: list[Path], strip_suffixes) -> dict[str, Path]:
+    """{interview id: file}, refusing duplicates before anything is parsed."""
+    ids: dict[str, Path] = {}
+    for path in files:
+        iid = interview_id_from_filename(path, strip_suffixes)
+        if iid in ids:
+            raise ToolkitError(
+                f"Two transcripts yield the same interview id {iid!r}:\n"
+                f"  {ids[iid].name}\n  {path.name}\n"
+                f"Rename one of them (ids come from filenames minus {strip_suffixes}).")
+        ids[iid] = path
+    return ids
 
 
 def run_import(project: Project) -> pd.DataFrame:
     cfg = load_step_config(project, "import")
     require(cfg, ["interviewer_labels", "strip_suffixes", "session_regex"], "import")
     files = find_docx_files(project)
-
-    # Derive ids first and refuse duplicates before parsing anything.
-    ids: dict[str, Path] = {}
-    for path in files:
-        iid = interview_id_from_filename(path, cfg["strip_suffixes"])
-        if iid in ids:
-            raise ToolkitError(
-                f"Two transcripts yield the same interview id {iid!r}:\n"
-                f"  {ids[iid].name}\n  {path.name}\n"
-                f"Rename one of them (ids come from filenames minus {cfg['strip_suffixes']}).")
-        ids[iid] = path
+    ids = _ids_for(files, cfg["strip_suffixes"])
 
     records: list[dict] = []
     orphan_lines: list[str] = []       # paragraphs before the first speaker turn (real warning)
@@ -89,6 +110,102 @@ def run_import(project: Project) -> pd.DataFrame:
 
     _print_summary(df, ids, cfg["session_regex"], regimes, orphan_lines, note_lines, warn_path)
     return df
+
+
+def run_import_unsynced(project: Project) -> pd.DataFrame:
+    """Read `data/unsynced/` — transcripts that were never SYNC'd — into their own table.
+
+    They are kept apart from the corpus all the way through, because without timestamps there is
+    no clipping and so no labels, topics or places: a summary is the only thing the toolkit can
+    make from one. The summaries themselves do land in the same deliverable as the corpus's, so
+    the one thing this refuses outright is a transcript belonging to somebody who is already in
+    the corpus — two rows for one narrator would overwrite each other.
+    """
+    cfg = load_step_config(project, "import")
+    require(cfg, ["interviewer_labels", "strip_suffixes", "session_regex"], "import")
+    files = find_unsynced_files(project)
+    ids = _ids_for(files, cfg["strip_suffixes"])
+    _refuse_narrators_already_in_the_corpus(project, ids, cfg["session_regex"])
+
+    records: list[dict] = []
+    front_lines: list[str] = []
+    empty: list[str] = []
+    for iid, path in ids.items():
+        paragraphs, front_matter = parse_untimed_paragraphs(
+            path, iid, cfg["interviewer_labels"], cfg.get("other_labels") or [])
+        if not paragraphs:
+            empty.append(path.name)
+            continue
+        records += paragraphs_to_records(paragraphs)
+        for line in front_matter:
+            front_lines.append(f"{path.name}: {line[:160]}")
+    if empty:
+        raise ToolkitError(
+            "No speaker turns found in: " + ", ".join(empty) + "\nEvery turn has to start with a "
+            "paragraph like `SPEAKER: text`. See docs/steps/import.md.")
+
+    df = pd.DataFrame(records)
+    project.data_dir.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(project.unsynced_paragraphs_path, index=False)
+    if cfg.get("write_csv", True):
+        df.to_csv(project.unsynced_paragraphs_path.with_suffix(".csv"), index=False)
+
+    warn_path = project.logs_dir / "import_unsynced.log"
+    warn_path.parent.mkdir(parents=True, exist_ok=True)
+    warn_path.write_text(
+        "=== Front matter (everything before the first speaker; not summarized) ===\n"
+        + "\n".join(front_lines) + "\n" if front_lines else "")
+
+    narrators = narrator_groups(ids, cfg["session_regex"])
+    print(f"Imported {len(ids)} transcript(s) that were never SYNC'd -> {len(df):,} paragraphs, "
+          f"{len(narrators)} narrator(s).")
+    print("\nSpeaker roles (check that interviewer labels are configured right):")
+    for r in speaker_role_rows(df):
+        print(f"  {r['speaker_role']:<12} {r['speaker_label']:<24} {r['n']:>6} paragraphs")
+    multi = {k: v for k, v in narrators.items() if len(v) > 1}
+    if multi:
+        print("\nMulti-session narrators (sessions pooled into one summary):")
+        for key, session_ids in sorted(multi.items()):
+            print(f"  {key:<32} <- {', '.join(sorted(session_ids))}")
+    if front_lines:
+        print(f"\n{len(front_lines)} paragraph(s) before the first speaker — a title page or a "
+              f"preface — were left out of the interview -> {warn_path}")
+    print("\nThese can be summarized and nothing else: `toolkit summarize --unsynced --demo`.")
+    return df
+
+
+def _refuse_narrators_already_in_the_corpus(project: Project, ids: dict[str, Path],
+                                            session_regex: str) -> None:
+    if not project.paragraphs_path.exists():
+        return
+    corpus = pd.read_parquet(project.paragraphs_path, columns=["interview_id"])
+    known = {narrator_key(i, session_regex): i for i in corpus["interview_id"].unique()}
+    clash = [(path.name, known[narrator_key(iid, session_regex)])
+             for iid, path in ids.items() if narrator_key(iid, session_regex) in known]
+    if clash:
+        listed = "\n".join(f"  {name}  is the same narrator as the imported {other}"
+                           for name, other in clash)
+        raise ToolkitError(
+            f"These are already in the collection as SYNC'd transcripts:\n{listed}\n"
+            f"Summaries are keyed by narrator, so one of the two would overwrite the other. "
+            f"Remove them from {project.unsynced_dir}/, or take the SYNC'd ones out of the "
+            f"collection and import again.")
+
+
+def unsynced_interview_rows(project: Project) -> list[dict]:
+    """One row per transcript that was never SYNC'd, for whoever arrives after the import."""
+    if not project.unsynced_paragraphs_path.exists():
+        return []
+    cfg = load_step_config(project, "import")
+    df = pd.read_parquet(project.unsynced_paragraphs_path)
+    groups = narrator_groups(sorted(df["interview_id"].unique()), cfg["session_regex"])
+    narrator_of = {iid: key for key, ids in groups.items() for iid in ids}
+    return [{"interview_id": iid,
+             "narrator": narrator_of[iid],
+             "sessions": len(groups[narrator_of[iid]]),
+             "paragraphs": int(len(g)),
+             "words": int(g["word_count"].sum())}
+            for iid, g in df.groupby("interview_id", sort=True)]
 
 
 def timestamp_regimes(df: pd.DataFrame) -> list[dict]:

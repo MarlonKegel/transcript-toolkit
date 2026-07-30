@@ -43,3 +43,21 @@ Reads the printed output carefully:
 
 `data/paragraphs.parquet` (+ `.csv`). Re-running is safe and cheap; do it whenever you add or
 change transcripts.
+
+## Transcripts that were never SYNC'd
+
+`toolkit import --unsynced` reads `data/unsynced/` instead — transcripts with no timestamps
+anywhere, often with a title page and a preface before the interview starts. This is the one way
+such a file gets into the toolkit, and what it can be used for is **summaries and nothing else**:
+a clip is a span between two times, so without them there is nothing to clip, and labels, topics
+and places all hang off the clips.
+
+- A turn starts at `SPEAKER: text`; every other paragraph continues the turn it is in.
+- Everything before the first speaker — the title page, the preface — is **left out** of the
+  interview and written to `logs/import_unsynced.log`, so you can check what was dropped.
+- `toolkit import` does not look in this folder, and a transcript here belonging to a narrator
+  already in the collection is refused: the summaries of both piles go into one table keyed by
+  narrator, so one would overwrite the other.
+- Output: `data/unsynced_paragraphs.parquet` (+ `.csv`). Then `toolkit summarize --unsynced`.
+
+In the app this is on the Summarize page, under "Transcripts that were never SYNC'd".

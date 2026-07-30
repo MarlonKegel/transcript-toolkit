@@ -46,6 +46,9 @@ def test_what_to_compare_becomes_real_flags(step):
 def test_standalone_commands_are_real_commands():
     parses(list(content.SAMPLE.argv))
     parses(list(content.IMPORT.argv))
+    parses(list(content.UNSYNCED_IMPORT.argv))
+    parses(content.unsynced_argv(demo=True))
+    parses(content.unsynced_argv(demo=False))
 
 
 @ALL_STEPS

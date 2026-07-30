@@ -187,6 +187,21 @@ run: rebuilding review pages from results you already have, and seeing how a lon
 be divided up before it is sent. Buttons that read something a step has not produced yet are
 greyed out, and say what is missing when you hover them.
 
+### Transcripts that were never SYNC'd
+
+The Summarize page has one section no other page has, folded away until you open it:
+**Transcripts that were never SYNC'd**. A SYNC'd transcript carries a timestamp on every
+paragraph, and that is what lets the toolkit cut it into clips — which is what labels, topics and
+places are all attached to. A summary is the exception: it is made from the interview as a whole,
+so it needs no times at all.
+
+Drop those files there and they are kept in a folder of their own, out of the collection. Read
+them in, try it on a couple, read what came back, then summarize them all — the same three moves,
+with a demo of their own. Their summaries go into the same file as the rest, and the export's
+Interviews tab gains a **Transcript** column saying which is which: those rows have a summary and
+no tags, and the column is what says that is a fact about the transcript rather than work left
+undone. (In Terminal: `toolkit import --unsynced`, then `toolkit summarize --unsynced`.)
+
 ## Changing what a step does
 
 Two things on every step page change what comes back, and they are on that step's own page

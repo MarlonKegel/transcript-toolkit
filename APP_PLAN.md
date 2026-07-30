@@ -984,6 +984,43 @@ this codebase can make again.
    changes nothing. Deliberate consequence: a project holding a summarize demo recorded before
    this has to re-run that demo once.
 
+## 26. Transcripts that were never SYNC'd (2026-07-30)
+
+Marlon's request: summarize raw transcripts — no timestamps, a title page and a preface before
+the interview — reached from the Summarize tab, kept in a folder of their own. Not a UI change:
+it is a way into the toolkit for material the pipeline was built to refuse.
+
+**Why they can only be summarized.** A clip is a span between two times. Without timestamps there
+is nothing to clip, and labels, topics and places all hang off the clips. A summary is made from
+the interview as a whole, so it needs none. That is the whole reason this is confined to one step.
+
+**The shape.**
+
+- `data/unsynced/` (`project.unsynced_dir`), which `toolkit import`, `transcript_files()` and
+  `toolkit status` all skip — otherwise adding one would keep saying the collection needed
+  importing again.
+- `core/docx.parse_untimed_paragraphs` — a turn starts at `SPEAKER: text`, everything else
+  continues the turn. Verified against all 58 real raw OSF transcripts still sitting in the
+  working repo (`tag-locations/input/OSF/`): every one parses with both roles present. None of
+  them was copied into this repo; the fixture is synthetic
+  (`tests/fixtures/unsynced/`, in a subfolder because several tests copy every top-level
+  fixture into `data/`).
+- **The front matter is dropped**, on Marlon's call, and written to `logs/import_unsynced.log`
+  so it can be checked. It named the narrator, the interviewer and the date.
+- `toolkit import --unsynced` → `data/unsynced_paragraphs.parquet`. It refuses a transcript
+  belonging to a narrator already in the collection: the summaries are keyed by narrator, so one
+  would overwrite the other.
+- `toolkit summarize --unsynced` — its own state key (`summarize:unsynced`), so its own demo and
+  its own record of having run. The collection's demo says nothing about these transcripts.
+- **The summaries land in the collection's own `summaries.parquet`**, on Marlon's call, with a
+  `synced` column. A full run of one pile replaces that pile's rows and leaves the other alone
+  (`_from_the_other_pile`) — a transcript taken out of `data/` disappears without the untimed
+  summaries going with it.
+- The export's Interviews tab gains a **Transcript** column, but only where there is an untimed
+  row: it is what says the empty tags are a fact about the transcript rather than unfinished work.
+- App: `app/pages/unsynced.py`, one folded section on the Summarize page — upload, read them in,
+  try it, run it. Same freshness greying as everywhere else.
+
 ## 26. Merging `app` into `main` — handover (2026-07-30)
 
 Marlon has judged the app good enough to ship and is presenting it shortly. This section is

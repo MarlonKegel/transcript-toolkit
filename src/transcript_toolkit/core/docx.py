@@ -163,3 +163,75 @@ def parse_docx_paragraphs(
 
 def paragraphs_to_records(paragraphs: list[Paragraph]) -> list[dict]:
     return [asdict(p) for p in paragraphs]
+
+
+# --- transcripts that were never SYNC'd -------------------------------------------------------
+
+# Like LINE_RE without the timestamp. `is_plausible_label` is what keeps a sentence that merely
+# contains a colon from being read as a new speaker, and it is doing more work here than above:
+# there is no timestamp left to corroborate the shape.
+UNTIMED_LINE_RE = re.compile(r"^([^:]+):\s*(.*)$")
+
+
+def parse_untimed_paragraphs(
+    path: Path,
+    interview_id: str,
+    interviewer_labels: Iterable[str],
+    other_labels: Iterable[str],
+) -> tuple[list[Paragraph], list[str]]:
+    """Parse a transcript that carries no `[HH:MM:SS]` anywhere. Returns (paragraphs, front_matter).
+
+    Only summaries can be made from these: a clip is a span between two times, so without
+    timestamps there is nothing for clipping — and therefore for labelling or tagging — to work
+    with. `turn_time_start` and `sub_time_start` are empty on every row, and everything that reads
+    them treats these transcripts as untimed rather than as timed-with-gaps.
+
+    A turn starts at `SPEAKER: text`; every other paragraph continues the turn it is in.
+    Everything before the first speaker is the transcript's front matter — a title page and a
+    preface, in the transcripts this was written for. It is returned rather than parsed: it is
+    about the interview, not part of it.
+    """
+    doc = Document(str(path))
+
+    paragraphs: list[Paragraph] = []
+    front_matter: list[str] = []
+    paragraph_idx = 0
+    turn_idx = -1
+    paragraph_idx_in_turn = 0
+    speaker_label = ""
+    speaker_role = ""
+
+    for p in doc.paragraphs:
+        text = normalize_text(p.text).strip()
+        if not text:
+            continue
+        m = UNTIMED_LINE_RE.match(text)
+        if m and is_plausible_label(m.group(1).strip()):
+            speaker_label = m.group(1).strip()
+            speaker_role = infer_role(speaker_label, interviewer_labels, other_labels)
+            speech = m.group(2).strip()
+            turn_idx += 1
+            paragraph_idx_in_turn = 0
+        else:
+            if turn_idx < 0:
+                front_matter.append(text)
+                continue
+            speech = text
+            paragraph_idx_in_turn += 1
+        if not speech:
+            continue
+        paragraphs.append(Paragraph(
+            interview_id=interview_id,
+            paragraph_idx=paragraph_idx,
+            turn_idx=turn_idx,
+            paragraph_idx_in_turn=paragraph_idx_in_turn,
+            turn_time_start="",
+            sub_time_start="",
+            speaker_label=speaker_label,
+            speaker_role=speaker_role,
+            speech=speech,
+            word_count=len(speech.split()),
+        ))
+        paragraph_idx += 1
+
+    return paragraphs, front_matter

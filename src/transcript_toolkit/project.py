@@ -67,6 +67,15 @@ class Project:
     @property
     def paragraphs_path(self) -> Path: return self.data_dir / "paragraphs.parquet"
 
+    # Transcripts that were never SYNC'd. Kept in their own folder because they can only be
+    # summarized — everything else in the toolkit needs the timestamps they do not have — and
+    # because `toolkit import` must not find them among the transcripts it is meant to read.
+    @property
+    def unsynced_dir(self) -> Path: return self.data_dir / "unsynced"
+    @property
+    def unsynced_paragraphs_path(self) -> Path:
+        return self.data_dir / "unsynced_paragraphs.parquet"
+
     def exists(self) -> bool:
         return self.marker_path.exists()
 

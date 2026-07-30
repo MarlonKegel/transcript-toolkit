@@ -216,27 +216,38 @@ def set_api_key(project: Project, key: str) -> None:
 
 # --- transcripts ---------------------------------------------------------------------------
 
-def add_transcript(project: Project, filename: str, data: bytes) -> Path:
-    """Put an uploaded .docx into the workspace's data/ folder, where import looks for it."""
+def add_transcript(project: Project, filename: str, data: bytes,
+                   unsynced: bool = False) -> Path:
+    """Put an uploaded .docx where the toolkit looks for it: `data/` for a SYNC'd transcript,
+    `data/unsynced/` for one that was never SYNC'd and can therefore only be summarized."""
     name = Path(filename).name
     if not name.lower().endswith(".docx"):
         raise ToolkitError(f"{name} is not a .docx file. Transcripts must be Word documents.")
-    project.data_dir.mkdir(parents=True, exist_ok=True)
-    dest = project.data_dir / name
+    folder = project.unsynced_dir if unsynced else project.data_dir
+    folder.mkdir(parents=True, exist_ok=True)
+    dest = folder / name
     if dest.exists():
         raise ToolkitError(f"{name} is already in this project, so it was not added again. "
                            f"To put a different version in its place, delete the one in "
-                           f"{project.data_dir} first.")
+                           f"{folder} first.")
     dest.write_bytes(data)
     return dest
 
 
 def transcript_files(project: Project) -> list[Path]:
     """The .docx files in the workspace, in the order import will read them. Word's own lock
-    files (`~$…`) are not transcripts."""
+    files (`~$…`) are not transcripts, and the ones that were never SYNC'd are a separate pile
+    that import does not read."""
     if not project.data_dir.is_dir():
         return []
-    return sorted(p for p in project.data_dir.rglob("*.docx") if not p.name.startswith("~$"))
+    return sorted(p for p in project.data_dir.rglob("*.docx")
+                  if not p.name.startswith("~$") and project.unsynced_dir not in p.parents)
+
+
+def unsynced_files(project: Project) -> list[Path]:
+    if not project.unsynced_dir.is_dir():
+        return []
+    return sorted(p for p in project.unsynced_dir.rglob("*.docx") if not p.name.startswith("~$"))
 
 
 def transcript_count(project: Project) -> int:
