@@ -839,3 +839,103 @@ Tests 592 → 609.
 
 **Worth knowing for the next round.** NiceGUI HTML-escapes `$` in the served page (`&#36;`), so a
 page test asserting a money figure has to expect that, not `$8.00`.
+
+## 22. Merging `app` into `main` — handover (2026-07-30)
+
+Marlon has judged the app good enough to ship and is presenting it shortly. This section is
+written for whoever does the merge, and is the one place that has to be read first.
+
+### Where things stand
+
+| | |
+|---|---|
+| Repo | `~/projects/incite/transcript-toolkit` → public `MarlonKegel/transcript-toolkit` |
+| Branch | `app` at **`d940aac`**, version **0.2.5**, working tree clean |
+| `main` | at `c0e7d29`, **strictly behind** — 25 commits, 92 files, +10664/−249, nothing on `main` that `app` lacks, so the merge can fast-forward |
+| Tests | **609 passed, 1 skipped**; CI green on `d940aac` |
+| Interpreter | there is no `python` on PATH — use `/opt/venvs/incite/transcript-toolkit-dev/bin/python` |
+
+**`main` is what colleagues install from, so pushing there ships instantly.** That is the whole
+risk of this merge; the code itself has been exercised.
+
+### The one thing that actually blocks it
+
+**`README.md` and `docs/SETUP.md` never mention the app.** `docs/APP.md` exists and is complete,
+and it is in the docs bundle (`scripts/build_docs_bundle.py`, `DOCS` list) so `llms-full.txt`
+covers it — but nothing at the front door links to it, and the README's Quickstart is
+terminal-only. Merging as-is ships the app undiscoverable to exactly the people it was built for.
+
+Minimum before the merge:
+
+1. **README** — add `docs/APP.md` to the Documentation index, and put a point-and-click opening
+   in the Quickstart *above* the terminal one (`uv tool install …` then
+   `toolkit app --install-launcher`). Most colleagues will never type a command.
+2. **docs/SETUP.md** — after the install steps, a short "if you would rather not use Terminal"
+   pointing at APP.md. It currently ends by sending everyone to WORKFLOW.md.
+3. **docs/WORKFLOW.md** — one line that the same demo-first loop is what the app's step pages do.
+4. Regenerate the bundle: `.../python scripts/build_docs_bundle.py`. **`tests/test_docs.py` fails
+   if the bundle is stale after any docs edit** — that is the guard, use it.
+
+### The merge itself
+
+```sh
+cd ~/projects/incite/transcript-toolkit
+git checkout app && git pull                       # confirm d940aac or later
+# ... the docs edits above, committed on `app` ...
+/opt/venvs/incite/transcript-toolkit-dev/bin/python scripts/build_docs_bundle.py
+/opt/venvs/incite/transcript-toolkit-dev/bin/python -m pytest -q      # expect 609 passed, 1 skipped
+git checkout main
+git merge --no-ff app -m "the app: point-and-click over the same CLI (v0.3.0)"
+git push origin main
+```
+
+`--no-ff` rather than the fast-forward it would otherwise be: one commit on `main` marking when
+the app shipped is worth more than a tidy line. **Bump `__version__` to 0.3.0** on `app` before
+merging — this is a feature release, and the version is shown in the app header, which is how
+anyone tells which build they are looking at.
+
+Watch CI on `main` afterwards, then have Marlon reinstall **without** `@app`:
+
+```sh
+uv tool install --force git+https://github.com/MarlonKegel/transcript-toolkit.git
+toolkit app --install-launcher      # then quit and reopen the app
+```
+
+### Decisions to make, with recommendations
+
+- **`APP_PLAN.md`** — §16 said delete it on merge. **Recommend keeping it.** §17–§21 are the only
+  record of four rounds of feedback and the UI-vs-CLI call made for every item; nothing but
+  itself links to it and it is not in the docs bundle, so it costs nothing to keep. If it must
+  leave the repo root, move it rather than delete it.
+- **`scripts/mac_launcher_smoke_test.sh`** — also slated for deletion, but
+  `app/launcher.py` and `tests/test_app_launcher.py` both cite it as where the recipe was
+  verified on real hardware. **Recommend keeping it**, or deleting it *and* rewording those two
+  references in the same commit.
+- **Exact-pin dependencies** — on the old list, and the one change that could break a fresh
+  `uv tool install` on somebody else's Mac. It has nothing to do with the app. **Do it after the
+  meeting, on its own.**
+- **Version bump per push** — the rule for `app` was to bump every time. On `main` decide the
+  cadence deliberately; the update check and `toolkit update` both read it.
+
+### Do not "fix" these — each is deliberate and tested
+
+- The **full-run button does not exist until a demo has been run**: the toolkit refuses that run
+  anyway, so a button for it would only be a button that fails.
+- **`toolkit cost` counts every call ever billed**, not the deduped current set. It is a report of
+  money spent, and a step only appends a cache record when it really calls the API.
+- The **demo-sample bounds (3–10)** live in `cli.cmd_sample`, not in `draw_interview_sample` —
+  validation at the boundary where user input arrives; library callers and tests are unbounded.
+- **`core/settings.py` edits config.yaml as text**, re-reads it, and refuses to write unless
+  exactly the named keys changed. A file somebody has reindented by hand is left alone on purpose.
+- The **OpenAI key is on the Workspace page**, not in the settings drawer: it is a credential and
+  the first thing a new project needs, not a tunable.
+- **Two path conventions**: a prompt name is relative to `prompts/`; `label.addendum` is relative
+  to the workspace. `core/prompts.py` documents both. Conflating them was a real shipped bug.
+- **NiceGUI HTML-escapes `$` as `&#36;`** in the served page — a test asserting a money figure has
+  to expect that.
+
+### Known, and fine
+
+Marlon's own test project has review pages written before the back-link existed. Review pages are
+generated artifacts: **Rebuild these pages**, beside the review links on each step page, brings an
+old one up to date for nothing.
