@@ -1021,19 +1021,19 @@ the interview as a whole, so it needs none. That is the whole reason this is con
 - App: `app/pages/unsynced.py`, one folded section on the Summarize page — upload, read them in,
   try it, run it. Same freshness greying as everywhere else.
 
-## 26. Merging `app` into `main` — handover (2026-07-30)
+## 27. Merging `app` into `main`, and the docs pass — handover (2026-07-30)
 
-Marlon has judged the app good enough to ship and is presenting it shortly. This section is
-written for whoever does the merge, and is the one place that has to be read first.
+**This is the section to read first.** It is written for whoever does the merge and the
+documentation audit, which are one job: the docs are what blocks the merge.
 
 ### Where things stand
 
 | | |
 |---|---|
 | Repo | `~/projects/incite/transcript-toolkit` → public `MarlonKegel/transcript-toolkit` |
-| Branch | `app` at **`d940aac`**, version **0.2.5**, working tree clean |
-| `main` | at `c0e7d29`, **strictly behind** — 25 commits, 92 files, +10664/−249, nothing on `main` that `app` lacks, so the merge can fast-forward |
-| Tests | **609 passed, 1 skipped**; CI green on `d940aac` |
+| Branch | `app` at **`a66f6f4`**, version **0.3.0**, working tree clean, pushed |
+| `main` | at `c0e7d29` — **33 commits behind, 0 ahead**, so the merge is a clean fast-forward |
+| Tests | **685 passed, 1 skipped**; CI green on `a66f6f4` |
 | Interpreter | there is no `python` on PATH — use `/opt/venvs/incite/transcript-toolkit-dev/bin/python` |
 
 **`main` is what colleagues install from, so pushing there ships instantly.** That is the whole
@@ -1054,26 +1054,29 @@ Minimum before the merge:
 2. **docs/SETUP.md** — after the install steps, a short "if you would rather not use Terminal"
    pointing at APP.md. It currently ends by sending everyone to WORKFLOW.md.
 3. **docs/WORKFLOW.md** — one line that the same demo-first loop is what the app's step pages do.
-4. Regenerate the bundle: `.../python scripts/build_docs_bundle.py`. **`tests/test_docs.py` fails
+4. The full documentation audit — §28 below is the brief for it.
+5. Regenerate the bundle: `.../python scripts/build_docs_bundle.py`. **`tests/test_docs.py` fails
    if the bundle is stale after any docs edit** — that is the guard, use it.
 
 ### The merge itself
 
 ```sh
 cd ~/projects/incite/transcript-toolkit
-git checkout app && git pull                       # confirm d940aac or later
+git checkout app && git pull                       # confirm a66f6f4 or later
 # ... the docs edits above, committed on `app` ...
 /opt/venvs/incite/transcript-toolkit-dev/bin/python scripts/build_docs_bundle.py
-/opt/venvs/incite/transcript-toolkit-dev/bin/python -m pytest -q      # expect 609 passed, 1 skipped
+/opt/venvs/incite/transcript-toolkit-dev/bin/python -m pytest -q      # expect 685 passed, 1 skipped
 git checkout main
 git merge --no-ff app -m "the app: point-and-click over the same CLI (v0.3.0)"
 git push origin main
 ```
 
 `--no-ff` rather than the fast-forward it would otherwise be: one commit on `main` marking when
-the app shipped is worth more than a tidy line. **Bump `__version__` to 0.3.0** on `app` before
-merging — this is a feature release, and the version is shown in the app header, which is how
-anyone tells which build they are looking at.
+the app shipped is worth more than a tidy line. `__version__` is **already 0.3.0** — bumped when
+the untimed-transcript work landed, because new material can now enter the toolkit that could not
+before. If more goes onto `app` before the merge, bump again: the version is shown in the app
+header, and it is how anyone tells which build they are looking at. **Never add Claude or any AI
+as a commit co-author.**
 
 Watch CI on `main` afterwards, then have Marlon reinstall **without** `@app`:
 
@@ -1084,10 +1087,11 @@ toolkit app --install-launcher      # then quit and reopen the app
 
 ### Decisions to make, with recommendations
 
-- **`APP_PLAN.md`** — §16 said delete it on merge. **Recommend keeping it.** §17–§21 are the only
-  record of four rounds of feedback and the UI-vs-CLI call made for every item; nothing but
-  itself links to it and it is not in the docs bundle, so it costs nothing to keep. If it must
-  leave the repo root, move it rather than delete it.
+- **`APP_PLAN.md`** — §16 said delete it on merge. **Recommend keeping it.** §17–§24 are the only
+  record of seven rounds of feedback and the UI-vs-CLI call made for every item, §25 is the bug
+  audit and §26 the untimed-transcript design; nothing but itself links to it and it is not in the
+  docs bundle, so it costs nothing to keep. If it must leave the repo root, move it rather than
+  delete it.
 - **`scripts/mac_launcher_smoke_test.sh`** — also slated for deletion, but
   `app/launcher.py` and `tests/test_app_launcher.py` both cite it as where the recipe was
   verified on real hardware. **Recommend keeping it**, or deleting it *and* rewording those two
@@ -1114,9 +1118,134 @@ toolkit app --install-launcher      # then quit and reopen the app
   to the workspace. `core/prompts.py` documents both. Conflating them was a real shipped bug.
 - **NiceGUI HTML-escapes `$` as `&#36;`** in the served page — a test asserting a money figure has
   to expect that.
+- **`freshness()` catches bare `Exception`.** It runs while a page is rendering and calls five
+  steps' `_context`s, which read YAML, parquet, CSV and XLSX. Claiming nothing keeps every button
+  live; an escape here is a blank screen.
+- **`config.yaml` is edited as text and never round-tripped through yaml.** Its comments are the
+  user-facing documentation of every setting — a round-trip would delete all of them.
+- **Instruction byte-stability is load-bearing.** The generated taxonomy text, the region list and
+  every rendered prompt feed `cache_key`, which keys both the paid-call cache and the demo gate.
+  A cosmetic change to any of them invalidates every user's cache and every recorded demo. There
+  are golden tests for this; if one fails, that is the guard working.
+- **`docs/APP.md` is in the docs bundle but nothing links to it.** The bundle is not the fix for
+  the front-door problem above — a human reading README never sees it.
 
 ### Known, and fine
 
 Marlon's own test project has review pages written before the back-link existed. Review pages are
 generated artifacts: **Rebuild these pages**, beside the review links on each step page, brings an
 old one up to date for nothing.
+
+### The standing rule for this project
+
+**The CLI and the app must never drift.** Every piece of feedback gets a deliberate call: is this
+UI-only, or does it belong at the CLI level too? §17's last column records that call for each item
+of round 1, including the two places the CLI deliberately did *not* change. Structurally this is
+held up by two things: the app runs the real CLI on a pty and never calls a step function, and
+`app/content.py` is the only file in `app/` allowed to name a command or a flag — a test walks the
+real argparse parser and fails if it drifts.
+
+The same rule governs the docs. A doc describes the toolkit, not the CLI or the app separately;
+where they differ the doc says so in one place.
+
+## 28. The documentation audit — the brief (2026-07-30)
+
+Marlon asked for the merge and a full audit and update of every doc, as one job. This section is
+the brief; **the audit itself has not been done** — nothing below is a finding, it is scope and
+method. Do not treat any line here as already checked.
+
+### Ground truth is the code, never another doc
+
+The authoritative sources, in the order worth consulting:
+
+| For | Read |
+|---|---|
+| every command, subcommand and flag | `src/transcript_toolkit/cli.py` (the real argparse parser) |
+| what a step does, reads and writes | `src/transcript_toolkit/steps/` |
+| the settings a project really gets | `defaults/scaffold/config.yaml`, `defaults/scaffold/advanced/*.yaml`, `core/config.py` |
+| every command the app runs | `app/content.py` — nothing else in `app/` may name a command or a flag |
+| the workspace layout `toolkit init` makes | `project.py` |
+| behaviour that is pinned | `tests/` — a doc contradicting a passing test is the doc being wrong |
+
+`toolkit docs` and `llms-full.txt` are *generated from* the docs, so they can never be evidence
+for anything; they are output.
+
+### Every documentation file, and when it last changed
+
+| File | Last commit touching it | In the docs bundle? |
+|---|---|---|
+| `README.md` | 2026-07-29 | yes |
+| `docs/SETUP.md` | 2026-07-29 | yes |
+| `docs/APP.md` | 2026-07-30 | yes |
+| `docs/WORKFLOW.md` | 2026-07-30 | yes |
+| `docs/CONFIG.md` | 2026-07-30 | yes |
+| `docs/TROUBLESHOOTING.md` | 2026-07-30 | yes |
+| `docs/steps/import.md` | 2026-07-30 | yes |
+| `docs/steps/sample.md` | 2026-07-29 | yes |
+| `docs/steps/clip.md` | **2026-07-27** | yes |
+| `docs/steps/label.md` | **2026-07-27** | yes |
+| `docs/steps/summarize.md` | 2026-07-30 | yes |
+| `docs/steps/topics.md` | 2026-07-30 | yes |
+| `docs/steps/locations.md` | 2026-07-30 | yes |
+| `docs/steps/export.md` | **2026-07-24** | yes |
+| `docs/examples/osf/README.md` (+ `config.yaml`, `topics/*.xlsx`, two prompt files) | 2026-07-2x | README only |
+| `AGENTS.md` (developer tier) | 2026-07-30 | **no** |
+| `defaults/scaffold/AGENTS.md` (ships into every workspace) | **2026-07-23** | **no** |
+| `APP_PLAN.md` (this file) | today | **no** |
+
+The three oldest — `export.md` (24th), `clip.md`, `label.md` (27th) and the scaffold `AGENTS.md`
+(23rd) — predate most of what changed. Age is a hint about where to look, not a finding.
+
+The bundle's own file list is `DOCS` in `scripts/build_docs_bundle.py`. A doc that exists in
+`docs/` but is not in that list is invisible to anyone pasting the `llms-full.txt` URL into a
+chat model — which is how a colleague was told a real flag did not exist. Check the list against
+the directory.
+
+### What changed most recently, and therefore what to check hardest
+
+Every one of these is real and shipped; the question is only whether the docs know about it.
+
+- **v0.3.0, transcripts that were never SYNC'd** (§26): `data/unsynced/`, `toolkit import
+  --unsynced`, `toolkit summarize --unsynced`, `data/unsynced_paragraphs.parquet`, a `synced`
+  column in `outputs/summaries/summaries.parquet`, and a **Transcript** column in the export's
+  Interviews tab that appears only when an untimed row exists. `docs/steps/import.md`,
+  `docs/steps/summarize.md`, `docs/WORKFLOW.md` and `docs/APP.md` were edited for it —
+  **check for half-updated neighbours**, a section added while the sentence beside it stayed
+  wrong. `docs/steps/export.md` was NOT edited and now has a column it does not mention.
+- **The rollup rule is `{method, bins, range}`** (`core/thresholds.py`), method one of
+  `freq_width` | `equal_count` | `flat`, thresholds derived rather than written out. The older
+  `thresholds: [...]` list and the older `scheme: flat|binned` are still *accepted* for existing
+  projects — so the question for `topics.md`, `locations.md` and `CONFIG.md` is whether they
+  describe the **current** spelling as the current one.
+- **The app exists** (`toolkit app`), and `toolkit update`, and buttons that would do nothing are
+  greyed out (`steps/freshness.py`). `toolkit status` reports the same freshness.
+- **The seven bugs in §25** changed real behaviour a doc might describe.
+
+### Method
+
+Read each doc in full, then for every factual claim it makes — a command, a flag, a filename, a
+path, a default, a column name, a sequence, a promise about behaviour — open the code and check
+it. Report only what a reader would be misled by; not tone, not wording preference. A doc that is
+entirely accurate is a real and useful answer.
+
+Worth separating, because the fixes differ: **wrong** (a reader following it fails), **missing**
+(a shipped feature no doc mentions), **stale** (true once), **unclear** (accurate but misleading).
+
+### The guard, and the one command that must not be forgotten
+
+```sh
+/opt/venvs/incite/transcript-toolkit-dev/bin/python scripts/build_docs_bundle.py
+/opt/venvs/incite/transcript-toolkit-dev/bin/python -m pytest -q
+```
+
+**`tests/test_docs.py` fails if the bundle is stale after any README or docs edit.** It is not an
+obstacle, it is the thing that keeps `llms-full.txt` honest. Run the generator, then the suite.
+
+### Two standing constraints on any doc edit
+
+- **A doc describes the toolkit, not the CLI and the app separately.** Where the two genuinely
+  differ, say so once, in one place. Marlon's standing instruction is that they must never drift.
+- **The audience is a non-technical curator on a Mac**, not the person who built this. State what
+  to do and what will happen; rationale belongs in code comments. `docs/APP.md` is the register to
+  match.
+
