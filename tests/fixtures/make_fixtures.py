@@ -80,11 +80,41 @@ BETA = [
 ]
 
 
-def write(name: str, paragraphs: list[str]) -> None:
+# A transcript that was never SYNC'd: no timestamps anywhere, and a title page and preface
+# before the interview starts, which is what these look like in practice. `toolkit summarize
+# --unsynced` is the only thing that reads one.
+GAMMA_RAW = [
+    "A FAKE ORAL HISTORY PROJECT",
+    "Oral History Interview with",
+    "Gamma Fake",
+    "Some Institute",
+    "2025",
+    "PREFACE",
+    "The following oral history is the result of a recorded interview with Gamma Fake conducted "
+    "by a fake interviewer on a date that never happened.",
+    "Readers are asked to bear in mind that they are reading a transcript of the spoken word "
+    "rather than written prose.",
+    "Q: Today is a day that does not exist. Could you tell me how you came to the work you did?",
+    "Gamma: Sideways, like most people. I studied one thing, was hired to do another, and spent "
+    "twenty years discovering that the second one suited me.",
+    "The part nobody tells you is how much of it is arranging chairs and booking rooms. The "
+    "ideas are the easy half.",
+    "Q: What kept you there?",
+    "Gamma: The people, and the sense that the work would not happen if we stopped doing it. "
+    "That is a hard thing to walk away from, and I did not, for a very long time.",
+    # a sentence with a colon in it, which is a continuation and not a new speaker
+    "There was one rule we kept: never promise what the budget cannot pay for.",
+    "Q: And what would you tell somebody starting now?",
+    "Gamma: That the work outlasts the plan, and the plan is still worth making.",
+]
+
+
+def write(name: str, paragraphs: list[str], folder: Path = HERE) -> None:
     doc = Document()
     for text in paragraphs:
         doc.add_paragraph(text)
-    doc.save(HERE / name)
+    folder.mkdir(parents=True, exist_ok=True)
+    doc.save(folder / name)
     print(f"wrote {name} ({len(paragraphs)} paragraphs)")
 
 
@@ -92,3 +122,6 @@ if __name__ == "__main__":
     write("Fake_Alpha_20240101_session1_SYNC.docx", ALPHA_S1)
     write("Fake_Alpha_20240108_session2_SYNC.docx", ALPHA_S2)
     write("Fake, Beta_SYNC.docx", BETA)
+    # In a subfolder, mirroring the workspace: the tests that copy every SYNC'd fixture into
+    # data/ must not pick this one up, and neither must `toolkit import`.
+    write("Fake_Gamma_Transcript.docx", GAMMA_RAW, HERE / "unsynced")

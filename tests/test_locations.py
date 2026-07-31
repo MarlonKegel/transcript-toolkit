@@ -366,3 +366,41 @@ def test_survey_import_guard(project):
         pytest.skip("spaCy installed in this venv; the ImportError hint path cannot be exercised")
     with pytest.raises(ToolkitError, match=r"transcript-toolkit\[survey\]"):
         run_locations_survey(project)
+
+
+# --- the rollup decision aid ---------------------------------------------------------------
+
+def test_thresholds_aid_compares_every_method(project, capsys):
+    """The aid runs each candidate rule through the whole hybrid rollover, so what it draws is
+    what a rollup would write — not an approximation of it."""
+    from transcript_toolkit.core import thresholds
+    from transcript_toolkit.steps.locations import run_locations_thresholds
+
+    out_dir = project.outputs_dir / "locations"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    cw = pd.DataFrame([{"interview_id": "fake_beta", "clip_id": f"b{i}",
+                        "regions": "Baltics" if i < 3 else ""} for i in range(6)])
+    cl = pd.DataFrame([{"interview_id": "fake_beta", "clip_id": f"b{i}", "country": "France",
+                        "via": "direct"} for i in range(4)])
+    cw.to_parquet(out_dir / "clip_countries.parquet", index=False)
+    cl.to_parquet(out_dir / "clip_countries_long.parquet", index=False)
+
+    run_locations_thresholds(project)
+    out = capsys.readouterr().out
+    assert "nothing has been rolled up yet" in out
+    for method in ("freq_width", "equal_count", "flat"):
+        assert (project.diags_dir / "locations" / "plots" / f"locations_{method}.png").exists()
+
+    page = (project.diags_dir / "locations" / "locations_thresholds.html").read_text()
+    for method in thresholds.METHODS:
+        assert f"<summary>{thresholds.method_label(method, thresholds.PLACES)}" in page
+    # the hybrid rollover itself is a separate question, and gets its own panel
+    assert "How regions become an interview&#x27;s places" in page
+    assert "region information dropped" in page
+
+
+def test_thresholds_aid_needs_the_map_step(project):
+    from transcript_toolkit.steps.locations import run_locations_thresholds
+
+    with pytest.raises(ToolkitError, match="locations map"):
+        run_locations_thresholds(project)

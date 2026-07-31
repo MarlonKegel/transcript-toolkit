@@ -4,11 +4,15 @@
 # This file holds the settings you are expected to adjust per project. Everything else lives in
 # advanced/<step>.yaml (rarely needed) — see docs/CONFIG.md in the toolkit repo for every key.
 #
+# The comment above a setting is what the app shows next to it, so rewording one here changes
+# what the app says. Keep each comment directly above its setting, with no blank line between.
+#
 # NOTE: changing a model, prompt, or setting for a step makes its previous demo "stale": the next
 # full run will ask you to demo + review again first. That is intentional.
 # =================================================================================================
 
 project:
+  # What this project is called wherever the toolkit shows it. Its folder keeps its own name.
   name: "My Oral History Project"
 
 # --- import: docx -> paragraph dataset -----------------------------------------------------------
@@ -22,12 +26,16 @@ import:
 
 # --- clip: split each interview into clips -------------------------------------------------------
 clip:
+  # Which OpenAI model does this step. The larger ones cost more per interview.
   model: gpt-5.6-sol
+  # How much thinking the model does before it answers. More is slower and costs more.
   reasoning: medium                # none | low | medium | high | xhigh
 
 # --- label: one-line label per clip --------------------------------------------------------------
 label:
+  # Which OpenAI model does this step. The larger ones cost more per interview.
   model: gpt-5.6-terra
+  # How much thinking the model does before it answers. More is slower and costs more.
   reasoning: medium
   # Optional project-specific consistency rules appended to the label prompt
   # (e.g. "always write OSF, never Open Society Foundations"). Path relative to the workspace.
@@ -35,39 +43,63 @@ label:
 
 # --- summarize: one "scope and content" abstract per interview -----------------------------------
 summarize:
+  # Which OpenAI model does this step. The larger ones cost more per interview.
   model: gpt-5.6-sol
+  # How much thinking the model does before it answers. More is slower and costs more.
   reasoning: low
-  pool_sessions: true              # true: one summary per narrator (multi-session interviews pooled)
+  # On: one summary per narrator, with a multi-session interview's sessions read together.
+  # Off: one summary per session file.
+  pool_sessions: true
 
 # --- topics: score every clip against your topic list(s) -----------------------------------------
 topics:
+  # Which OpenAI model does this step. The larger ones cost more per clip.
   model: gpt-5.6-luna
+  # How much thinking the model does before it answers. More is slower and costs more.
   reasoning: medium
   # You do NOT need to fill `sets` in by hand. Put your topic list in topics/ as a .csv or
   # .xlsx — the filename is the set name — and run `toolkit topics tag --set <name> --demo`.
   # The set is added here automatically the first time you use it; edit its rollup below.
-  #   flat   — an interview gets a topic when >= threshold_pct % of its clips have it.
-  #   binned — per-topic bars: rare topics clear a lower bar than common ones
-  #            (list of bars, rarest band first; run `toolkit topics thresholds` to tune).
-  # A set may also bring its own rubric when its tagging rules differ from the default prompt:
+  #
+  # `rollup` decides when a topic becomes one of an interview's tags: how big a share of that
+  # interview's clips has to be assigned to it. Run `toolkit topics thresholds --set <name>`
+  # to see what each of these would tag before choosing one.
+  #   freq_width  — recommended. The topics are split into `bins` bins by how often they come
+  #                 up across the collection, over `range: [lowest, highest]` percent, and a
+  #                 rarer bin gets a lower threshold.
+  #   equal_count — the same, except each bin holds the same number of topics.
+  #   flat        — one `threshold_pct` threshold for every topic.
+  # A set may also bring its own rubric when its tagging rules differ from the default prompt,
+  # and its own model and reasoning when it is harder or easier work than the others:
   #   prompt: tag_topics_strict.md        # a file in prompts/
+  #   model: gpt-5.6-sol
+  #   reasoning: high
   sets: {}
     # Filled in automatically. An entry looks like this:
     # my_set_name:
     #   file: topics/my_set_name.xlsx
-    #   rollup: { scheme: flat, threshold_pct: 30 }
-    #   # rollup: { scheme: binned, thresholds: [10, 12.5, 15, 17.5, 20, 22.5, 25, 27.5, 30] }
+    #   rollup: { method: freq_width, bins: 5, range: [10, 30] }
+    #   # rollup: { method: flat, threshold_pct: 30 }
 
 # --- locations: tag clips to countries and regions ------------------------------------------------
 locations:
+  # Which OpenAI model does this step. The larger ones cost more per clip.
   model: gpt-5.6-luna
+  # How much thinking the model does before it answers. More is slower and costs more.
   reasoning: medium
-  # Region -> interview rollup bars (rarest band first), same idea as binned topics.
-  rollup:
-    thresholds: [10, 12.5, 15, 17.5, 20, 22.5, 25, 27.5, 30]
-  # Canonical relabeling applied to model output (spelling variants, merges).
+  # When a place becomes one of an interview's places: how big a share of that interview's
+  # clips has to talk about it. The same rule applies to regions, which are rolled up as
+  # regions and only then expanded into their countries. Run `toolkit locations thresholds`
+  # to see what each of these would tag before choosing one.
+  #   freq_width  — recommended. The places are split into `bins` bins by how often they come
+  #                 up across the collection, over `range: [lowest, highest]` percent, and a
+  #                 rarer bin gets a lower threshold.
+  #   equal_count — the same, except each bin holds the same number of places.
+  #   flat        — one `threshold_pct` threshold for every place.
+  rollup: { method: freq_width, bins: 5, range: [10, 30] }
+  # Spellings to settle on, so one place is one place across the whole collection.
   relabel: {}                      # e.g. { Czech Republic: Czechia, Macedonia: North Macedonia }
-  # Subnational places tagged in their own right (kept alongside their country).
+  # Places below country level to tag in their own right, kept alongside their country.
   place_tags: []                   # e.g. [Chechnya, Crimea]
 
 # --- export: the xlsx deliverable -----------------------------------------------------------------

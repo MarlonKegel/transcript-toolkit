@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from ..errors import ToolkitError
@@ -21,6 +22,50 @@ VERBOSITY_LEVELS = ("low", "medium", "high")
 
 TERMINAL_OK = "completed"
 TERMINAL_BAD = ("failed", "cancelled", "incomplete")
+
+# An account that cannot be billed refuses every call, and says so in a way that needs
+# translating twice over. The commonest code arrives as HTTP 429 — the same class as a genuine
+# rate limit — so it would otherwise walk the whole backoff ladder on every worker (minutes of
+# waiting per call) before failing with a traceback. And OpenAI's own text ("check your plan and
+# billing details") sends a curator looking at spending limits, which is usually the wrong page:
+# an empty balance and a limit that has been hit report as different codes but read identically.
+BILLING_REFUSALS = {
+    "insufficient_quota": "the OpenAI account is out of credit",
+    "billing_hard_limit_reached": "the OpenAI account has reached a billing limit",
+}
+
+BILLING_HELP = """\
+This is about the OpenAI account, not about this project and not about anything you did.
+Every call that already finished is saved, so once the account is sorted out you can run the
+same command again and it will carry on from where it stopped.
+
+Whoever looks after the OpenAI account needs to check two pages:
+  the credit balance    https://platform.openai.com/settings/organization/billing
+  the spending limits   https://platform.openai.com/settings/organization/limits
+
+If the balance is empty or negative even though auto-recharge is switched on, the automatic
+payment is being declined. Buying credit by hand on that first page goes through when the
+automatic charge does not."""
+
+
+def billing_refusal(exc: BaseException) -> ToolkitError | None:
+    """The explanation for a billing refusal, or None if `exc` is some other problem."""
+    reason = BILLING_REFUSALS.get(getattr(exc, "code", None))
+    if reason is None:
+        return None
+    return ToolkitError(f"OpenAI refused the request: {reason}.\n\n{BILLING_HELP}")
+
+
+@contextmanager
+def billing_errors_explained():
+    """Turn a billing refusal from any OpenAI call inside the block into that explanation."""
+    try:
+        yield
+    except BaseException as e:
+        refusal = billing_refusal(e)
+        if refusal is not None:
+            raise refusal from e
+        raise
 
 
 def openai_client(project_root: Path, timeout: float = 300.0, max_retries: int = 0):
@@ -66,8 +111,11 @@ def _retry(fn, *, what: str, max_retries: int = 6, base_backoff: float = 4.0):
     for attempt in range(max_retries + 1):
         try:
             return fn()
-        except transient as e:
-            if attempt == max_retries:
+        except Exception as e:
+            refusal = billing_refusal(e)
+            if refusal is not None:
+                raise refusal from e         # waiting does not put credit on an account
+            if not isinstance(e, transient) or attempt == max_retries:
                 raise
             sleep_s = base_backoff * (2 ** attempt)
             print(f"    {what} {type(e).__name__} (attempt {attempt + 1}/{max_retries + 1}); sleeping {sleep_s:.0f}s")

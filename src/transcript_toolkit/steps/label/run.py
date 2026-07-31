@@ -13,7 +13,7 @@ Idempotent + resumable via the per-batch cache (.toolkit/cache/label.jsonl).
 """
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from datetime import datetime, timezone
 from threading import Lock
 
@@ -26,6 +26,7 @@ from ...core.cache import JsonlAppender, cache_key, latest_records
 from ...core.config import load_step_config, require
 from ...core.console import choose_transport, reveal
 from ...core.llm import build_schema, call_llm, check_levels, openai_client
+from ...core.parallel import worker_pool
 from ...core.render import format_paragraph_full
 from ...core.sampling import load_interview_sample
 from ...core.tables import (load_clips, load_paragraphs, load_paragraphs_clipped,
@@ -35,7 +36,7 @@ from ...project import Project
 from ...state import check_demo_gate, record_demo, record_full
 from ..clip.chunking import estimate_paragraph_tokens
 from ..clip.run import _log_failures, effective_timestamp
-from ..summarize import load_prompt
+from ...core.prompts import load_prompt
 from .annotate import write_annotated
 from .batching import LabelBatch, batch_clips
 
@@ -322,7 +323,7 @@ def run_label(project: Project, demo: bool = False, interviews: list[str] | None
         return iid, _label_interview(iid, plans[iid], cache, lock, appender, client,
                                      cfg, instructions, fingerprint, schema)
 
-    with ThreadPoolExecutor(max_workers=int(cfg["max_workers"])) as ex:
+    with worker_pool(int(cfg["max_workers"])) as ex:
         futures = [ex.submit(work, iid) for iid in keys]
         for i, fut in enumerate(as_completed(futures), start=1):
             iid, res = fut.result()
@@ -413,44 +414,60 @@ def _print_style_audit(deliver: pd.DataFrame) -> None:
 
 # --- batch preview (read-only, no API) -------------------------------------------------------------
 
-def preview_batches(project: Project) -> None:
-    """Print how each interview's clips group into label batches under the current config."""
+def batch_preview(project: Project) -> dict:
+    """How each interview's clips group into label batches under the current config, as data.
+
+    Separate from printing it so the app can show the same numbers as a table (see
+    steps/clip/run.py chunk_preview for why).
+    """
     cfg = load_step_config(project, STEP)
     require(cfg, ["batch_threshold_tokens"], STEP)
     threshold = int(cfg["batch_threshold_tokens"])
     clips_df = load_clips(project)
     para_by_iid = paragraphs_by_interview(load_paragraphs(project))
 
-    rows = []
+    rows, sizes = [], []
     for iid in sorted(clips_df["interview_id"].unique()):
         ordered, batches, _contents = _plan_interview(iid, clips_df, para_by_iid[iid], threshold)
         # Partition check: every clip labeled exactly once across batches.
         labeled = [cid for b in batches for cid in b.clip_ids]
         assert labeled == ordered, f"{iid}: batches do not partition clips in order"
+        sizes += [len(b.clip_ids) for b in batches]
         rows.append({"interview_id": iid, "n_clips": len(ordered),
                      "tot_tokens": sum(b.est_tokens for b in batches),
-                     "n_batches": len(batches), "batches": batches})
+                     "n_batches": len(batches),
+                     "layout": "  ".join(
+                         f"[{len(b.clip_ids)}c|~{b.est_tokens // 1000}."
+                         f"{(b.est_tokens % 1000) // 100}k|"
+                         f"{(b.prev_clip_id or '-').split('_')[-1]}->"
+                         f"{(b.next_clip_id or '-').split('_')[-1]}]"
+                         for b in batches)})
     rows.sort(key=lambda r: -r["tot_tokens"])
-
-    print(f"=== Clip-batch preview (threshold={threshold}) ===")
-    print()
-    print(f"{'interview_id':<42} {'clips':>6} {'tot_tok':>8} {'n_b':>4}  layout [n_clips|~tok|prev->next]")
-    print("-" * 140)
-    for r in rows:
-        layout = "  ".join(
-            f"[{len(b.clip_ids)}c|~{b.est_tokens // 1000}.{(b.est_tokens % 1000) // 100}k|"
-            f"{(b.prev_clip_id or '-').split('_')[-1]}->{(b.next_clip_id or '-').split('_')[-1]}]"
-            for b in r["batches"])
-        print(f"{r['interview_id']:<42} {r['n_clips']:>6} {r['tot_tokens']:>8,} {r['n_batches']:>4}  {layout}")
 
     by_n: dict[int, int] = {}
     for r in rows:
         by_n[r["n_batches"]] = by_n.get(r["n_batches"], 0) + 1
+    return {"threshold": threshold, "rows": rows, "distribution": dict(sorted(by_n.items())),
+            "clips_per_batch": sizes}
+
+
+def preview_batches(project: Project) -> None:
+    """Print how each interview's clips group into label batches under the current config."""
+    preview = batch_preview(project)
+    rows = preview["rows"]
+
+    print(f"=== Clip-batch preview (threshold={preview['threshold']}) ===")
+    print()
+    print(f"{'interview_id':<42} {'clips':>6} {'tot_tok':>8} {'n_b':>4}  layout [n_clips|~tok|prev->next]")
+    print("-" * 140)
+    for r in rows:
+        print(f"{r['interview_id']:<42} {r['n_clips']:>6} {r['tot_tokens']:>8,} {r['n_batches']:>4}  {r['layout']}")
+
     print()
     print(f"Batch-count distribution across {len(rows)} interviews:")
-    for n_b, count in sorted(by_n.items()):
+    for n_b, count in preview["distribution"].items():
         print(f"  {n_b} batch(es): {count} interview(s)")
-    bsizes = [len(b.clip_ids) for r in rows for b in r["batches"]]
+    bsizes = preview["clips_per_batch"]
     if bsizes:
         print()
         print(f"Clips per batch: min={min(bsizes)}  mean={sum(bsizes) / len(bsizes):.1f}  max={max(bsizes)}")

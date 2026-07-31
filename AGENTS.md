@@ -12,6 +12,19 @@ created by `toolkit init` carries its own `AGENTS.md` with rules for assisting e
   raise `ToolkitError`, never parse args or call `sys.exit`.
 - `defaults/` — package data: default prompts, region vocabulary + mapping, pricing table, and
   the `scaffold/` templates copied by `toolkit init`.
+- `app/` — `toolkit app`: a NiceGUI window onto this same CLI, on 127.0.0.1 only. It **never
+  calls a step function**; every button runs the real `toolkit` command as a child process on a
+  pty (`jobs.py`), which is why the CLI's own confirmation prompt and its own cost figures reach
+  the user as buttons and no arithmetic is duplicated. One job at a time, server-side, so a run
+  outlives the browser tab. `content.py` is the only place allowed to name a command or a flag —
+  a test walks the real argparse parser and fails if it drifts. `pages/` is one module per page;
+  `theme.py` holds the palette; `stage.py` answers "where has this project got to".
+- `defaults/app/icon.png` — the Mac app icon, 1024×1024, already masked into the macOS rounded
+  square with its margin (macOS does not round an app icon for you; `app/launcher.py` feeds this
+  straight to `sips`/`iconutil`). It is **generated, not hand-drawn**, by the scripts in
+  `~/projects/incite/brand/` — which live outside this repo because they carry the INCITE signet
+  and its prompts. To change the icon, work there and re-run `install_icon.py N`; see
+  `brand/README.md`. Nothing in this repo can regenerate it.
 
 ## Contracts (do not break)
 
@@ -22,6 +35,27 @@ created by `toolkit init` carries its own `AGENTS.md` with rules for assisting e
   text; make sure that was intended.
 - Expensive steps are idempotent + resumable via the append-only JSONL caches under the
   workspace's `.toolkit/cache/`; subset runs merge into deliverables, never overwrite them.
+  **One record in a cache = one call that was paid for**, which is what makes `toolkit cost`
+  (and the app's project cost report) a statement about money rather than an estimate.
+- **A workspace's `config.yaml` is edited as text, never round-tripped.** Its comments are the
+  documentation of every setting and the app shows them verbatim (`core/settings.py`), so a
+  yaml load/dump would delete the user's documentation. `settings.save` re-reads what it wrote
+  and refuses unless exactly the named keys changed.
+- **"Would running this again do anything?" is `steps/freshness.py`,** and it is the only place
+  allowed to answer. It compares a step's recorded fingerprint against what `_context` would
+  hash now, and it is what greys the app's Run buttons and what `toolkit status` prints. Being
+  wrong towards "done" is expensive (a half-tagged collection nobody notices), so it also checks
+  that the step's own output is still on disk and that the collection has not outgrown the run.
+- **One rollup rule, shared by topics and locations** (`core/thresholds.Rollup`). Config states a
+  `method` plus `bins` and `range`; the bars are *derived* from those, never hand-listed. Both
+  steps parse through `thresholds.parse` (which still reads the older `scheme:`/`thresholds:`
+  spelling) and both decision aids render through `core/thresholdreview.py`, which takes an
+  `evaluate(rollup)` from the step so the picture is the step's real tagging rather than a second
+  implementation of it.
+- Two path conventions that are easy to conflate: a **prompt name** is relative to `prompts/`
+  (`clip_interview.md`), an **addendum path** is relative to the workspace
+  (`prompts/prompt_addendums/house.md`, resolved by `steps/label` from the project root).
+  `core/prompts.py` owns both and is the only place that should answer "which file?".
 - Deliverables have fixed filenames under `outputs/`; model/reasoning metadata lives in table
   columns and `.toolkit/state.json`, not filenames.
 

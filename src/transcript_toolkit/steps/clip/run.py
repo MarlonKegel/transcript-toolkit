@@ -14,7 +14,7 @@ cache (.toolkit/cache/clip.jsonl).
 """
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from datetime import datetime, timezone
 from threading import Lock
 
@@ -26,6 +26,7 @@ from ...core.cache import JsonlAppender, cache_key, latest_records
 from ...core.config import load_step_config, require
 from ...core.console import confirm_or_abort, reveal
 from ...core.llm import build_schema, call_llm, check_levels, openai_client
+from ...core.parallel import worker_pool
 from ...core.render import format_paragraph_full
 from ...core.sampling import load_interview_sample
 from ...core.tables import (load_paragraphs, merge_subset, write_deliverable,
@@ -33,7 +34,7 @@ from ...core.tables import (load_paragraphs, merge_subset, write_deliverable,
 from ...errors import ToolkitError
 from ...project import Project
 from ...state import check_demo_gate, record_demo, record_full
-from ..summarize import load_prompt
+from ...core.prompts import load_prompt
 from .annotate import write_annotated
 from .chunking import CHUNK_OVERHEAD_BASE, Chunk, chunk_paragraphs, estimate_paragraph_tokens, ts_to_seconds
 
@@ -493,7 +494,7 @@ def run_clip(project: Project, demo: bool = False, interviews: list[str] | None 
         return iid, _segment_interview(iid, frames[iid], cache, lock, appender, client,
                                        cfg, instructions, fingerprint, schema)
 
-    with ThreadPoolExecutor(max_workers=int(cfg["max_workers"])) as ex:
+    with worker_pool(int(cfg["max_workers"])) as ex:
         futures = [ex.submit(work, iid) for iid in keys]
         for i, fut in enumerate(as_completed(futures), start=1):
             iid, res = fut.result()
@@ -578,8 +579,12 @@ def _print_run_stats(clips_df: pd.DataFrame, paras_df: pd.DataFrame) -> None:
 
 # --- chunk preview (read-only, no API) -------------------------------------------------------------
 
-def preview_chunks(project: Project) -> None:
-    """Print the chunk layout every interview would get under the current config."""
+def chunk_preview(project: Project) -> dict:
+    """The chunk layout every interview would get under the current config, as data.
+
+    Separate from printing it so the app can render the same numbers in a table: the terminal
+    is one way to read this, not the only one, and there must not be two calculations of it.
+    """
     cfg = load_step_config(project, STEP)
     require(cfg, ["chunk_threshold_tokens", "overlap_paragraphs"], STEP)
     threshold = int(cfg["chunk_threshold_tokens"])
@@ -591,25 +596,36 @@ def preview_chunks(project: Project) -> None:
         chunks = chunk_paragraphs(sub, threshold, overlap)
         est_total = CHUNK_OVERHEAD_BASE + sum(estimate_paragraph_tokens(int(w)) for w in sub["word_count"])
         rows.append({"interview_id": iid, "n_para": len(sub),
-                     "est_total_tokens": est_total, "n_chunks": len(chunks), "chunks": chunks})
+                     "est_total_tokens": est_total, "n_chunks": len(chunks),
+                     "layout": "  ".join(
+                         f"[{c.shown_start}..{c.shown_end}|d={c.decision_start}|"
+                         f"own={c.owned_start}..{c.owned_end}|~{c.est_tokens // 1000}k]"
+                         for c in chunks)})
     rows.sort(key=lambda r: -r["est_total_tokens"])
 
-    print(f"=== Chunk preview (threshold={threshold}, overlap={overlap}) ===")
+    by_n: dict[int, int] = {}
+    for r in rows:
+        by_n[r["n_chunks"]] = by_n.get(r["n_chunks"], 0) + 1
+    return {"threshold": threshold, "overlap": overlap, "rows": rows,
+            "distribution": dict(sorted(by_n.items()))}
+
+
+def preview_chunks(project: Project) -> None:
+    """Print the chunk layout every interview would get under the current config."""
+    preview = chunk_preview(project)
+    rows = preview["rows"]
+
+    print(f"=== Chunk preview (threshold={preview['threshold']}, "
+          f"overlap={preview['overlap']}) ===")
     print()
     print(f"{'interview_id':<42} {'n_para':>7} {'est_tot':>8}  {'n_ch':>4}  "
           f"layout (shown[d=decision_start, owned=o_s..o_e, ~tokens])")
     print("-" * 140)
     for r in rows:
-        layout = "  ".join(
-            f"[{c.shown_start}..{c.shown_end}|d={c.decision_start}|own={c.owned_start}..{c.owned_end}|~{c.est_tokens // 1000}k]"
-            for c in r["chunks"])
         print(f"{r['interview_id']:<42} {r['n_para']:>7,} {r['est_total_tokens']:>8,}  "
-              f"{r['n_chunks']:>4}  {layout}")
+              f"{r['n_chunks']:>4}  {r['layout']}")
 
-    by_n: dict[int, int] = {}
-    for r in rows:
-        by_n[r["n_chunks"]] = by_n.get(r["n_chunks"], 0) + 1
     print()
     print(f"Chunk-count distribution across {len(rows)} interviews:")
-    for n_ch, count in sorted(by_n.items()):
+    for n_ch, count in preview["distribution"].items():
         print(f"  {n_ch} chunk(s): {count} interview(s)")

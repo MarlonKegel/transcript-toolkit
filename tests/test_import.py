@@ -7,7 +7,8 @@ from docx import Document
 
 from transcript_toolkit.errors import ToolkitError
 from transcript_toolkit.project import init_project
-from transcript_toolkit.steps.import_ import run_import, timestamp_regimes
+from transcript_toolkit.steps.import_ import (run_import, run_import_unsynced,
+                                              timestamp_regimes)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -125,3 +126,77 @@ def test_word_lock_files_ignored(project):
     df = run_import(project)
     assert set(df["interview_id"]) == {
         "fake_alpha_20240101_session1", "fake_alpha_20240108_session2", "fake_beta"}
+
+
+# --- transcripts that were never SYNC'd -------------------------------------------------------
+
+UNSYNCED = FIXTURES / "unsynced" / "Fake_Gamma_Transcript.docx"
+
+
+def put_unsynced(project, name: str = "Fake_Gamma_Transcript.docx"):
+    project.unsynced_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy(UNSYNCED, project.unsynced_dir / name)
+
+
+def test_untimed_transcripts_are_read_into_a_table_of_their_own(project, capsys):
+    """No timestamps means no clips, so these can only be summarized — which is why they are
+    parsed apart from the collection rather than into it."""
+    run_import(project)
+    put_unsynced(project)
+    df = run_import_unsynced(project)
+
+    assert set(df["interview_id"]) == {"fake_gamma_transcript"}
+    assert (df["turn_time_start"] == "").all() and (df["sub_time_start"] == "").all()
+    assert set(df["speaker_role"]) == {"Interviewer", "Narrator"}
+    # the sentence with a colon in it continues the turn rather than starting one
+    assert (df["turn_idx"].value_counts() > 1).any()
+    assert project.unsynced_paragraphs_path.exists()
+    assert "summarize --unsynced" in capsys.readouterr().out
+
+
+def test_the_front_matter_is_left_out_and_written_down(project):
+    """A title page and a preface are about the interview, not part of it. Dropping them
+    silently would leave nobody able to check what was dropped."""
+    run_import(project)
+    put_unsynced(project)
+    df = run_import_unsynced(project)
+    assert not df["speech"].str.contains("PREFACE").any()
+    log = (project.logs_dir / "import_unsynced.log").read_text()
+    assert "PREFACE" in log and "Front matter" in log
+
+
+def test_the_collection_does_not_read_that_folder(project):
+    """`toolkit import` would choke on a transcript with no timestamps, and it must not even
+    see one: the two piles are separate all the way through."""
+    put_unsynced(project)
+    df = run_import(project)
+    assert "fake_gamma_transcript" not in set(df["interview_id"])
+
+
+def test_a_narrator_already_in_the_collection_is_refused(project):
+    """The summaries of both piles go into one table keyed by narrator, so one would silently
+    overwrite the other."""
+    run_import(project)
+    put_unsynced(project, "Fake, Beta.docx")           # the same narrator key as the SYNC'd one
+    with pytest.raises(ToolkitError, match="already in the collection"):
+        run_import_unsynced(project)
+
+
+def test_untimed_import_needs_something_to_read(project):
+    with pytest.raises(ToolkitError, match="never SYNC'd"):
+        run_import_unsynced(project)
+
+
+def test_the_untimed_pile_is_counted_apart_in_status(project):
+    """It is not part of the collection, so counting it there would report a bigger collection
+    than the one that was imported — and adding to it would keep saying to import again."""
+    from transcript_toolkit.steps.status import gather_status
+
+    run_import(project)
+    put_unsynced(project)
+    status = gather_status(project)
+    assert status["docx_files"] == 3 and not status["import_stale"]
+    assert status["unsynced_files"] == 1 and not status["unsynced_imported"]
+
+    run_import_unsynced(project)
+    assert gather_status(project)["unsynced_imported"]

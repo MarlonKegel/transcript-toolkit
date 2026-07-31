@@ -133,12 +133,12 @@ def test_set_discovered_from_topics_folder_and_registered(project, capsys):
     name, entry = resolve_set(project, cfg, "collection")
     assert name == "collection"
     assert entry["file"] == "topics/collection.csv"
-    assert entry["rollup"] == {"scheme": "flat", "threshold_pct": 30}
+    assert entry["rollup"] == {"method": "freq_width", "bins": 5, "range": [10, 30]}
     assert "Registered topic set 'collection'" in capsys.readouterr().out
 
     written = yaml.safe_load(project.config_path.read_text())["topics"]["sets"]["collection"]
     assert written == {"file": "topics/collection.csv",
-                       "rollup": {"scheme": "flat", "threshold_pct": 30}}
+                       "rollup": {"method": "freq_width", "bins": 5, "range": [10, 30]}}
 
 
 def test_registration_preserves_comments(project):
@@ -149,7 +149,7 @@ def test_registration_preserves_comments(project):
     assert register_topic_set(project, "collection", "topics/collection.csv")
     after = project.config_path.read_text()
     assert sum(1 for ln in after.splitlines() if ln.strip().startswith("#")) == n_comments
-    assert "# --- locations:" in after and 'name: "My Oral History Project"' in after
+    assert "# --- locations:" in after and "name:" in after
 
 
 def test_registration_is_idempotent_and_second_set_appends(project):
@@ -195,3 +195,37 @@ def test_malformed_config_does_not_get_mangled(project):
     project.config_path.write_text("topics: [this, is, a, list]\n")
     assert not register_topic_set(project, "collection", "topics/collection.csv")
     assert project.config_path.read_text() == "topics: [this, is, a, list]\n"
+
+
+def test_a_set_with_settings_but_no_spreadsheet_named_still_loads(project):
+    """config.yaml looks like this after somebody sets a list's rollup rule before ever tagging
+    with it — the app offers that from the start. Refusing would break a topic list that is
+    sitting in topics/ in plain sight, and the filename is the set name anyway."""
+    write_csv(project, CSV, name="topics/collection.csv")
+    cfg = {"sets": {"collection": {"rollup": {"method": "flat", "threshold_pct": 25}}}}
+    name, entry = resolve_set(project, cfg, "collection")
+    assert name == "collection"
+    assert entry["file"] == "topics/collection.csv"          # filled in from what is there
+    assert entry["rollup"] == {"method": "flat", "threshold_pct": 25}   # and their rule kept
+
+
+def test_a_dotted_filename_is_not_a_set_and_says_why(project):
+    """The set name becomes a settings key addressed by a dotted path, so a dot in it would write
+    the list's rollup rule into a level nothing reads. Refused by name, and said out loud —
+    silently ignoring a spreadsheet sitting in topics/ would be worse."""
+    from transcript_toolkit.steps.topics.taxonomy import unusable_topic_files
+
+    write_csv(project, CSV, name="topics/themes.v2.csv")
+    assert discover_topic_files(project) == {}
+    assert unusable_topic_files(project) == {"themes.v2.csv": "it has a dot in it"}
+    with pytest.raises(ToolkitError, match="themes.v2.csv"):
+        resolve_set(project, {"sets": {}}, "anything")
+    with pytest.raises(ToolkitError, match="cannot be a topic set name"):
+        resolve_set(project, {"sets": {"themes.v2": {"file": "topics/themes.v2.csv"}}},
+                    "themes.v2")
+
+
+def test_a_set_with_no_spreadsheet_anywhere_still_says_so(project):
+    cfg = {"sets": {"ghost": {"rollup": {"method": "flat", "threshold_pct": 25}}}}
+    name, entry = resolve_set(project, cfg, "ghost")
+    assert entry.get("file") is None                          # nothing invented

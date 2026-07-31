@@ -31,6 +31,11 @@ def read_yaml(path: Path) -> dict:
 
 
 def load_root_config(project: Project) -> dict:
+    # A project folder that has been moved, renamed or deleted is a different problem from a
+    # config file that is missing out of one, and needs a different sentence.
+    if not project.root.is_dir():
+        raise ToolkitError(f"The project folder is not there: {project.root}\n"
+                           f"It has been moved, renamed or deleted since it was last opened.")
     return read_yaml(project.config_path)
 
 

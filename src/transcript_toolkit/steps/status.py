@@ -4,19 +4,28 @@ from __future__ import annotations
 import json
 
 from ..core.config import load_root_config, project_name
+from ..core.prompts import prompt_files
 from ..project import Project
 from ..state import load_state
 
 
 def _corpus(project: Project) -> dict:
+    # `data/unsynced/` is a pile of its own that `toolkit import` never reads, so counting it
+    # here would report a collection bigger than the one that was imported — and adding a file
+    # to it would keep saying the collection needed importing again.
     docx = sorted(p.relative_to(project.data_dir).as_posix()
-                  for p in project.data_dir.rglob("*.docx") if not p.name.startswith("~$"))
+                  for p in project.data_dir.rglob("*.docx")
+                  if not p.name.startswith("~$") and project.unsynced_dir not in p.parents)
     imported = project.paragraphs_path.exists()
     stale = False
     if imported and docx:
         newest_docx = max((project.data_dir / d).stat().st_mtime for d in docx)
         stale = newest_docx > project.paragraphs_path.stat().st_mtime
-    return {"docx_files": len(docx), "imported": imported, "import_stale": stale}
+    unsynced = sorted(p.name for p in project.unsynced_dir.rglob("*.docx")
+                      if not p.name.startswith("~$")) if project.unsynced_dir.is_dir() else []
+    return {"docx_files": len(docx), "imported": imported, "import_stale": stale,
+            "unsynced_files": len(unsynced),
+            "unsynced_imported": project.unsynced_paragraphs_path.exists()}
 
 
 def _deliverables(project: Project) -> list[str]:
@@ -44,7 +53,30 @@ def gather_status(project: Project) -> dict:
         **_corpus(project),
         "steps": load_state(project)["steps"],
         "deliverables": _deliverables(project),
+        "prompts": prompt_files(project),
     }
+
+
+FRESH_WORDS = {
+    ("current", "current"): "up to date",
+    ("current", "partial"): "more to run: the collection has grown",
+    ("current", "stale"): "run it on everything",
+    ("current", "none"): "run it on everything",
+    ("stale", "current"): "demo it again: the prompt or settings changed",
+    ("stale", "stale"): "demo it again: the prompt or settings changed",
+    ("stale", "partial"): "demo it again: the prompt or settings changed",
+    ("stale", "none"): "demo it again: the prompt or settings changed",
+}
+
+
+def _freshness(project: Project, step_key: str) -> str:
+    """Whether running this step again would do anything — the same answer the app greys its
+    buttons on (steps/freshness.py), said in words here."""
+    from .freshness import freshness
+
+    step, _, set_name = step_key.partition(":")
+    state = freshness(project, step, set_name or None)
+    return FRESH_WORDS.get((state["demo"], state["full"]), "demo it")
 
 
 def run_status(project: Project, as_json: bool = False) -> None:
@@ -57,6 +89,11 @@ def run_status(project: Project, as_json: bool = False) -> None:
     if info.get("import_stale"):
         imp = "   (transcripts changed since import — re-run `toolkit import`)"
     print(f"Transcripts in data/: {info['docx_files']} .docx{imp}")
+    if info.get("unsynced_files"):
+        note = ("" if info.get("unsynced_imported")
+                else "   (not yet read in — run `toolkit import --unsynced`)")
+        print(f"Never SYNC'd, in data/unsynced/: {info['unsynced_files']} .docx — summaries "
+              f"only{note}")
 
     if info["steps"]:
         print("\nSteps:")
@@ -66,6 +103,11 @@ def run_status(project: Project, as_json: bool = False) -> None:
             demo_txt = f"demo {demo['at'][:10]}" if demo else "no demo"
             full_txt = (f"full {full['at'][:10]} ({full['model']}, {full['n_units']})"
                         if full else "no full run")
-            print(f"  {step_key:<16} {demo_txt:<20} {full_txt}")
+            print(f"  {step_key:<16} {demo_txt:<20} {full_txt:<38} {_freshness(project, step_key)}")
+
+    print("\nPrompts (edit these in prompts/, or restore one with "
+          "`toolkit init --reset-prompt NAME`):")
+    for step, name in info["prompts"].items():
+        print(f"  {step:<16} prompts/{name}")
 
     print(f"\nExport would include: {', '.join(info['deliverables']) or '(nothing yet — run some steps)'}")

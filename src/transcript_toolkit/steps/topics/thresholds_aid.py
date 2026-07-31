@@ -1,77 +1,67 @@
-"""`toolkit topics thresholds` — decision aid for the clip->interview rollup thresholds.
+"""`toolkit topics thresholds` — the decision aid that comes BEFORE `toolkit topics rollup`.
 
-Prints a flat-threshold sweep (how tagging behaves as the bar moves 10..40%) and renders ONE
-comparison figure — flat 30% baseline vs the configured rollup scheme, interviews reached per
-topic — into diags/topics/plots/. Reads the clip-level deliverable only; never touches the
-rollup deliverables. Use it to pick threshold_pct / the binned bar list in config.yaml.
+Rolling up is the cheap, deterministic part; deciding when a topic is enough of an interview to
+be one of its tags is the judgement. This works every candidate rule out against the tags that
+are already there and writes a review page comparing them — a panel per method, the recommended
+one open — so the rule is chosen by looking at what it would do rather than by picking numbers.
+
+Reads the clip-level deliverable only. It writes no deliverables and makes no API calls, so it
+can be run as often as it takes.
 """
 from __future__ import annotations
 
+from ...core import thresholdreview, thresholds
 from ...core.config import load_step_config, require
-from ...core.thresholds import flat_thresholds
 from ...project import Project
-from .rollup import pooled_shares, scheme_thresholds
-from .taxonomy import load_topic_set, resolve_set
+from ...state import rolled_up_with
+from .rollup import pooled_shares
+from .taxonomy import load_topic_set
 
 STEP = "topics"
-SWEEP = [10, 15, 20, 25, 30, 35, 40]
 
 
-def run_topics_thresholds(project: Project, set_name: str | None = None) -> None:
+def run_topics_thresholds(project: Project, set_name: str | None = None,
+                          bins: list[int] | None = None,
+                          ranges: list[tuple[float, float]] | None = None,
+                          flat: list[float] | None = None) -> None:
     cfg = load_step_config(project, STEP)
     require(cfg, ["score_values"], STEP)
     tset = load_topic_set(project, cfg, set_name)
     sset = tset.name
-    _, entry = resolve_set(project, cfg, sset)
 
-    _, pct, freq, n_clips, _ = pooled_shares(project, cfg, tset)
+    # What the interview tags on disk were built with, not what config.yaml currently says. A
+    # rule you have chosen but not yet applied is a plan; marking it "what your results were
+    # built with" would be a lie, and the whole page is about looking before choosing.
+    applied = rolled_up_with(project, f"{STEP}:{sset}")
+    current = thresholds.parse(applied, "the last rollup") if applied else None
+
+    _, pct, freq, _, _ = pooled_shares(project, cfg, tset)
     n_int, n_top = pct.shape
 
-    print(f"Flat-threshold sweep · set '{sset}' · {n_int} interviews × {n_top} topics")
-    print(f"  {'bar':>6}  {'topics reached':>14}  {'untagged interviews':>19}  {'total tags':>10}")
-    for p in SWEEP:
-        tagged = pct.ge(float(p))
-        reach = tagged.sum(axis=0)
-        tpi = tagged.sum(axis=1)
-        print(f"  >={p:>3}%  {int((reach > 0).sum()):>7} of {n_top:<3} "
-              f"{int((tpi == 0).sum()):>19}  {int(tagged.values.sum()):>10}")
+    def evaluate(rollup: thresholds.Rollup):
+        """What this rule would tag: the threshold per topic, the interviews each topic would
+        reach, and how many interviews would come out with no topic at all."""
+        thr = rollup.thresholds(freq)
+        tagged = pct.ge(thr, axis=1)
+        return thr, tagged.sum(axis=0), int((tagged.sum(axis=1) == 0).sum())
 
-    try:
-        import matplotlib
-    except ImportError:
-        print("\nmatplotlib not installed; skipping the flat-vs-configured comparison figure.")
-        return
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    import numpy as np
+    options = thresholds.compare_options(cfg)
+    for name, given in (("bins", bins), ("ranges", ranges), ("flat", flat)):
+        if given:
+            options[name] = given
 
-    thr_cfg, scheme_desc = scheme_thresholds(entry.get("rollup"), freq, sset)
-    schemes = {"flat 30%": flat_thresholds(freq, 30.0),
-               f"configured: {scheme_desc}": thr_cfg}
-    order = sorted(tset.ids, key=lambda t: (int(freq[t]), t))    # ascending freq, bottom-up
-    reach = {name: pct.ge(thr, axis=1).sum(axis=0) for name, thr in schemes.items()}
-    y = np.arange(len(order))
-    xmax = max(3, int(max(r.max() for r in reach.values())) + 1)
+    panels = thresholdreview.build(options, current, evaluate, thresholds.TOPICS)
+    order = sorted(tset.ids, key=lambda t: (int(freq[t]), t))     # ascending: bottom-up on barh
 
-    fig, axes = plt.subplots(1, 2, figsize=(11, max(4.0, 0.34 * len(order) + 1.5)), sharey=True)
-    for ax, (name, thr) in zip(axes, schemes.items()):
-        r = reach[name]
-        ax.barh(y, [int(r[t]) for t in order], color="#4292c6", edgecolor="white")
-        for t, yy in zip(order, y):
-            ax.text(int(r[t]) + 0.05, yy, f"{int(r[t])} · bar {thr[t]:g}%", va="center", fontsize=7)
-        ax.set_title(f"{name}\n{int((r > 0).sum())}/{len(order)} topics reached · "
-                     f"total tags {int(r.sum())}", fontsize=10)
-        ax.set_xlabel("# interviews tagged", fontsize=9)
-        ax.set_xlim(0, xmax)
-        ax.spines[["top", "right"]].set_visible(False)
-    axes[0].set_yticks(y)
-    axes[0].set_yticklabels([f"{t}  ({int(freq[t])})" for t in order], fontsize=8)
-    fig.suptitle(f"topics · set '{sset}' · interviews reached per topic (of {n_int}) — "
-                 f"topics sorted by clip-frequency (n)", fontsize=11, weight="bold")
+    said = (f"your results were built with {current.describe()}" if current
+            else "nothing has been rolled up yet")
+    print(f"Comparing rollup rules · set '{sset}' · {n_int} interviews × {n_top} topics")
+    print(f"Set in config.yaml: {tset.rollup.describe()} — {said}")
+    thresholdreview.report(panels, n_int)
 
-    out = project.diags_dir / "topics" / "plots" / f"{sset}_thresholds.png"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    fig.tight_layout()
-    fig.savefig(out, dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"\nwrote {out}")
+    out = thresholdreview.write(
+        project.diags_dir / STEP, sset,
+        title=f"Topics · {sset} · deciding how clip tags become interview tags",
+        subtitle=f"{n_top} topics · {n_int} interviews · {said}",
+        panels=panels, order=order, freq=freq, n_int=n_int)
+    print(f"\nWrote {out}")

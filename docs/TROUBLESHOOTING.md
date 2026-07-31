@@ -12,6 +12,16 @@ harmless — the git line is the real failure.
 **"OPENAI_API_KEY not set"** — put your key in the workspace's `.env` file
 (`OPENAI_API_KEY=sk-...`). Ask your admin for a key.
 
+**"OpenAI refused the request: the OpenAI account is out of credit"** (or *"has reached a billing
+limit"*). Nothing is wrong with your project or your key, and nothing you have run is lost —
+whoever looks after your OpenAI account needs to put money on it. Send them the message the
+toolkit printed; it names the two pages they need. The one that catches people out is the
+**credit balance** (platform.openai.com → Settings → Organization → Billing): a balance of zero
+stops every call even when the monthly spending limit is nowhere near being reached, and if
+auto-recharge is switched on but the balance is still empty, the automatic payment is being
+declined by the bank — buying credit by hand on that page works when the automatic charge does
+not. Once it is topped up, re-run the same command and it carries on from where it stopped.
+
 **"Not inside a toolkit workspace"** — run the command from inside your project folder (the one
 `toolkit init` created), or pass `--project /path/to/project`.
 
@@ -70,11 +80,21 @@ toolkit's price table. Update the toolkit (`uv tool upgrade transcript-toolkit`)
 model to `defaults/pricing.yaml`. Runs are not blocked by this — the spend estimate just shows
 "cost unknown".
 
-**How do I update the toolkit?** `toolkit update`. (It runs `uv tool upgrade
-transcript-toolkit` for you. `toolkit upgrade` works too.)
+**How do I update the toolkit?** `toolkit update`, or **Update to the most recent version**
+behind the gear in the app. (It runs `uv tool upgrade transcript-toolkit` for you. `toolkit
+upgrade` works too.) In the app, quit and open it again afterwards — the copy already running
+keeps using the old version until you do.
 
-**How much have I spent?** `toolkit cost` (all steps) or `toolkit cost <step>`. Each line is
-priced at the transport it actually used — `sync` or `batch` — so the total is money spent, not a
-hypothetical; a closing line tells you what the synchronous part would have cost on the Batch API.
+**The update button says uv is not installed, but I installed with uv.** Update to 0.2.7 or
+later (`uv tool upgrade transcript-toolkit` in Terminal, once). An app opened from the Dock gets
+almost no `PATH` from macOS, so earlier versions could not find uv from there even though it was
+sitting in `~/.local/bin`. The toolkit now looks for it where it lives.
+
+**How much have I spent?** `toolkit cost` (all steps) or `toolkit cost <step>` is the project's
+cost report, and the app shows the same figures on the workspace page. Each line is priced at the
+transport it actually used — `sync` or `batch` — so the total is money spent, not a hypothetical;
+a closing line tells you what the synchronous part would have cost on the Batch API. It counts
+every call ever made in the project, demos included, and the calls behind a prompt you have since
+rewritten: re-running a step you have already run adds nothing, because its answers are kept.
 `--to-n N` extrapolates a demo's per-call cost to a full run of N calls, and quotes both
 transports (you haven't picked one for that run yet).

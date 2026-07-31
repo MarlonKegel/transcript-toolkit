@@ -21,6 +21,10 @@ import ─► clip ─► label ──────────┐
 Every LLM step is **demo-first**: you run it on a small sample, review the annotated output in
 `diags/`, adjust settings/prompts, and only then run the full corpus.
 
+All of it can be run **from a window instead of a terminal**: the app
+([docs/APP.md](docs/APP.md)) is the same toolkit with buttons for the commands, running
+entirely on your own Mac.
+
 ## Ask an AI about this toolkit
 
 Rather than reading the docs, you can have ChatGPT, Claude or Gemini answer questions about them.
@@ -52,20 +56,37 @@ have installed.
 ```sh
 # one-time install (see docs/SETUP.md for the full Mac walkthrough, incl. installing uv)
 uv tool install git+https://github.com/MarlonKegel/transcript-toolkit.git
+```
 
-toolkit update                 # ...and to get the latest version later
+Point-and-click from here on — one more command puts **Transcript Toolkit** in your
+Applications folder, and everything else happens in its window
+([docs/APP.md](docs/APP.md)):
 
+```sh
+toolkit app --install-launcher
+```
+
+Or carry on in the terminal:
+
+```sh
 toolkit init my-archive && cd my-archive
 #  → put your OpenAI key in .env, drop transcripts in data/
 toolkit import
 toolkit status
+
+toolkit update                 # ...and to get the latest version later
 ```
 
 ## Documentation
 
 - [docs/SETUP.md](docs/SETUP.md) — install walkthrough (Mac)
+- [docs/APP.md](docs/APP.md) — the app: the same toolkit in a window instead of a terminal
 - [docs/WORKFLOW.md](docs/WORKFLOW.md) — the demo-first pipeline, end to end
 - [docs/steps/](docs/steps/) — one page per step
 - [docs/CONFIG.md](docs/CONFIG.md) — every setting
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — when something goes wrong
 - [llms-full.txt](llms-full.txt) — all of the above in one file, for AI assistants (see above)
+
+## License
+
+MIT — see [LICENSE](LICENSE).

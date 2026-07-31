@@ -6,9 +6,10 @@ import pytest
 
 import transcript_toolkit.steps.topics.tag as tag_step
 from transcript_toolkit.core.tables import clips_path, write_deliverable
+from transcript_toolkit.core import thresholds
 from transcript_toolkit.errors import ToolkitError
 from transcript_toolkit.project import init_project
-from transcript_toolkit.state import load_state
+from transcript_toolkit.state import load_state, rolled_up_with
 from transcript_toolkit.steps.import_ import run_import
 from transcript_toolkit.steps.topics import (
     annotate_topics,
@@ -199,6 +200,38 @@ def test_per_set_prompt_override(project):
     assert all(default_text not in i for i in project.llm_calls)
 
 
+def test_a_set_runs_on_its_own_model_and_reasoning(project):
+    """Two topic lists are two pieces of work: a fine-grained list may want a stronger model than
+    a coarse one, and neither should have to dictate the other's."""
+    set_entry(project, model="gpt-5.4-nano", reasoning="high")
+    cfg, tset, _justify, _instructions, _fp = tag_step._context(project, "main", None, True)
+    assert (cfg["model"], cfg["reasoning"]) == ("gpt-5.4-nano", "high")
+    assert tset.overrides == {"model": "gpt-5.4-nano", "reasoning": "high"}
+
+
+def test_a_set_without_overrides_runs_on_the_steps_settings(project):
+    set_entry(project)
+    cfg, tset, _j, _i, _f = tag_step._context(project, "main", None, True)
+    assert tset.overrides == {}
+    assert cfg["model"] == "gpt-5.6-luna"          # the scaffold's topics.model
+
+
+def test_a_sets_own_model_stales_only_that_sets_demo(project):
+    """The fingerprint already covers the model, so changing one list's model asks for a fresh
+    demo of that list and leaves the others alone."""
+    set_entry(project)
+    _, _, _, _, before = tag_step._context(project, "main", None, True)
+    set_entry(project, model="gpt-5.4-nano")
+    _, _, _, _, after = tag_step._context(project, "main", None, True)
+    assert before != after
+
+
+def test_an_impossible_reasoning_level_for_a_set_is_refused(project):
+    set_entry(project, reasoning="enormous")
+    with pytest.raises(ToolkitError, match="Unknown reasoning level"):
+        tag_step._context(project, "main", None, True)
+
+
 def test_unknown_set_fails_loud(project):
     with pytest.raises(ToolkitError, match="Unknown topic set"):
         run_topics_tag(project, set_name="nope", demo=True)
@@ -236,8 +269,9 @@ def interview_paths(project):
 
 def test_rollup_flat(project):
     write_hand_wide(project)
+    set_entry(project, rollup={"method": "flat", "threshold_pct": 30})
+    # one bar for every topic: alpha education 50% >= 30 tagged, career 25% < 30 not
     wide = run_topics_rollup(project, "main").set_index("interview_key")
-    # flat 30% (scaffold config): alpha education 50% >= 30 tagged, career 25% < 30 not
     assert list(wide.index) == ["fake_alpha", "fake_beta"]     # sessions pooled per narrator
     assert wide.loc["fake_alpha", "topics"] == "education"
     assert wide.loc["fake_alpha", "n_topics"] == 1
@@ -251,9 +285,23 @@ def test_rollup_flat(project):
     assert row["n_clips_assigned"] == 1 and row["n_clips_total"] == 4
 
 
+def test_rollup_defaults_to_rarity_bins(project):
+    """A set nobody has configured rolls up the recommended way: 5 rarity bands over 10-30%."""
+    write_hand_wide(project)
+    # frequencies [education 6, career 1, family 0] over 5 equal-width bands: education lands in
+    # the top band (bar 30%), career and family in the bottom one (bar 10%). Alpha's career is
+    # 25% of its clips — under a flat 30% bar it would be dropped; here it clears its own.
+    wide = run_topics_rollup(project, "main").set_index("interview_key")
+    assert wide.loc["fake_alpha", "topics"] == "education|career"
+    _, long_p = interview_paths(project)
+    long = pd.read_parquet(long_p)
+    bars = long.drop_duplicates("topic_id").set_index("topic_id")["threshold_pct"]
+    assert bars["education"] == 30.0 and bars["career"] == 10.0 and bars["family"] == 10.0
+
+
 def test_rollup_binned_hand_computed(project):
     write_hand_wide(project)
-    set_entry(project, rollup={"scheme": "binned", "thresholds": [10, 30]})
+    set_entry(project, rollup={"method": "freq_width", "bins": 2, "range": [10, 30]})
     # 2 equal-width bins over frequencies [6, 1, 0]: family(0) and career(1) fall in the rare
     # band -> bar 10%; education(6) in the common band -> bar 30%. So alpha's career (25% of
     # clips) now clears its 10% bar while education still needs (and clears) 30%.
@@ -267,6 +315,34 @@ def test_rollup_binned_hand_computed(project):
     assert career["threshold_pct"] == 10.0 and career["tagged"]
     edu = long[long["topic_id"] == "education"].iloc[0]
     assert edu["threshold_pct"] == 30.0
+
+
+def test_rollup_reads_the_older_spelling(project):
+    """Projects made before the methods existed said `scheme: binned` with the bars written out.
+    They are still in use, so they still roll up the same way."""
+    write_hand_wide(project)
+    set_entry(project, rollup={"scheme": "binned", "thresholds": [10, 30]})
+    wide = run_topics_rollup(project, "main").set_index("interview_key")
+    assert wide.loc["fake_alpha", "topics"] == "education|career"
+
+    set_entry(project, rollup={"scheme": "flat", "threshold_pct": 30})
+    wide = run_topics_rollup(project, "main").set_index("interview_key")
+    assert wide.loc["fake_alpha", "topics"] == "education"
+
+
+def test_a_hand_written_threshold_list_survives_being_recorded(project):
+    """A rollup records the rule it ran with, and the decision aid reads that back. Describing a
+    hand-written list by bins and range instead would regularise it — and a one-element list would
+    come back as a range with no width, which is refused outright."""
+    write_hand_wide(project)
+    set_entry(project, rollup={"method": "freq_width", "thresholds": [50]})
+    run_topics_rollup(project, "main")
+    assert rolled_up_with(project, "topics:main") == {"method": "freq_width", "thresholds": [50]}
+    run_topics_thresholds(project, "main")               # used to crash on the read-back
+
+    set_entry(project, rollup={"method": "freq_width", "thresholds": [10, 12.5, 30]})
+    run_topics_rollup(project, "main")
+    assert thresholds.parse(rolled_up_with(project, "topics:main"), "x").bars() == [10, 12.5, 30]
 
 
 def test_rollup_schemas(project):
@@ -289,12 +365,72 @@ def test_rollup_without_tag_fails(project):
 # --- thresholds aid + annotate -------------------------------------------------------------
 
 
-def test_thresholds_aid_prints_sweep_and_writes_figure(project, capsys):
+def test_thresholds_aid_compares_every_method(project, capsys):
     write_hand_wide(project)
     run_topics_thresholds(project, "main")
     out = capsys.readouterr().out
-    assert "Flat-threshold sweep" in out and ">= 10%" in out and ">= 40%" in out
-    assert (project.diags_dir / "topics" / "plots" / "main_thresholds.png").exists()
+    assert "nothing has been rolled up yet" in out
+    for method in ("freq_width", "equal_count", "flat"):
+        assert (project.diags_dir / "topics" / "plots" / f"main_{method}.png").exists()
+
+    page = (project.diags_dir / "topics" / "main_thresholds.html").read_text()
+    for method in thresholds.METHODS:                   # one foldable panel per method
+        assert f"<summary>{thresholds.method_label(method, thresholds.TOPICS)}" in page
+    assert 'src="plots/main_freq_width.png"' in page
+    # one explanation, up top, not folded away behind a summary like the panels of plots
+    assert page.count("<summary>") == len(thresholds.METHODS) + 1     # + the table
+    assert "This is where you decide what counts as enough" in page
+
+
+def test_nothing_is_marked_as_yours_until_you_have_rolled_up(project):
+    """A rule sitting in config.yaml is a plan. Marking it as what your results were built with
+    is a lie until a rollup has actually been run with it — which is exactly the moment somebody
+    changes the setting, re-runs the comparison, and sees the old answer still labelled theirs."""
+    write_hand_wide(project)
+    run_topics_thresholds(project, "main")
+    page = (project.diags_dir / "topics" / "main_thresholds.html").read_text()
+    assert "what your results were built with" not in page
+
+    set_entry(project, rollup={"method": "flat", "threshold_pct": 30})
+    run_topics_rollup(project, "main")
+    run_topics_thresholds(project, "main")
+    page = (project.diags_dir / "topics" / "main_thresholds.html").read_text()
+    assert "what your results were built with" in page
+    # ...and it is the flat panel that carries it, while freq-width keeps saying "recommended"
+    flat_at = page.index(thresholds.method_label("flat"))
+    assert "what your results were built with" in page[flat_at:flat_at + 300]
+    recommended_at = page.index(thresholds.method_label(thresholds.RECOMMENDED))
+    assert "recommended" in page[recommended_at:recommended_at + 300]
+
+
+def test_the_recommended_tag_survives_being_the_one_you_use(project):
+    write_hand_wide(project)
+    run_topics_rollup(project, "main")                  # the scaffold default is freq-width
+    run_topics_thresholds(project, "main")
+    page = (project.diags_dir / "topics" / "main_thresholds.html").read_text()
+    at = page.index(thresholds.method_label(thresholds.RECOMMENDED))
+    assert "recommended" in page[at:at + 300]
+    assert "what your results were built with" in page[at:at + 300]
+
+
+def test_thresholds_aid_takes_what_to_compare(project):
+    write_hand_wide(project)
+    run_topics_thresholds(project, "main", bins=[3], ranges=[(20.0, 40.0)], flat=[50.0])
+    page = (project.diags_dir / "topics" / "main_thresholds.html").read_text()
+    assert "3 bins · 20–40%" in page and "50% for every topic" in page
+    assert "9 bins" not in page
+
+
+def test_what_your_results_used_is_drawn_even_if_you_did_not_ask_for_it(project):
+    """It is the thing being compared against, so it has to be in the grid — folded into the
+    axes rather than tacked on the end, so it can be read along both dimensions."""
+    write_hand_wide(project)
+    set_entry(project, rollup={"method": "freq_width", "bins": 3, "range": [15, 35]})
+    run_topics_rollup(project, "main")
+    run_topics_thresholds(project, "main", bins=[5], ranges=[(10.0, 30.0)])
+    page = (project.diags_dir / "topics" / "main_thresholds.html").read_text()
+    assert "3 bins · 15–35%" in page and "5 bins · 10–30%" in page
+    assert "3 bins · 10–30%" in page and "5 bins · 15–35%" in page     # the full grid
 
 
 def test_annotate_writes_per_interview_html(project):

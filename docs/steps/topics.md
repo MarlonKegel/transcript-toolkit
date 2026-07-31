@@ -27,7 +27,19 @@ both work. The columns:
 | `id` | no | a short code; auto-derived from the name if omitted |
 
 Several topic lists? Drop in several files. `topics/collection.xlsx` and `topics/filter.csv`
-give you `--set collection` and `--set filter`, tagged independently, each with its own outputs.
+give you `--set collection` and `--set filter`, tagged independently, each with its own outputs,
+its own demo, and its own cache. A list can also carry **its own prompt, model and reasoning**
+(`sets.<set>.{prompt, model, reasoning}`), because a fine-grained list and a coarse one are two
+different pieces of work; anything it does not set, it takes from the `topics` section.
+
+**In the app** this is the Topics page, with one tab per list and a tab that adds another — by
+writing it in the table there or by uploading a spreadsheet. The table edits the same file the
+run reads, whether that is a `.csv` you typed here or an `.xlsx` you brought (an Excel file stays
+one, and other sheets in the workbook are left alone). It is checked against the rules above as
+you save it, and the first save is where you name the set. Until you name it, what you type is
+kept in `topics/example_topics.csv`, which no run will ever tag against. Each tab carries its own
+prompt and settings, and *Give this list its own prompt* is what splits it off from the shared
+one.
 
 There is **no default set** — every `toolkit topics` command needs `--set`. Tagging a whole
 corpus against the wrong taxonomy is expensive, so the set is always named explicitly. Forget it
@@ -38,8 +50,8 @@ and the error lists the sets you have.
 ```sh
 toolkit topics tag --set collection --demo   # sample of clips → review page opens in your browser
 toolkit topics tag --set collection          # full corpus
-toolkit topics thresholds --set collection   # decision aid for the rollup bar(s)
-toolkit topics rollup --set collection       # clip tags → interview tags
+toolkit topics thresholds --set collection   # compare how tags could be decided (writes a page)
+toolkit topics rollup --set collection       # apply it: clip tags → interview tags
 ```
 
 `toolkit topics preview --set collection --clip <id>` prints the exact request for one clip.
@@ -56,14 +68,34 @@ per-interview page for every tagged clip (linked from `<set>_index.html`). Each 
 topics are over- or under-applied, sharpen the `description` in your spreadsheet and re-demo —
 that text, not the code, is where the tagging rules live.
 
-The **rollup** decides when an interview gets a topic: either a flat share-of-clips bar
-(`rollup: {scheme: flat, threshold_pct: 30}`) or rarity-binned bars that ask more of common
-topics than rare ones (`scheme: binned`). `toolkit topics thresholds --set <name>` shows the
-trade-offs.
+## Rolling up: decide, then do
+
+The **rollup** decides when an interview gets a topic — how big a share of that interview's clips
+has to be tagged with it. That is a judgement about your collection, so look before choosing:
+
+1. `toolkit topics thresholds --set <name>` writes `diags/topics/<set>_thresholds.html`: a
+   foldable panel per method, each drawing what that rule would tag — how many interviews every
+   topic would reach, and the threshold it had to clear. The binned methods are drawn as a grid,
+   one row per number of bins and one column per range, so both dimensions can be read at once.
+   Whatever your saved results were rolled up with is marked; a rule you have set but not yet
+   applied is not, because it is a plan rather than a state of the project. Nothing is sent to
+   OpenAI, so run it as often as it takes. `--bins 5,9`, `--ranges 10-30,20-40` and
+   `--flat 20,30,40` change what is drawn (defaults in `advanced/topics.yaml` under `compare`).
+2. Set `sets.<set>.rollup` in `config.yaml` to the one you settled on — the default is
+   `{ method: freq_width, bins: 5, range: [10, 30] }`, and [CONFIG.md](../CONFIG.md) has the
+   three methods — then `toolkit topics rollup --set <name>`. It is free and deterministic, so
+   changing your mind costs a re-run and nothing else. (In the app these are one move: you set
+   the rule inside the button that applies it.)
+
+One threshold for every topic is the obvious rule and usually the wrong one: set it high enough
+for a common topic to mean something and the rare topics — often the interesting ones — never
+reach it. `freq_width` asks less of a rarer bin, which is why it is the default.
 
 ## Settings
 
-`config.yaml` → `topics`: `model`, `reasoning`, `sets.<set>.{file, rollup, prompt}` (written for
+`config.yaml` → `topics`: `model`, `reasoning` (the default for every list), and
+`sets.<set>.{file, rollup, prompt, model, reasoning}` — the last three override the step's for
+that list alone (written for
 you when a set is first used). `advanced/topics.yaml`: `score_values`, `justify_min_score`,
 `demo_n_clips`, `max_workers`, `prompt`.
 

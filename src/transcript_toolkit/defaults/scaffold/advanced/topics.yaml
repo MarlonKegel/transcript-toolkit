@@ -10,5 +10,12 @@ demo_n_clips: 50                  # clips tagged by `toolkit topics tag --demo`
 demo_seed: 0
 poll_interval_s: 4
 max_total_wait_s: 600          # give up on one stuck call; re-run resumes free
+
+# What `toolkit topics thresholds` draws, per rollup method. A run can override any of these
+# with --bins / --ranges / --flat.
+compare:
+  bins: [5, 9]                    # how many rarity bins, for the two binned methods
+  ranges: [[10, 30], [20, 40]]    # lowest and highest threshold, per range compared
+  flat: [20, 30, 40]              # the single thresholds compared for the flat method
 batch_poll_interval_s: 30       # --batch: how often to check the Batch API job
 batch_max_total_wait_s: 86400   # --batch: give up polling after this; re-run to resume

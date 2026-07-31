@@ -40,6 +40,7 @@ REPO_URL = "https://github.com/MarlonKegel/transcript-toolkit"
 DOCS: list[tuple[str, str]] = [
     ("README.md", "What the toolkit is, and the 10-line quickstart"),
     ("docs/SETUP.md", "Installing it on a Mac, step by step"),
+    ("docs/APP.md", "The app: the same toolkit in a window instead of a terminal"),
     ("docs/WORKFLOW.md", "The demo-first workflow, costs, and what to do when a step hangs"),
     ("docs/steps/import.md", "import: transcripts (.docx) -> the paragraph dataset"),
     ("docs/steps/sample.md", "sample: choosing the interviews demos run on"),

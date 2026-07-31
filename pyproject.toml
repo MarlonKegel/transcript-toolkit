@@ -1,11 +1,13 @@
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "transcript-toolkit"
 description = "Toolkit for processing oral history interview transcripts: clip, label, summarize, tag topics and locations, export."
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
 dynamic = ["version"]
 dependencies = [
     "openai>=2.41,<3",
@@ -17,13 +19,18 @@ dependencies = [
     "python-dotenv>=1",
     "openpyxl>=3.1",
     "matplotlib>=3.8",
+    # The app's web interface. Pinned exactly: `uv tool install` re-resolves
+    # dependencies on every fresh install, and NiceGUI ships breaking changes in
+    # minor releases, so a range would let a future install pick up a version this
+    # code has never run against.
+    "nicegui==3.15.0",
 ]
 
 [project.optional-dependencies]
 # The offline NER survey (`toolkit locations survey`) needs spaCy; the model is installed
 # separately: python -m spacy download en_core_web_trf  (see docs/steps/locations.md).
 survey = ["spacy[transformers]>=3.8,<4"]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "pytest-asyncio>=0.24"]
 
 [project.scripts]
 toolkit = "transcript_toolkit.cli:main"
@@ -45,4 +52,11 @@ transcript_toolkit = [
     "defaults/scaffold/*",
     "defaults/scaffold/advanced/*",
     "defaults/scaffold/topics/*",
+    "defaults/app/*",
 ]
+
+[tool.pytest.ini_options]
+# NiceGUI's page tests use an async fixture; auto mode saves marking each one.
+asyncio_mode = "auto"
+# The app the `user` fixture drives (see tests/app_main.py).
+main_file = "tests/app_main.py"

@@ -7,7 +7,7 @@ the review page (diags/summarize/*.html). Idempotent + resumable via the per-cal
 """
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from datetime import datetime, timezone
 from threading import Lock
 
@@ -21,6 +21,8 @@ from ..core.config import load_step_config, require
 from ..core.console import choose_transport, reveal
 from ..core.ids import narrator_key
 from ..core.llm import build_schema, call_llm, check_levels, openai_client
+from ..core.parallel import worker_pool
+from ..core.prompts import load_prompt
 from ..core.render import render_interview
 from ..core.reviewdoc import document, esc
 from ..core.sampling import sample_keys
@@ -33,14 +35,6 @@ STEP = "summarize"
 
 
 # --- assembly -------------------------------------------------------------------------------
-
-def load_prompt(project: Project, name: str) -> str:
-    path = project.prompts_dir / name
-    if not path.exists():
-        raise ToolkitError(f"Prompt not found: {path}. Restore the default with "
-                           f"`toolkit init --reset-prompt {name}`.")
-    return path.read_text().strip()
-
 
 def build_units(paragraphs_df: pd.DataFrame, pool_sessions: bool, session_regex: str) -> list[dict]:
     """Group paragraphs into interview units: one per narrator (sessions pooled, in id order)
@@ -65,7 +59,7 @@ def build_units(paragraphs_df: pd.DataFrame, pool_sessions: bool, session_regex:
     return units
 
 
-def _context(project: Project, pool_sessions_override: bool | None):
+def _context(project: Project, pool_sessions_override: bool | None, unsynced: bool = False):
     cfg = load_step_config(project, STEP)
     require(cfg, ["model", "reasoning", "verbosity", "prompt", "max_workers"], STEP)
     check_levels(cfg["reasoning"], cfg["verbosity"])
@@ -73,20 +67,52 @@ def _context(project: Project, pool_sessions_override: bool | None):
     session_regex = load_step_config(project, "import")["session_regex"]
 
     instructions = load_prompt(project, cfg["prompt"])
-    fingerprint = cache_key(cfg["model"], cfg["reasoning"], cfg["verbosity"], instructions,
-                            f"pool_sessions={pool}")
-    units = build_units(load_paragraphs(project), pool, session_regex)
+    # `session_regex` is what decides which files are one narrator's sessions, so with pooling on
+    # it decides what a summarized unit is — change it and the demo was of different interviews.
+    # It is deliberately left out when pooling is off, where it changes nothing.
+    shape = f"pool_sessions={pool}" + (f" session_regex={session_regex}" if pool else "")
+    fingerprint = cache_key(cfg["model"], cfg["reasoning"], cfg["verbosity"], instructions, shape)
+    units = build_units(_paragraphs(project, unsynced), pool, session_regex)
     return cfg, instructions, fingerprint, units, pool
+
+
+# `summarize --unsynced` is bookkept as its own step, the way each topic list is: a separate
+# demo, a separate record of what has been run. The two sources are different transcripts, and
+# the point of the demo gate is to have looked at what comes back before paying for the rest.
+UNSYNCED = "unsynced"
+
+
+def step_key(unsynced: bool) -> str:
+    return f"{STEP}:{UNSYNCED}" if unsynced else STEP
+
+
+def _paragraphs(project: Project, unsynced: bool) -> pd.DataFrame:
+    """Which transcripts this run summarizes.
+
+    The untimed ones are the only material in the toolkit that never reaches a clip, so they are
+    kept in a table of their own and nothing but this step reads it.
+    """
+    if not unsynced:
+        return load_paragraphs(project)
+    path = project.unsynced_paragraphs_path
+    if not path.exists():
+        raise ToolkitError(
+            f"{path} not found. Put transcripts that were never SYNC'd in "
+            f"{project.unsynced_dir}/ and run `toolkit import --unsynced` first.")
+    return pd.read_parquet(path)
 
 
 # --- run ------------------------------------------------------------------------------------
 
 def run_summarize(project: Project, demo: bool = False, interviews: list[str] | None = None,
                   pool_sessions: bool | None = None, yes: bool = False,
-                  skip_demo_check: bool = False, batch: bool | None = None) -> pd.DataFrame:
+                  skip_demo_check: bool = False, batch: bool | None = None,
+                  unsynced: bool = False) -> pd.DataFrame:
     if demo and interviews:
         raise ToolkitError("--demo and --interview are mutually exclusive.")
-    cfg, instructions, fingerprint, units, pool = _context(project, pool_sessions)
+    cfg, instructions, fingerprint, units, pool = _context(project, pool_sessions, unsynced)
+    key = step_key(unsynced)
+    what = "transcript(s) that were never SYNC'd" if unsynced else "interview(s)"
     by_key = {u["interview_key"]: u for u in units}
 
     if demo:
@@ -111,16 +137,17 @@ def run_summarize(project: Project, demo: bool = False, interviews: list[str] | 
     n_cached = sum(1 for u in selected if unit_ck(u) in cache)
     n_fresh = len(selected) - n_cached
 
+    flag = " --unsynced" if unsynced else ""
     use_batch = False
     if not demo:
-        check_demo_gate(project, STEP, fingerprint,
-                        demo_command="toolkit summarize --demo", skip=skip_demo_check)
+        check_demo_gate(project, key, fingerprint,
+                        demo_command=f"toolkit summarize{flag} --demo", skip=skip_demo_check)
         use_batch = choose_transport(
-            f"Summarize {len(selected)} interview(s) with {model} "
+            f"Summarize {len(selected)} {what} with {model} "
             f"({n_cached} already cached, {n_fresh} fresh call(s)).",
             costmod.estimate_pair(cache, fingerprint, model, n_fresh), yes=yes, batch=batch)
 
-    print(f"Summarizing {len(selected)} interview(s) · {model}/{reasoning} · "
+    print(f"Summarizing {len(selected)} {what} · {model}/{reasoning} · "
           f"pooling={'on' if pool else 'off'} · {n_cached} cached / {n_fresh} fresh"
           + (" · Batch API" if use_batch else ""))
 
@@ -136,31 +163,52 @@ def run_summarize(project: Project, demo: bool = False, interviews: list[str] | 
         "total_words": u["total_words"],
         "summary": results[u["interview_key"]],
         "summary_word_count": len(results[u["interview_key"]].split()),
+        # Which pile the transcript came from. The two sit in one table, and everything else in
+        # the collection exists only for the SYNC'd ones — so a reader of the export has to be
+        # able to tell why a row has a summary and nothing else.
+        "synced": not unsynced,
         "model": model,
         "reasoning_effort": reasoning,
     } for u in selected]
     df = pd.DataFrame(rows)
 
     if demo:
-        diag = _write_html(project, df, "demo_summaries.html",
-                           title="Interview summaries — DEMO")
-        record_demo(project, STEP, fingerprint, units=keys, diag=str(diag))
+        page = "demo_unsynced_summaries.html" if unsynced else "demo_summaries.html"
+        lead = ("Summaries of transcripts that were never SYNC'd" if unsynced
+                else "Interview summaries")
+        diag = _write_html(project, df, page, title=f"{lead} — DEMO")
+        record_demo(project, key, fingerprint, units=keys, diag=str(diag))
         print(f"\nDemo review file: {diag}")
-        print("Review it; adjust config.yaml / prompts/ and re-demo if needed. "
-              "Then run `toolkit summarize` for the full corpus.")
+        print(f"Review it; adjust config.yaml / prompts/ and re-demo if needed. "
+              f"Then run `toolkit summarize{flag}` for all of them.")
         reveal(diag)
         return df
 
     out_path = project.outputs_dir / "summaries" / "summaries.parquet"
-    if interviews and out_path.exists():
-        df = merge_subset(pd.read_parquet(out_path), df, "interview_key")
+    existing = pd.read_parquet(out_path) if out_path.exists() else None
+    # A full run is the whole truth about the pile it read and says nothing about the other one:
+    # a transcript taken out of data/ should disappear from the table without the untimed
+    # summaries going with it. A subset run splices into whatever is there, as it always did.
+    base = existing if interviews else _from_the_other_pile(existing, unsynced)
+    df = merge_subset(base, df, "interview_key")
     write_deliverable(df, out_path, sort_by="interview_key")
     diag = _write_html(project, df.sort_values("interview_key"), "summaries.html",
                        title="Interview summaries")
     if not interviews:
-        record_full(project, STEP, fingerprint, model=model, n_units=len(selected))
+        record_full(project, key, fingerprint, model=model, n_units=len(selected))
     print(f"\nWrote {len(df)} summaries -> {out_path}\nReview file: {diag}")
     return df
+
+
+def _from_the_other_pile(existing: pd.DataFrame | None, unsynced: bool) -> pd.DataFrame | None:
+    """The rows this run has nothing to say about, so a full run of one pile leaves the other
+    one standing. A table written before untimed transcripts existed carries no `synced` column,
+    and everything in it came from a SYNC'd transcript."""
+    if existing is None:
+        return None
+    synced = (existing["synced"].astype(bool) if "synced" in existing.columns
+              else pd.Series(True, index=existing.index))
+    return existing[synced] if unsynced else existing[~synced]
 
 
 def _record(u: dict, ck: str, fingerprint: str, summary: str, usage: dict, cfg: dict) -> dict:
@@ -235,7 +283,7 @@ def _run_units(project: Project, cfg: dict, instructions: str, fingerprint: str,
             cache[ck] = record
         return u["interview_key"], summary, False
 
-    with ThreadPoolExecutor(max_workers=int(cfg["max_workers"])) as ex:
+    with worker_pool(int(cfg["max_workers"])) as ex:
         futures = [ex.submit(work, u) for u in selected]
         for i, fut in enumerate(as_completed(futures), start=1):
             key, summary, from_cache = fut.result()
@@ -257,9 +305,12 @@ def _write_html(project: Project, df: pd.DataFrame, filename: str, title: str):
     body: list[str] = []
     for r in df.itertuples():
         body.append('<section class="clip">')
+        # Untimed transcripts are said so on the page: they have a summary and will never have a
+        # clip, a label or a tag, and somebody reading the summaries has to know which is which.
+        untimed = "" if getattr(r, "synced", True) else " · never SYNC'd, so summary only"
         body.append(f"<h2>{esc(r.interview_key)}</h2>")
         body.append(f'<p class="meta">sessions: {esc(r.session_ids)} · {r.n_paragraphs} paragraphs / '
-                    f"{r.total_words:,} words · summary {r.summary_word_count} words</p>")
+                    f"{r.total_words:,} words · summary {r.summary_word_count} words{untimed}</p>")
         for parag in str(r.summary).split("\n\n"):
             body.append(f"<p>{esc(parag.strip())}</p>")
         body.append("</section>")

@@ -20,13 +20,13 @@ _ROLE_CLASS = {"Q": "q", "N": "n", "O": "o"}
 
 CSS = """
 :root {
-  --fg:#1a1a1a; --bg:#ffffff; --muted:#6a6a6a; --line:#e3e3e6; --card:#f7f7f8;
-  --accent:#2563eb; --q:#b45309; --n:#1d4ed8; --o:#6b7280; --score:#059669;
+  --fg:#22303f; --bg:#f5f1e6; --muted:#6b7a88; --line:#d8cfba; --card:#ebe4d3;
+  --accent:#2a3e55; --q:#8a6034; --n:#2a3e55; --o:#7a7268; --score:#3f6b52;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --fg:#e6e6e6; --bg:#16181d; --muted:#9aa0aa; --line:#2c2f36; --card:#1e2127;
-    --accent:#6ea8fe; --q:#f0a54a; --n:#7aa2f7; --o:#9aa0aa; --score:#34d399;
+    --fg:#e7dfcc; --bg:#1b2735; --muted:#9aa8b4; --line:#33455a; --card:#22303f;
+    --accent:#b9c9d8; --q:#d9a96a; --n:#9fc0dc; --o:#9aa8b4; --score:#6fb08a;
   }
 }
 * { box-sizing:border-box; }
@@ -35,6 +35,9 @@ body { margin:0; background:var(--bg); color:var(--fg);
 main { max-width:840px; margin:0 auto; padding:2rem 1.25rem 4rem; }
 h1 { font-size:1.5rem; margin:0 0 .25rem; }
 .subtitle { color:var(--muted); margin:0 0 1.5rem; font-size:.9rem; }
+.back { margin:0 0 1rem; font-size:.9rem; }
+.back a { text-decoration:none; }
+.back a:hover { text-decoration:underline; }
 section { border:1px solid var(--line); border-radius:8px; padding:.4rem 1rem 1rem;
   margin:0 0 1rem; background:var(--card); }
 section.proc, section.unassigned { background:transparent; border-style:dashed; }
@@ -66,8 +69,32 @@ th, td { border:1px solid var(--line); padding:.3rem .5rem; text-align:left; }
 th { background:var(--card); }
 td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 a { color:var(--accent); }
+/* Transcript text, so it wraps: reading a clip must not mean scrolling sideways. */
 pre { background:var(--bg); border:1px solid var(--line); border-radius:6px;
-  padding:.75rem 1rem; overflow-x:auto; font-size:.82rem; line-height:1.5; }
+  padding:.75rem 1rem; font-size:.82rem; line-height:1.5;
+  white-space:pre-wrap; overflow-wrap:anywhere; }
+/* Foldable panels: a long page of alternatives, with only the one you are on open. */
+details { border:1px solid var(--line); border-radius:8px; background:var(--card);
+  margin:0 0 .75rem; padding:0 1rem; }
+details[open] { padding-bottom:1rem; }
+summary { cursor:pointer; padding:.75rem 0; font-weight:650; font-size:1.02rem;
+  list-style-position:outside; }
+summary .meta { font-weight:400; }
+details .lead { color:var(--muted); font-size:.88rem; margin:.25rem 0 .75rem; max-width:60ch; }
+.tag { display:inline-block; border-radius:4px; font-size:.7rem; font-weight:700;
+  padding:.05em .45em; margin-left:.5rem; color:#fff; background:var(--score);
+  vertical-align:middle; letter-spacing:.02em; }
+.tag.now { background:var(--q); }
+/* A footnote to the panels above, not another one of them: no card, quieter, set apart. */
+details.aside { background:transparent; border:0; border-top:1px solid var(--line);
+  border-radius:0; padding:0; margin:1.75rem 0 0; }
+details.aside > summary { font-weight:400; font-size:.88rem; color:var(--muted);
+  padding:.6rem 0 0; }
+details.aside[open] { padding-bottom:0; }
+/* Figures are wide: let one scroll inside itself rather than the whole page sideways. */
+.figure { overflow-x:auto; margin:.5rem 0 0; }
+.figure img { display:block; max-width:100%; height:auto; border-radius:6px;
+  background:#fff; }
 """
 
 
@@ -76,16 +103,25 @@ def esc(s) -> str:
     return escape(str(s), quote=True)
 
 
-def document(title: str, body: str, subtitle: str = "") -> str:
+BACK_LABEL = "All interviews"
+
+
+def document(title: str, body: str, subtitle: str = "",
+             back: tuple[str, str] | None = None) -> str:
     """A complete self-contained page. `title` is escaped; `body`/`subtitle` are trusted HTML the
-    caller has already assembled (escape your text through `esc()` before passing it in)."""
+    caller has already assembled (escape your text through `esc()` before passing it in).
+
+    `back` is (href, label): the way out of a per-interview page, so reading through a review set
+    does not need the browser's own Back button — the app opens these in a tab of their own.
+    """
     sub = f'\n<p class="subtitle">{subtitle}</p>' if subtitle else ""
+    up = f'<p class="back"><a href="{esc(back[0])}">&larr; {esc(back[1])}</a></p>\n' if back else ""
     return (
         "<!doctype html>\n"
         '<html lang="en">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         f"<title>{esc(title)}</title>\n<style>{CSS}</style>\n</head>\n<body>\n<main>\n"
-        f"<h1>{esc(title)}</h1>{sub}\n{body}\n</main>\n</body>\n</html>\n"
+        f"{up}<h1>{esc(title)}</h1>{sub}\n{body}\n</main>\n</body>\n</html>\n"
     )
 
 
@@ -104,6 +140,35 @@ def para(idx: int, ts: str, role: str, speech: str) -> str:
     ts_html = f'<span class="ts">{esc(ts)}</span>' if ts else ""
     return (f'<p class="para"><span class="idx">{idx}</span>'
             f'{ts_html}{role_badge(role)} {esc(speech)}</p>')
+
+
+def panel(title: str, body: str, *, lead: str = "", tags: list[tuple[str, str]] = (),
+          open_: bool = False, aside: bool = False) -> str:
+    """A foldable section. Used where a page offers alternatives to compare: all of them are on
+    the page, but only the one being looked at takes up room.
+
+    `aside` marks one that is not an alternative — a footnote to the set rather than a member of
+    it — and it is styled so that it does not read as another thing to choose between.
+    """
+    chips = "".join(f'<span class="tag {kind}">{esc(text)}</span>' for text, kind in tags)
+    intro = f'<p class="lead">{esc(lead)}</p>\n' if lead else ""
+    classes = ' class="aside"' if aside else ""
+    return (f'<details{classes}{" open" if open_ else ""}>\n'
+            f"<summary>{esc(title)}{chips}</summary>\n{intro}{body}\n</details>")
+
+
+def figure(src: str, alt: str) -> str:
+    """A generated plot, scrolling inside its own box on a narrow screen."""
+    return f'<div class="figure"><img src="{esc(src)}" alt="{esc(alt)}"></div>'
+
+
+def table(headers: list[str], rows: list[list[str]], numeric: set[int] = frozenset()) -> str:
+    """A plain table. `numeric` is the column indexes to right-align."""
+    def cells(values, tag: str) -> str:
+        return "".join(f'<{tag}{" class=\"num\"" if i in numeric else ""}>{esc(v)}</{tag}>'
+                       for i, v in enumerate(values))
+    body = "\n".join(f"<tr>{cells(r, 'td')}</tr>" for r in rows)
+    return f"<table>\n<tr>{cells(headers, 'th')}</tr>\n{body}\n</table>"
 
 
 def write_index(path: Path, title: str, entries: list[tuple[str, str, str]]) -> Path:

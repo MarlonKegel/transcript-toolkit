@@ -10,7 +10,7 @@ Idempotent + resumable via the per-call cache (.toolkit/cache/topics_{set}.jsonl
 from __future__ import annotations
 
 import json
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from datetime import datetime, timezone
 from threading import Lock
 from typing import Literal
@@ -24,6 +24,7 @@ from ...core.cache import JsonlAppender, cache_key, latest_records
 from ...core.config import load_step_config, require
 from ...core.console import choose_transport, reveal
 from ...core.llm import build_schema, call_llm, check_levels, openai_client
+from ...core.parallel import worker_pool
 from ...core.render import render_clip_plain
 from ...core.reviewdoc import document, esc
 from ...core.sampling import sample_clips_spread
@@ -32,7 +33,7 @@ from ...core.tables import (load_clips, load_paragraphs, merge_subset,
 from ...errors import ToolkitError
 from ...project import Project
 from ...state import check_demo_gate, record_demo, record_full
-from ..summarize import load_prompt
+from ...core.prompts import load_prompt
 from .taxonomy import TopicSet, build_legend, load_topic_set
 
 STEP = "topics"
@@ -109,7 +110,11 @@ def _context(project: Project, set_name: str | None, justify: bool | None, demo:
     check_levels(cfg["reasoning"], cfg["verbosity"])
     tset = load_topic_set(project, cfg, set_name)
     # A set may bring its own rubric (config sets.<set>.prompt) when its tagging rules differ
-    # from the default — e.g. OSF's fine-grained Filter set with its specific+substantive bar.
+    # from the default — e.g. OSF's fine-grained Filter set with its specific+substantive bar —
+    # and its own model and reasoning with it. Merging here means everything downstream (the
+    # cost estimate, the demo fingerprint, what gets printed) follows one set of settings.
+    cfg = {**cfg, **tset.overrides}
+    check_levels(cfg["reasoning"], cfg["verbosity"])
     prompt_text = load_prompt(project, tset.prompt or cfg["prompt"])
 
     # Justifications default ON for demos (they are what you review) and OFF for full runs
@@ -303,7 +308,7 @@ def _run_clips(project: Project, cfg: dict, tset: TopicSet, sset: str, use_justi
         errs = validate_parsed(parsed, tset.ids, model_cls, justify_min, use_justify)
         return cid, parsed, from_cache, errs
 
-    with ThreadPoolExecutor(max_workers=int(cfg["max_workers"])) as ex:
+    with worker_pool(int(cfg["max_workers"])) as ex:
         futures = [ex.submit(work, row) for row in selected.itertuples()]
         for i, fut in enumerate(as_completed(futures), start=1):
             cid, parsed, from_cache, errs = fut.result()

@@ -1,8 +1,8 @@
 """`toolkit locations rollup` — interview-level location tags: the HYBRID clip->interview rollover.
 
 Two rollovers run separately per narrator (sessions pooled via core.ids.narrator_key — no-op-safe
-for session-less ids), each with a rarity-binned threshold (config locations.rollup.thresholds,
-freq-width bands: the rarest band clears the lowest bar):
+for session-less ids), each under the same rollup rule (config locations.rollup — by default
+rarity bands, where a place that comes up rarely across the collection clears a lower bar):
 
   1. DIRECT labels — an interview is tagged a label when the share of its clips carrying that
      label with direct evidence (via includes `direct` or `place`) clears the label's bar.
@@ -12,43 +12,51 @@ freq-width bands: the rarest band clears the lowest bar):
 
 Final interview labels = direct ∪ mapped-down regions, with `via` provenance. The region fan-out
 therefore only reaches an interview when the REGION ITSELF is interview-substantive — not by
-accumulating scattered per-country shares (`toolkit locations thresholds` is the decision aid).
+accumulating scattered per-country shares (`toolkit locations thresholds` is the decision aid,
+and is meant to be read before this is run).
 """
 from __future__ import annotations
 
 import pandas as pd
 
+from ...core import thresholds
 from ...core.config import load_step_config, require
 from ...core.ids import narrator_key
 from ...core.tables import write_deliverable
-from ...core.thresholds import freq_width_thresholds
 from ...errors import ToolkitError
 from ...project import Project
+from ...state import record_rollup
 from .map import check_regions_known, load_region_map
 
 STEP = "locations"
 
 
-def rollover(long: pd.DataFrame, key_col: str, n_clips: pd.Series, bars
+def rollover(long: pd.DataFrame, key_col: str, n_clips: pd.Series, rollup: thresholds.Rollup
              ) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
-    """Generic rarity-binned rollover: (tagged bool frame, pct frame, per-item threshold Series).
-    `long` = one row per (interview_key, <key_col>, clip_id)."""
+    """One rollover under the project's rollup rule: (tagged bool frame, pct frame, per-item
+    threshold Series). `long` = one row per (interview_key, <key_col>, clip_id).
+
+    Direct labels and regions both come through here, so a place and the region it sits in are
+    judged by the same rule — the two rollovers differ in what they count, not in how."""
     if long.empty:                                       # no items at all -> nothing to tag
         empty = pd.DataFrame(index=n_clips.index)
         return empty.astype(bool), empty, pd.Series(dtype=float)
     counts = long.groupby(["interview_key", key_col])["clip_id"].nunique().unstack(fill_value=0)
     counts = counts.reindex(n_clips.index, fill_value=0)
     pct = counts.div(n_clips, axis=0) * 100
-    thr = freq_width_thresholds(long.groupby(key_col)["clip_id"].nunique(), bars)
+    thr = rollup.thresholds(long.groupby(key_col)["clip_id"].nunique())
     return pct.ge(thr, axis=1), pct, thr
+
+
+def locations_rollup(cfg: dict) -> thresholds.Rollup:
+    """The rollup rule this project's places run under (config locations.rollup)."""
+    return thresholds.parse(cfg.get("rollup"), "config.yaml locations.rollup")
 
 
 def run_locations_rollup(project: Project) -> pd.DataFrame:
     cfg = load_step_config(project, STEP)
-    require(cfg, ["rollup", "region_map_file"], STEP)
-    bars = list((cfg["rollup"] or {}).get("thresholds") or [])
-    if not bars:
-        raise ToolkitError("locations.rollup.thresholds is missing or empty (config.yaml).")
+    require(cfg, ["region_map_file"], STEP)
+    rollup = locations_rollup(cfg)
     session_regex = load_step_config(project, "import")["session_regex"]
     region_map = load_region_map(project.root / cfg["region_map_file"])
     relabel = dict(cfg.get("relabel") or {})
@@ -73,12 +81,12 @@ def run_locations_rollup(project: Project) -> pd.DataFrame:
     direct = cl[direct_mask].copy()
     direct["interview_key"] = direct["interview_id"].map(lambda i: narrator_key(i, session_regex))
     direct = direct.rename(columns={"country": "label"})
-    d_tag, d_pct, d_thr = rollover(direct, "label", n_clips, bars)
+    d_tag, d_pct, d_thr = rollover(direct, "label", n_clips, rollup)
 
     # 2) REGIONS, rolled over as regions, then mapped down (relabel applied like the map step)
     regs = (cw[cw["regions"] != ""].assign(region=lambda d: d["regions"].str.split("|"))
             .explode("region")[["interview_key", "region", "clip_id"]])
-    r_tag, r_pct, r_thr = rollover(regs, "region", n_clips, bars)
+    r_tag, r_pct, r_thr = rollover(regs, "region", n_clips, rollup)
 
     # 3) union with provenance
     long_rows, wide_rows = [], []
@@ -130,9 +138,13 @@ def run_locations_rollup(project: Project) -> pd.DataFrame:
                       sort_by=["interview_key", "label"])
     write_deliverable(rlong, out_dir / "interview_regions_long.parquet",
                       sort_by=["interview_key", "region"])
+    # So the decision aid can mark the rule these results were built with, rather than the one
+    # sitting in config.yaml — which may be something you have chosen but not yet applied.
+    record_rollup(project, STEP, rollup.as_config())
 
     n_int = len(wide)
-    print(f"Hybrid rollover · thresholds {sorted(bars)} (freq-width bins, both rollovers)")
+    print(f"Hybrid rollover · {rollup.describe(thresholds.PLACES)} "
+          f"(applied to places and to regions alike)")
     print(f"{n_int} interviews ({int(n_sessions.sum())} sessions / {int(n_clips.sum())} clips)")
     nl = wide["n_labels"]
     print(f"labels/interview: mean {nl.mean():.1f}, median {int(nl.median())}, "

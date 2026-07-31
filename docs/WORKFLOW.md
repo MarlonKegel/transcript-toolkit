@@ -25,13 +25,16 @@ settings you can tune. So every step follows the same loop, and the toolkit **en
 2. **Review** — the demo opens a review page in your browser (a self-contained `.html` file in
    `diags/<step>/` — on a Mac it opens automatically; elsewhere, double-click it). Judge the
    output: are clip boundaries sensible, labels sharp, tags right?
-3. **Adjust** — edit `config.yaml` (models, thresholds), the step's prompt in `prompts/`, or
-   your topic list, and go back to 1. Every demo is cheap, and repeated runs re-use everything
-   already computed.
+3. **Adjust** — edit `config.yaml` (models, thresholds), the step's prompt in `prompts/`
+   (`toolkit status` names the file each step reads), or your topic list, and go back to 1. Every
+   demo is cheap, and repeated runs re-use everything already computed.
 4. **Full run** — `toolkit <step>` (no flags). This only starts if a demo of the *current*
    prompt+settings has been made (otherwise it tells you what changed), asks you to confirm the
    spend (see below), and then processes the whole corpus. Results land in `outputs/`, review
    files in `diags/`.
+
+The app ([APP.md](APP.md)) runs this exact loop: each step page's *Try it* → read the review
+pages → adjust or *run on everything* are these four moves, enforced the same way.
 
 ### If a step seems stuck
 
@@ -84,19 +87,26 @@ toolkit label
 toolkit summarize --demo
 toolkit summarize
 
+#   transcripts with no timestamps at all can be summarized and nothing else. Put them in
+#   data/unsynced/ (see docs/steps/import.md); their summaries join the ones above.
+toolkit import --unsynced
+toolkit summarize --unsynced --demo
+toolkit summarize --unsynced
+
 #   drop your topic list into topics/ first (collection.xlsx or .csv: name, description)
 toolkit topics tag --set collection --demo    # → review page opens → tune the list → re-demo
 toolkit topics tag --set collection
-toolkit topics thresholds --set collection    # decision aid for the interview-rollup thresholds
-toolkit topics rollup --set collection        # clip tags → interview tags
+toolkit topics thresholds --set collection    # compare how tags could be decided → a review page
+toolkit topics rollup --set collection        # apply it: clip tags → interview tags
 
 toolkit locations tag --demo   # works out of the box (built-in region list)
 toolkit locations tag
 toolkit locations map          # regions → countries
-toolkit locations rollup       # clip tags → interview tags
+toolkit locations thresholds   # compare how tags could be decided → a review page
+toolkit locations rollup       # apply it: clip tags → interview tags
 
 toolkit export                 # one xlsx in outputs/ with everything so far
-toolkit status                 # where things stand, any time
+toolkit status                 # where things stand, and what each step is waiting for
 toolkit cost                   # what has been spent so far
 ```
 

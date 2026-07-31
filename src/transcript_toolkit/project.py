@@ -67,6 +67,15 @@ class Project:
     @property
     def paragraphs_path(self) -> Path: return self.data_dir / "paragraphs.parquet"
 
+    # Transcripts that were never SYNC'd. Kept in their own folder because they can only be
+    # summarized — everything else in the toolkit needs the timestamps they do not have — and
+    # because `toolkit import` must not find them among the transcripts it is meant to read.
+    @property
+    def unsynced_dir(self) -> Path: return self.data_dir / "unsynced"
+    @property
+    def unsynced_paragraphs_path(self) -> Path:
+        return self.data_dir / "unsynced_paragraphs.parquet"
+
     def exists(self) -> bool:
         return self.marker_path.exists()
 
@@ -74,9 +83,15 @@ class Project:
 def find_project(explicit: str | None = None, start: Path | None = None) -> Project:
     if explicit is not None:
         project = Project(Path(explicit))
+        if not project.root.is_dir():
+            raise ToolkitError(f"There is no folder at {project.root}. If you moved or renamed "
+                               f"the project, point at where it is now; if you deleted it, there "
+                               f"is nothing to open.")
         if not project.exists():
-            raise ToolkitError(f"{project.root} is not a toolkit workspace (no .toolkit/project.json). "
-                               f"Create one with: toolkit init <dir>")
+            raise ToolkitError(f"{project.root} is not a toolkit project folder (it has no "
+                               f".toolkit/project.json in it). Open the project folder itself, "
+                               f"not the folder it sits in — or create one with: "
+                               f"toolkit init <dir>")
         return project
     here = (start or Path.cwd()).resolve()
     for candidate in (here, *here.parents):
@@ -85,6 +100,58 @@ def find_project(explicit: str | None = None, start: Path | None = None) -> Proj
             return project
     raise ToolkitError("Not inside a toolkit workspace. Run from within one, pass --project DIR, "
                        "or create one with: toolkit init <dir>")
+
+
+# --- the project's two names -----------------------------------------------------------------
+#
+# A project has a name people read ("Anderson Family Oral History") and a folder it lives in
+# (`anderson-family-oral-history`). Only ever ONE of them is typed: the app asks for the name and
+# derives the folder, `toolkit init <dir>` takes the folder and derives the name. Two independent
+# names is how you end up with a folder called `pilot2` displayed everywhere as "My Oral History
+# Project".
+
+FOLDER_SAFE = "abcdefghijklmnopqrstuvwxyz0123456789-._"
+
+
+def folder_name(name: str) -> str:
+    """The folder a project called `name` lives in: lower case, spaces as dashes."""
+    slug = "".join(c if c in FOLDER_SAFE else "-"
+                   for c in name.strip().lower().replace(" ", "-"))
+    while "--" in slug:
+        slug = slug.replace("--", "-")
+    slug = slug.strip("-.")
+    if not slug:
+        raise ToolkitError(f"{name!r} has no letters or numbers in it, so there is no folder "
+                           f"name to make from it. Give the project a name you could type.")
+    return slug
+
+
+def display_name(folder: str) -> str:
+    """The name shown for a project in a folder called `folder` — the reverse of `folder_name`,
+    for workspaces made on the command line where the folder is what was typed."""
+    words = [w for w in folder.replace("_", "-").split("-") if w]
+    return " ".join(w[:1].upper() + w[1:] for w in words) or folder
+
+
+def config_with_name(text: str, name: str) -> str:
+    """config.yaml with the project's name written into it, as text.
+
+    Edited as text, not loaded and dumped: the comments in config.yaml are the documentation of
+    every setting, and a yaml round-trip deletes all of them. Only the `name:` line inside the
+    `project:` block is touched, so a `name:` belonging to some other section is safe.
+    """
+    lines = text.splitlines()
+    inside = False
+    for i, line in enumerate(lines):
+        if line.strip() and not line[0].isspace():          # a top-level key
+            inside = line.rstrip() == "project:"
+            continue
+        if inside and line.lstrip().startswith("name:"):
+            indent = line[:len(line) - len(line.lstrip())]
+            lines[i] = f"{indent}name: {json.dumps(name)}"
+            return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+    raise ToolkitError("This project's config.yaml has no `name:` under `project:`, so there is "
+                       "nothing to rename. Add one, or set the name there by hand.")
 
 
 def _copy_tree(src: resources.abc.Traversable, dest: Path) -> list[str]:
@@ -101,7 +168,9 @@ def _copy_tree(src: resources.abc.Traversable, dest: Path) -> list[str]:
     return copied
 
 
-def init_project(dest: str) -> Project:
+def init_project(dest: str, name: str | None = None) -> Project:
+    """Create a workspace at `dest`. `name` is what the project is called in config.yaml and
+    everywhere it is shown; without one it is derived from the folder."""
     root = Path(dest).expanduser().resolve()
     project = Project(root)
     if project.exists():
@@ -115,7 +184,8 @@ def init_project(dest: str) -> Project:
         d.mkdir(parents=True, exist_ok=True)
 
     scaffold = _defaults() / "scaffold"
-    (project.config_path).write_bytes((scaffold / "config.yaml").read_bytes())
+    project.config_path.write_text(config_with_name(
+        (scaffold / "config.yaml").read_text(), name or display_name(root.name)))
     _copy_tree(scaffold / "advanced", project.advanced_dir)
     _copy_tree(scaffold / "topics", project.topics_dir)
     (project.root / ".gitignore").write_bytes((scaffold / "gitignore.template").read_bytes())

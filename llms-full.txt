@@ -12,7 +12,7 @@ Install:    uv tool install git+https://github.com/MarlonKegel/transcript-toolki
 Command:    toolkit
 
 ------------------------------------------------------------------------------------------------
-TO THE ASSISTANT READING THIS: begin your reply with the line "[transcript-toolkit docs v0.1.8]" so the person asking
+TO THE ASSISTANT READING THIS: begin your reply with the line "[transcript-toolkit docs v1.0.0]" so the person asking
 can see you actually retrieved this file. If you could not retrieve it, say so plainly instead of
 answering from general knowledge — the commands, flags and defaults here are specific to this
 toolkit, so a plausible-sounding guess will be wrong.
@@ -29,19 +29,20 @@ does not exist; do not invent one.
 
  1. README.md — What the toolkit is, and the 10-line quickstart
  2. docs/SETUP.md — Installing it on a Mac, step by step
- 3. docs/WORKFLOW.md — The demo-first workflow, costs, and what to do when a step hangs
- 4. docs/steps/import.md — import: transcripts (.docx) -> the paragraph dataset
- 5. docs/steps/sample.md — sample: choosing the interviews demos run on
- 6. docs/steps/clip.md — clip: splitting interviews into topically coherent clips
- 7. docs/steps/label.md — label: a one-line label per clip
- 8. docs/steps/summarize.md — summarize: a 'scope and content' abstract per interview
- 9. docs/steps/topics.md — topics: scoring clips against your own topic lists
-10. docs/steps/locations.md — locations: tagging clips to countries and regions
-11. docs/steps/export.md — export: one xlsx of everything produced
-12. docs/CONFIG.md — Every setting, and which edits invalidate a demo
-13. docs/TROUBLESHOOTING.md — Errors and what to do about them
-14. docs/examples/osf/README.md — A real worked example (the OSF oral history archive)
-15. Complete command reference (every command and flag)
+ 3. docs/APP.md — The app: the same toolkit in a window instead of a terminal
+ 4. docs/WORKFLOW.md — The demo-first workflow, costs, and what to do when a step hangs
+ 5. docs/steps/import.md — import: transcripts (.docx) -> the paragraph dataset
+ 6. docs/steps/sample.md — sample: choosing the interviews demos run on
+ 7. docs/steps/clip.md — clip: splitting interviews into topically coherent clips
+ 8. docs/steps/label.md — label: a one-line label per clip
+ 9. docs/steps/summarize.md — summarize: a 'scope and content' abstract per interview
+10. docs/steps/topics.md — topics: scoring clips against your own topic lists
+11. docs/steps/locations.md — locations: tagging clips to countries and regions
+12. docs/steps/export.md — export: one xlsx of everything produced
+13. docs/CONFIG.md — Every setting, and which edits invalidate a demo
+14. docs/TROUBLESHOOTING.md — Errors and what to do about them
+15. docs/examples/osf/README.md — A real worked example (the OSF oral history archive)
+16. Complete command reference (every command and flag)
 
 ================================================================================================
 # FILE: README.md
@@ -70,6 +71,10 @@ import ─► clip ─► label ──────────┐
 
 Every LLM step is **demo-first**: you run it on a small sample, review the annotated output in
 `diags/`, adjust settings/prompts, and only then run the full corpus.
+
+All of it can be run **from a window instead of a terminal**: the app
+([docs/APP.md](docs/APP.md)) is the same toolkit with buttons for the commands, running
+entirely on your own Mac.
 
 ## Ask an AI about this toolkit
 
@@ -102,23 +107,40 @@ have installed.
 ```sh
 # one-time install (see docs/SETUP.md for the full Mac walkthrough, incl. installing uv)
 uv tool install git+https://github.com/MarlonKegel/transcript-toolkit.git
+```
 
-toolkit update                 # ...and to get the latest version later
+Point-and-click from here on — one more command puts **Transcript Toolkit** in your
+Applications folder, and everything else happens in its window
+([docs/APP.md](docs/APP.md)):
 
+```sh
+toolkit app --install-launcher
+```
+
+Or carry on in the terminal:
+
+```sh
 toolkit init my-archive && cd my-archive
 #  → put your OpenAI key in .env, drop transcripts in data/
 toolkit import
 toolkit status
+
+toolkit update                 # ...and to get the latest version later
 ```
 
 ## Documentation
 
 - [docs/SETUP.md](docs/SETUP.md) — install walkthrough (Mac)
+- [docs/APP.md](docs/APP.md) — the app: the same toolkit in a window instead of a terminal
 - [docs/WORKFLOW.md](docs/WORKFLOW.md) — the demo-first pipeline, end to end
 - [docs/steps/](docs/steps/) — one page per step
 - [docs/CONFIG.md](docs/CONFIG.md) — every setting
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — when something goes wrong
 - [llms-full.txt](llms-full.txt) — all of the above in one file, for AI assistants (see above)
+
+## License
+
+MIT — see [LICENSE](LICENSE).
 
 ================================================================================================
 # FILE: docs/SETUP.md
@@ -172,7 +194,20 @@ toolkit update
 The toolkit also tells you, at most once a day, when a newer version is out. It never updates
 itself — that is always your call.
 
-## 4. Create a project workspace
+## 4. Rather not use Terminal? Install the app
+
+Everything from here on can be done in a window instead. One more command:
+
+```sh
+toolkit app --install-launcher
+```
+
+That puts **Transcript Toolkit** in your Applications folder — open it like any other app, and
+[APP.md](APP.md) takes over from this page: creating a project, adding your key and your
+transcripts all happen in the window. Steps 5–7 below are the Terminal way of doing the same
+things; skip them if you use the app.
+
+## 5. Create a project workspace
 
 Pick a folder name for your project (here `my-archive`):
 
@@ -182,15 +217,25 @@ toolkit init my-archive
 cd my-archive
 ```
 
+The project is then called "My Archive" wherever a name is shown. To choose the name instead
+and let the folder follow from it, give `--name`:
+
+```sh
+cd ~/Documents
+toolkit init --name "Anderson Family Oral History"    # -> anderson-family-oral-history/
+```
+
+Either way there is only ever one name to keep track of.
+
 This creates the project folder with everything in place: `config.yaml` (your settings),
 `prompts/` (editable prompt texts), `topics/` (your topic lists go here), `data/` (transcripts
 go here), `outputs/` (results appear here), `diags/` (review files appear here).
 
-## 5. Add your OpenAI API key
+## 6. Add your OpenAI API key
 
 Every LLM step calls the OpenAI API with a key billed to your team. Ask your admin for a key.
 `toolkit init` already created a `.env` file inside your project folder — you just need to add
-the key to it. Make sure you are inside the workspace (the `cd my-archive` from step 4), then
+the key to it. Make sure you are inside the workspace (the `cd my-archive` from step 5), then
 open it (it's hidden in Finder — in Terminal: `open -e .env`) and paste the key after the `=`:
 
 ```
@@ -199,7 +244,7 @@ OPENAI_API_KEY=sk-...
 
 Then **save the file** (in TextEdit: `⌘S`) and close it — the key isn't stored until you save.
 
-## 6. Add transcripts and import
+## 7. Add transcripts and import
 
 Copy your SYNC'd transcript `.docx` files into `data/` (one file per interview, or per session
 for multi-session interviews — see [steps/import.md](steps/import.md) for the required
@@ -220,6 +265,301 @@ From here, follow [WORKFLOW.md](WORKFLOW.md).
 See [TROUBLESHOOTING.md](TROUBLESHOOTING.md). The golden rule: the toolkit fails loudly and
 tells you what to fix; interrupted runs are never lost — run the same command again and it
 picks up where it stopped.
+
+================================================================================================
+# FILE: docs/APP.md
+# The app: the same toolkit in a window instead of a terminal
+================================================================================================
+
+# The app
+
+Everything the toolkit does, in a window instead of a terminal. It runs on your own Mac —
+nothing is uploaded anywhere, and there is no account to sign into. Behind the window it runs
+exactly the same commands this documentation describes, and shows you each one as it goes, so
+what you learn here still applies if you ever want to type them yourself.
+
+## Starting it
+
+Once, after installing the toolkit (see [SETUP.md](SETUP.md) steps 1–3):
+
+```sh
+toolkit app --install-launcher
+```
+
+That creates **Transcript Toolkit** in your Applications folder — the one in Finder's sidebar.
+Open it, and drag it to your Dock if you want it there. From then on, double-clicking it is how
+you start.
+
+On a Mac where you are not allowed to write to `/Applications` (some managed machines), it goes
+into your own `~/Applications` instead, which is *not* the Applications in Finder's sidebar. The
+command tells you which one it used and how to get there. Either way, Command-Space and typing
+the name finds it.
+
+macOS may ask once whether the app can access files in your Documents folder — say yes, that
+is where your projects live. It only asks again if the app is rebuilt.
+
+You can also start it from a terminal, which is useful if something goes wrong and you want to
+see the messages:
+
+```sh
+toolkit app
+```
+
+## How it behaves
+
+**It keeps running when you close the window.** That is deliberate: a run over a whole
+collection takes hours, and closing a browser tab should not throw that away. Come back to the
+tab later — or open the app again — and you will find the run still going, with its output
+where you left it.
+
+**One thing runs at a time.** If a step is already going, the app says so rather than starting
+a second one. Batch API runs are the awkward case: they can take up to a day, and they hold the
+slot. Stopping one is safe (see below), and re-running the step afterwards picks the batch back
+up without paying twice.
+
+**Stopping is always safe.** Every call that has finished is saved. Stop a run halfway and run
+it again tomorrow, and it carries on from where it stopped rather than starting over.
+
+**Quit it when you are done** — the gear in the top right corner → Quit the toolkit. Also do that
+after installing an update: the copy that is already running keeps using the old version until
+you restart it.
+
+## Finding your way around
+
+The bar across the top has three things in it. On the **left**, the toolkit's icon and the
+version you are running; clicking the icon takes you to the list of all your projects. In the
+**middle**, the project that is open. On the **right**, the gear, which opens Settings from
+wherever you are.
+
+- **Home** (the icon) is every project on this Mac, what stage each one has reached, and the
+  place to start a new one.
+- **Workspace** is the open project: what to do next, its transcripts, the interviews the demos
+  run on, and the pipeline.
+- Then **one page per step**, and **Export**.
+
+Every page that can run something ends with a **Terminal Viewer**. Inside it is the command
+being run and its output, exactly as Terminal would show it — the app is a window onto the
+command-line tool this documentation describes, and that panel is the tool itself working. You
+never have to read it. It is there so you can see what is happening, and so you can copy a
+command out and run it yourself if you ever want to.
+
+While something is running, its own state — how far it has got, and a Stop button — appears
+directly under the button you pressed, wherever on the page that is. When it finishes it folds
+back to a single line with a tick, so a page you have worked through does not fill up with
+panels about things that are over.
+
+## Working through a project
+
+The workspace page always names one next thing to do, and the pages follow the same order.
+
+1. **Workspace** — paste your OpenAI key, drop the `.docx` files in, import them, and pick the
+   interviews the demos will run on. Some things worth knowing:
+
+   - **You name the project, not its folder.** "Anderson Family Oral History" gets the folder
+     `anderson-family-oral-history`; Home shows you which folder before it makes it. **Browse**
+     opens a folder picker, so you never have to know or type a path — though you still can.
+   - **One list of transcripts**, showing every `.docx` in the project, whose interview it is,
+     how many paragraphs were read out of it, and whether it has been imported yet. A
+     drag-and-drop that half worked is visible here rather than something you find out about
+     three steps later. On a big collection the list scrolls inside itself, so what comes after
+     it is still on screen.
+   - **How transcripts are read** — which speaker labels are the interviewer, and which endings
+     to strip off a filename — is folded up under that list, because it is the one thing you may
+     have to correct before importing again.
+   - **Pick the sample of interviews for demos**, once: every step's demo uses the same few, so
+     what you read after the clip demo and after the label demo is about the same people. Say
+     how many first, then either let them be drawn or choose them yourself — the messy
+     transcript, the multi-session narrator. Between 3 and 10; 5 is the usual number, and a
+     bigger sample makes every demo proportionally more expensive. Afterwards the interviews
+     that were picked are listed, and you can take one out, add a particular one, or add a few
+     more at random.
+
+2. **Each step in turn** — clip, label, summarize, topics, locations. Every one is the same
+   three moves:
+
+   1. **Try it** on the demo interviews. Nothing is saved to the project and it costs a small
+      fraction of the whole collection.
+   2. **Read what came out.** The step writes review pages; the page says what to look for in
+      them. They open in a tab of their own, and each interview has a link back to the list.
+   3. **Then one of these** — change the prompt or a setting and try it again, or run it on
+      everything.
+
+   Running it on everything is not offered until the demo has been run, because the toolkit
+   refuses it anyway: a full run needs a demo it recognises behind it. Change a prompt, a model
+   or a setting and it will ask for a fresh demo, because the old one no longer tells you what
+   you would get.
+
+   **A button that would do nothing is greyed out and says so.** Once a step has run over
+   everything and nothing that would change the answer has been edited since, running it again
+   would send the same calls, get the same answers back out of the cache, and write the same
+   files. Hover it and it says that, and what to change to get a different result. Change
+   anything — the prompt, the model, a setting, the topic list — and it comes back by itself.
+   So do the things that stay useful: *Rebuild these pages* is never greyed out, and neither is
+   the comparison, which is meant to be run again with different numbers. Two cases deliberately
+   keep the button live: results you have deleted (re-running puts them back, and the calls are
+   already paid for), and a collection that has grown since the last full run — then it says
+   there is more to do, and running it again does only the new part.
+
+   **Topics** needs a topic list first. Write one in the app — one row per topic, a name and a
+   description of what belongs under it — or upload a spreadsheet you already have. What you
+   type is kept as you go, and the first time you save it asks what to call the list. The
+   description is the only thing the model reads when deciding whether a clip belongs to a
+   topic, so it is worth saying what does *not* count as well as what does.
+
+   You can have **more than one topic list**, and each gets a tab of its own, with a tab at the
+   end that adds another. Two lists are two pieces of work: separate demos, separate results, and
+   their own prompt, model and thinking effort — so a fine-grained list can run on a stronger
+   model than a coarse one without either dictating the other. A new list starts on the shared
+   prompt; *Give this list its own prompt* is what splits it off. Whichever list you uploaded is
+   editable in the same table you would have typed it into, and an Excel file stays an Excel
+   file.
+
+   **Locations** has a vocabulary of its own in the same place: *The regions the model may use*.
+   It is a strict list — the model cannot answer with anything that is not on it — so it is the
+   first thing to change when the region tags are wrong. Saving also says which of those regions
+   the country mapping has no entry for, because *Expand regions into countries* stops at one it
+   does not know.
+
+   **Topics and Locations have two more moves after that**, because tagging clips is not the
+   same as tagging interviews. See below.
+
+3. **From clip tags to interview tags** — on Topics and on Locations, once the whole collection
+   is tagged. A clip is what the model reads; a catalogue entry is about an interview. So the
+   tags have to move up, and that needs a threshold: how much of an interview has to be about
+   something before it is one of that interview's subjects.
+
+   - **Decide how to go from clip tags to interview tags** writes a page with a panel per method,
+     each drawing what that way of deciding would tag: one bar per topic, showing how many
+     interviews it would reach and the threshold it had to clear. The two binned methods are
+     drawn as a grid — one row per number of bins, one column per range — so both can be read at
+     once. Whatever your saved results were rolled up with is marked; a rule you have set but not
+     yet applied is not, because it has not happened yet. Nothing is sent to OpenAI, so compare
+     as often as you like. *What to compare* changes what is drawn.
+   - **Roll up to interview tags** is where you set the rule and apply it — one move, because
+     they are one decision. Two numbers do the work: how many bins, and the lowest and highest
+     threshold. The recommended method gives rarer topics a lower threshold; one threshold for
+     everything sounds simpler but buries exactly the topics worth finding. The other methods
+     are behind *Use a different method*. Rolling up is free and instant, so changing your mind
+     costs a re-run and nothing else.
+
+   Locations works the same way, with one wrinkle: regions are rolled up as regions and only then
+   expanded into their countries, so a country becomes an interview's place through a region only
+   when the region itself is what that interview is about.
+
+4. **Export** — one Excel file with everything produced so far. Steps that have not run are
+   simply left out, so exporting early is fine; run it again later and it will have more in it.
+
+The **project cost report** on the workspace page is what the project has actually cost, per step
+and in total. It counts every call ever made in it, demos included, so it is money that has left
+the account rather than an estimate. Every step page carries its own share of it beside the
+heading, in the same place each time — what something has already cost is asked before deciding
+to spend more. (In Terminal: `toolkit cost`.)
+
+At the foot of each step page, **Extra tools** holds the things that are not part of a normal
+run: rebuilding review pages from results you already have, and seeing how a long interview will
+be divided up before it is sent. Buttons that read something a step has not produced yet are
+greyed out, and say what is missing when you hover them.
+
+### Transcripts that were never SYNC'd
+
+The Summarize page has one section no other page has, folded away until you open it:
+**Transcripts that were never SYNC'd**. A SYNC'd transcript carries a timestamp on every
+paragraph, and that is what lets the toolkit cut it into clips — which is what labels, topics and
+places are all attached to. A summary is the exception: it is made from the interview as a whole,
+so it needs no times at all.
+
+Drop those files there and they are kept in a folder of their own, out of the collection. Read
+them in, try it on a couple, read what came back, then summarize them all — the same three moves,
+with a demo of their own. Their summaries go into the same file as the rest, and the export's
+Interviews tab gains a **Transcript** column saying which is which: those rows have a summary and
+no tags, and the column is what says that is a fact about the transcript rather than work left
+undone. (In Terminal: `toolkit import --unsynced`, then `toolkit summarize --unsynced`.)
+
+## Changing what a step does
+
+Two things on every step page change what comes back, and they are on that step's own page
+rather than behind the gear:
+
+- **The prompt for this step** — the instructions sent with every call. Rewording them changes
+  what comes back. It is the project's own copy, so an edit here changes nothing in any other
+  project, and *Put the original back* restores the one the toolkit ships with.
+- **Settings for this step** — which model does the work, how much thinking it does, and
+  whatever else belongs to that step alone. How clip tags become interview tags is *not* here:
+  it belongs to the rollup, which is further down, next to the comparison that informs it.
+
+Labelling also takes **house rules**: a short set of project decisions added to the end of the
+prompt — how a name is spelled, what to call something, what never to abbreviate. Write them in
+the app; they are saved as a file in the project like everything else.
+
+Each setting is shown with the explanation written beside it in the project's `config.yaml`. If
+you reword a comment in that file, the app says the new wording: there is one description of a
+setting, and the file is where it lives. Saving writes back into `config.yaml` itself, comments
+and all, so a project stays a folder you can open in TextEdit.
+
+Saving either one makes that step's demo out of date, which is the point — try it again and read
+the result before running the whole collection.
+
+## What it costs, and when it asks
+
+Nothing is spent without a question first. When you start a full run, the step works out how
+many calls it needs and how many it already has cached, then asks — in the app, with buttons:
+
+- **Run now** — results in this session.
+- **Use the Batch API** — half the price, but up to a day.
+- **Cancel**.
+
+Both prices are shown, and the `i` beside the buttons explains what you are choosing between.
+The figures are worked out by the step itself, not by the app, so what you see is what will
+actually be spent. Clipping has no Batch option — it asks a plain yes or no.
+
+Demos do not ask: they are small on purpose, usually a few cents.
+
+## When something goes wrong
+
+The app shows the toolkit's own message, which says what to fix. Two of them come with a button
+that does the fixing:
+
+- *"No demo sample drawn yet"* — the demo needs a handful of interviews chosen to run on; the
+  chooser appears on the step page as well as on the workspace page.
+- *"No demo run recorded"* / *"the demo is stale"* — the demo-first rule, above.
+
+Anything else: read the message, and see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
+If the app itself will not start, the messages from the last launch are in
+`~/Library/Logs/transcript-toolkit/launch.log`. If it says the port is in use by another
+program, start it somewhere else and make that permanent:
+
+```sh
+toolkit app --install-launcher --port 8378
+```
+
+## Settings
+
+**The gear in the top right corner** opens Settings, from any page. It holds only what is about
+the whole project or the installation — a setting that belongs to one step is on that step's page:
+
+- the project's name
+- which version you have, whether a newer one exists, and **Update to the most recent
+  version** — then quit the app and open it again, because the copy already running keeps
+  using the old version until you do
+- the button that rebuilds the desktop app
+- where the project's files are, and a button that shows the folder in Finder
+- **Delete this project**, which asks you to type DELETE and tells you how many transcripts and
+  results go with it. On a Mac it moves the folder to the Trash, so a wrong answer is
+  recoverable.
+- **Quit the toolkit**.
+
+## If your project folder moves or disappears
+
+Renaming a project folder in Finder, moving it to another disk, or throwing it away are all
+ordinary things to do, and nothing warns Finder that the app has it open. When the toolkit next
+looks and the folder is not there, it closes the project and asks on the workspace page:
+
+- **I moved or renamed it** — point it at the folder's new home and everything carries on. The
+  project is intact; only its path changed.
+- **I deleted it** — the toolkit forgets it and you are back at a clean start.
+
+Neither answer loses anything the toolkit was holding.
 
 ================================================================================================
 # FILE: docs/WORKFLOW.md
@@ -253,13 +593,16 @@ settings you can tune. So every step follows the same loop, and the toolkit **en
 2. **Review** — the demo opens a review page in your browser (a self-contained `.html` file in
    `diags/<step>/` — on a Mac it opens automatically; elsewhere, double-click it). Judge the
    output: are clip boundaries sensible, labels sharp, tags right?
-3. **Adjust** — edit `config.yaml` (models, thresholds), the step's prompt in `prompts/`, or
-   your topic list, and go back to 1. Every demo is cheap, and repeated runs re-use everything
-   already computed.
+3. **Adjust** — edit `config.yaml` (models, thresholds), the step's prompt in `prompts/`
+   (`toolkit status` names the file each step reads), or your topic list, and go back to 1. Every
+   demo is cheap, and repeated runs re-use everything already computed.
 4. **Full run** — `toolkit <step>` (no flags). This only starts if a demo of the *current*
    prompt+settings has been made (otherwise it tells you what changed), asks you to confirm the
    spend (see below), and then processes the whole corpus. Results land in `outputs/`, review
    files in `diags/`.
+
+The app ([APP.md](APP.md)) runs this exact loop: each step page's *Try it* → read the review
+pages → adjust or *run on everything* are these four moves, enforced the same way.
 
 ### If a step seems stuck
 
@@ -312,19 +655,26 @@ toolkit label
 toolkit summarize --demo
 toolkit summarize
 
+#   transcripts with no timestamps at all can be summarized and nothing else. Put them in
+#   data/unsynced/ (see docs/steps/import.md); their summaries join the ones above.
+toolkit import --unsynced
+toolkit summarize --unsynced --demo
+toolkit summarize --unsynced
+
 #   drop your topic list into topics/ first (collection.xlsx or .csv: name, description)
 toolkit topics tag --set collection --demo    # → review page opens → tune the list → re-demo
 toolkit topics tag --set collection
-toolkit topics thresholds --set collection    # decision aid for the interview-rollup thresholds
-toolkit topics rollup --set collection        # clip tags → interview tags
+toolkit topics thresholds --set collection    # compare how tags could be decided → a review page
+toolkit topics rollup --set collection        # apply it: clip tags → interview tags
 
 toolkit locations tag --demo   # works out of the box (built-in region list)
 toolkit locations tag
 toolkit locations map          # regions → countries
-toolkit locations rollup       # clip tags → interview tags
+toolkit locations thresholds   # compare how tags could be decided → a review page
+toolkit locations rollup       # apply it: clip tags → interview tags
 
 toolkit export                 # one xlsx in outputs/ with everything so far
-toolkit status                 # where things stand, any time
+toolkit status                 # where things stand, and what each step is waiting for
 toolkit cost                   # what has been spent so far
 ```
 
@@ -398,6 +748,24 @@ Reads the printed output carefully:
 `data/paragraphs.parquet` (+ `.csv`). Re-running is safe and cheap; do it whenever you add or
 change transcripts.
 
+## Transcripts that were never SYNC'd
+
+`toolkit import --unsynced` reads `data/unsynced/` instead — transcripts with no timestamps
+anywhere, often with a title page and a preface before the interview starts. This is the one way
+such a file gets into the toolkit, and what it can be used for is **summaries and nothing else**:
+a clip is a span between two times, so without them there is nothing to clip, and labels, topics
+and places all hang off the clips.
+
+- A turn starts at `SPEAKER: text`; every other paragraph continues the turn it is in.
+- Everything before the first speaker — the title page, the preface — is **left out** of the
+  interview and written to `logs/import_unsynced.log`, so you can check what was dropped.
+- `toolkit import` does not look in this folder, and a transcript here belonging to a narrator
+  already in the collection is refused: the summaries of both piles go into one table keyed by
+  narrator, so one would overwrite the other.
+- Output: `data/unsynced_paragraphs.parquet` (+ `.csv`). Then `toolkit summarize --unsynced`.
+
+In the app this is on the Summarize page, under "Transcripts that were never SYNC'd".
+
 ================================================================================================
 # FILE: docs/steps/sample.md
 # sample: choosing the interviews demos run on
@@ -416,6 +784,15 @@ toolkit sample --n 8                 # a bigger sample
 toolkit sample --seed 3              # a different draw
 ```
 
+Every demo you run from then on covers the whole sample, so a bigger sample costs
+proportionally more each time you try a step out. Five is the default for that reason.
+
+**Between 3 and 10.** Fewer than three does not show enough to judge a prompt by; more than ten
+costs more than it tells you, since every step's demo is run several times over. Both ends are
+refused with the reason. (To process a chosen few interviews for real rather than as a demo, use
+`toolkit clip --interview <id>` instead.) A collection of fewer than three interviews is the one
+exception: then the sample is all of them.
+
 ## Choosing the interviews yourself
 
 **You do not have to accept a random draw.** Name the interviews you want:
@@ -424,9 +801,22 @@ toolkit sample --seed 3              # a different draw
 toolkit sample --interviews ramos_ana,kramer_larry,acemoglu_daron
 ```
 
+Or name the ones you care about and let the rest be drawn for you — `--n` is the size of the
+whole sample, so this gives those two plus three others:
+
+```sh
+toolkit sample --n 5 --interviews ramos_ana,kramer_larry
+```
+
 Use the interview ids exactly as `toolkit import` printed them (lowercase, underscores — the
 filename with its suffixes stripped). An unknown id fails immediately and lists the valid ones,
 so a typo can't silently give you a different sample.
+
+In the app this is **Pick the sample of interviews for demos** on the workspace page: the same
+choice, with the interview list in front of you. It asks how many first, then whether to draw
+them or choose them; afterwards it lists the ones it picked, and each can be taken out, swapped
+for a particular interview, or topped up with a few more at random — every one of those runs
+`toolkit sample` with the interviews it should end up with.
 
 This is worth doing when the random five aren't representative — pick a short interview and a
 long one, a single-session and a multi-session narrator, or the transcript you know is messiest.
@@ -572,6 +962,25 @@ coverage of the main through-lines, and length. Tune the tone/length in
 `config.yaml` → `summarize`: `model`, `reasoning`, `pool_sessions`. `advanced/summarize.yaml`:
 `verbosity`, `max_workers`, `demo_n`, `prompt`.
 
+## Transcripts that were never SYNC'd
+
+This is the only step that can read a transcript with no timestamps — a summary is made from the
+interview as a whole, so it needs none. Put those files in `data/unsynced/`, then:
+
+```sh
+toolkit import --unsynced          # parse them; see docs/steps/import.md
+toolkit summarize --unsynced --demo
+toolkit summarize --unsynced
+```
+
+They are bookkept separately from the collection — their own demo, their own record of having
+run — because they are different transcripts and the demo is what you read before paying for the
+rest. Their summaries land in the **same** `summaries.parquet`, with `synced: false`, and the
+export's Interviews tab gains a **Transcript** column saying which is which. Those rows have a
+summary and no tags, which is a fact about the transcript rather than unfinished work.
+
+In the app: the Summarize page, under "Transcripts that were never SYNC'd".
+
 ## Output
 
 `outputs/summaries/summaries.parquet` (one row per interview).
@@ -610,7 +1019,19 @@ both work. The columns:
 | `id` | no | a short code; auto-derived from the name if omitted |
 
 Several topic lists? Drop in several files. `topics/collection.xlsx` and `topics/filter.csv`
-give you `--set collection` and `--set filter`, tagged independently, each with its own outputs.
+give you `--set collection` and `--set filter`, tagged independently, each with its own outputs,
+its own demo, and its own cache. A list can also carry **its own prompt, model and reasoning**
+(`sets.<set>.{prompt, model, reasoning}`), because a fine-grained list and a coarse one are two
+different pieces of work; anything it does not set, it takes from the `topics` section.
+
+**In the app** this is the Topics page, with one tab per list and a tab that adds another — by
+writing it in the table there or by uploading a spreadsheet. The table edits the same file the
+run reads, whether that is a `.csv` you typed here or an `.xlsx` you brought (an Excel file stays
+one, and other sheets in the workbook are left alone). It is checked against the rules above as
+you save it, and the first save is where you name the set. Until you name it, what you type is
+kept in `topics/example_topics.csv`, which no run will ever tag against. Each tab carries its own
+prompt and settings, and *Give this list its own prompt* is what splits it off from the shared
+one.
 
 There is **no default set** — every `toolkit topics` command needs `--set`. Tagging a whole
 corpus against the wrong taxonomy is expensive, so the set is always named explicitly. Forget it
@@ -621,8 +1042,8 @@ and the error lists the sets you have.
 ```sh
 toolkit topics tag --set collection --demo   # sample of clips → review page opens in your browser
 toolkit topics tag --set collection          # full corpus
-toolkit topics thresholds --set collection   # decision aid for the rollup bar(s)
-toolkit topics rollup --set collection       # clip tags → interview tags
+toolkit topics thresholds --set collection   # compare how tags could be decided (writes a page)
+toolkit topics rollup --set collection       # apply it: clip tags → interview tags
 ```
 
 `toolkit topics preview --set collection --clip <id>` prints the exact request for one clip.
@@ -639,14 +1060,34 @@ per-interview page for every tagged clip (linked from `<set>_index.html`). Each 
 topics are over- or under-applied, sharpen the `description` in your spreadsheet and re-demo —
 that text, not the code, is where the tagging rules live.
 
-The **rollup** decides when an interview gets a topic: either a flat share-of-clips bar
-(`rollup: {scheme: flat, threshold_pct: 30}`) or rarity-binned bars that ask more of common
-topics than rare ones (`scheme: binned`). `toolkit topics thresholds --set <name>` shows the
-trade-offs.
+## Rolling up: decide, then do
+
+The **rollup** decides when an interview gets a topic — how big a share of that interview's clips
+has to be tagged with it. That is a judgement about your collection, so look before choosing:
+
+1. `toolkit topics thresholds --set <name>` writes `diags/topics/<set>_thresholds.html`: a
+   foldable panel per method, each drawing what that rule would tag — how many interviews every
+   topic would reach, and the threshold it had to clear. The binned methods are drawn as a grid,
+   one row per number of bins and one column per range, so both dimensions can be read at once.
+   Whatever your saved results were rolled up with is marked; a rule you have set but not yet
+   applied is not, because it is a plan rather than a state of the project. Nothing is sent to
+   OpenAI, so run it as often as it takes. `--bins 5,9`, `--ranges 10-30,20-40` and
+   `--flat 20,30,40` change what is drawn (defaults in `advanced/topics.yaml` under `compare`).
+2. Set `sets.<set>.rollup` in `config.yaml` to the one you settled on — the default is
+   `{ method: freq_width, bins: 5, range: [10, 30] }`, and [CONFIG.md](../CONFIG.md) has the
+   three methods — then `toolkit topics rollup --set <name>`. It is free and deterministic, so
+   changing your mind costs a re-run and nothing else. (In the app these are one move: you set
+   the rule inside the button that applies it.)
+
+One threshold for every topic is the obvious rule and usually the wrong one: set it high enough
+for a common topic to mean something and the rare topics — often the interesting ones — never
+reach it. `freq_width` asks less of a rarer bin, which is why it is the default.
 
 ## Settings
 
-`config.yaml` → `topics`: `model`, `reasoning`, `sets.<set>.{file, rollup, prompt}` (written for
+`config.yaml` → `topics`: `model`, `reasoning` (the default for every list), and
+`sets.<set>.{file, rollup, prompt, model, reasoning}` — the last three override the step's for
+that list alone (written for
 you when a set is first used). `advanced/topics.yaml`: `score_values`, `justify_min_score`,
 `demo_n_clips`, `max_workers`, `prompt`.
 
@@ -672,7 +1113,8 @@ out of the box — a region vocabulary and a region→country mapping ship with 
 toolkit locations tag --demo   # tag a sample of clips → review page opens in your browser
 toolkit locations tag          # full corpus  (asks: run now, or 50%-off Batch API?)
 toolkit locations map          # expand regions to countries, apply the label canon
-toolkit locations rollup       # clip tags → interview tags
+toolkit locations thresholds   # compare how tags could be decided (writes a page)
+toolkit locations rollup       # apply it: clip tags → interview tags
 ```
 
 `toolkit locations preview --clip <id>` prints the request for one clip.
@@ -681,7 +1123,9 @@ toolkit locations rollup       # clip tags → interview tags
 
 - `locations/regions.yaml` — the region names the model may use (a strict list; ships with a UN
   Geoscheme-based default plus common historical/political regions). Editing it changes both the
-  prompt and the allowed outputs, so they never drift.
+  prompt and the allowed outputs, so they never drift. **In the app**: *The regions the model may
+  use*, on the Locations page — it also says which of them `region_to_country.csv` has no
+  countries for, since `map` refuses a region it does not know.
 - `locations/region_to_country.csv` — how each region expands to countries in the `map` step.
 - `config.yaml` → `locations.relabel` — spelling/merge fixes applied to model output (e.g.
   `Czech Republic: Czechia`). `locations.place_tags` — subnational places to keep as their own
@@ -701,11 +1145,34 @@ tags (and justifications on demo runs); `toolkit locations annotate` writes the 
 `locations.html`. Check that only substantive places are tagged, not passing mentions. The prompt
 is `prompts/tag_locations.md`.
 
+## Rolling up: decide, then do
+
+Same moves as [topics](topics.md#rolling-up-decide-then-do), and the same rule methods (see
+[CONFIG.md](../CONFIG.md)); `locations.rollup` holds the choice, and the default is
+`{ method: freq_width, bins: 5, range: [10, 30] }`. `toolkit locations thresholds` writes
+`diags/locations/locations_thresholds.html`.
+
+What is particular to places is the **hybrid rollover**, which the comparison works through so
+its counts are the ones a rollup would really write. Two rollovers run per narrator under the
+same rule:
+
+1. **Direct places** — an interview is tagged a place when enough of its clips name that place
+   with direct evidence.
+2. **Regions** — an interview is tagged a region when enough of its clips are about that region;
+   only then is the region expanded into its countries (`region_to_country.csv` + `relabel`).
+
+The interview's places are the union of the two. So a country arrives through a region only when
+the *region itself* is what the interview is about — not by accumulating scattered per-country
+shares, which would quietly tag a lot of countries nobody talked about. The last panel of the
+comparison page shows that choice against the two simpler alternatives. A place that only ever
+comes up inside a region has no bar of its own; on the page it is drawn grey, with the bar of the
+region that carried it in.
+
 ## Output
 
 `outputs/locations/clip_locations*.parquet` (raw tags), `clip_countries*.parquet` (after
 region→country mapping), `interview_locations_*.parquet` and `interview_regions_long.parquet`
-(interview tags). `toolkit locations thresholds` is the rollup decision aid.
+(interview tags).
 
 ================================================================================================
 # FILE: docs/steps/export.md
@@ -733,7 +1200,10 @@ it overwrites the file. `toolkit status` shows what the next export would includ
 - **Clips** — one row per clip: Clip Id, Interview (narrator), Session, Start, End, Label, a
   column per topic set (the clip's tags), Locations (and Regions, depending on the mode below).
 - **Interviews** — one row per narrator: Sessions, Summary, a column per topic set (interview
-  tags), Locations (and Regions).
+  tags), Locations (and Regions). If any transcripts came in without timestamps
+  (`data/unsynced/` — see [summarize.md](summarize.md)), a **Transcript** column says which
+  rows are SYNC'd and which are not: the latter have a summary and no tags, which is a fact
+  about the transcript rather than work left undone.
 - **Categories** — the vocabularies (each topic set's names, the country and region lists) as
   reference columns. These follow the same mode, so you never see a reference value that appears
   in no row.
@@ -787,11 +1257,26 @@ For a given step the two are merged; a key set in `config.yaml` wins. **Changing
 that shapes an LLM call (model, reasoning, a prompt, a topic list) makes that step's previous
 demo "stale"** — the next full run will ask you to demo and review again. That's intended.
 
+**The comments in `config.yaml` are the documentation of each setting, and the app reads them.**
+It shows the comment directly above a key (plus any comment on the key's own line) as that
+setting's explanation, so rewording one here changes what the app says — there is one description
+of a setting and this file is where it lives. Two conventions follow from that: keep a comment
+directly above its key with no blank line between, and keep the two-space indentation, which is
+what lets the app change one line and leave the rest of the file — comments included — exactly as
+it was. A file that has been reindented by hand still works for every command; the app just
+declines to write to it and tells you to make the change here yourself.
+
+The app shows the settings in two places: those belonging to the whole project (its name) behind
+the gear, and those belonging to one step on that step's own page. `advanced/` is not shown in
+the app at all — those are files to edit.
+
 ## `config.yaml`
 
 ```yaml
 project:
-  name: "..."                     # shown in `toolkit status` and the export
+  name: "..."                     # shown in `toolkit status`, the app and the export.
+                                  # Set by `toolkit init` from the folder name (or --name);
+                                  # edit it here to rename the project without moving it.
 
 import:
   interviewer_labels: [Q]         # speaker labels used by the interviewer
@@ -808,13 +1293,17 @@ topics:
   sets:                           # written for you when a set is first used; no default set
     collection:
       file: topics/collection.xlsx  # your topic list (xlsx/csv: name, description, [id])
-      rollup: { scheme: flat, threshold_pct: 30 }
-      # or:  { scheme: binned, thresholds: [10, 12.5, ..., 30] }
+      rollup: { method: freq_width, bins: 5, range: [10, 30] }
+      # or:  { method: equal_count, bins: 5, range: [10, 30] }
+      # or:  { method: flat, threshold_pct: 30 }
+      # prompt: tag_topics_strict.md   # this list's own rubric, a file in prompts/
+      # model: gpt-5.6-sol             # and its own model / reasoning, overriding the two above
+      # reasoning: high
 
 locations:
   model: gpt-5.6-luna
   reasoning: medium
-  rollup: { thresholds: [10, 12.5, ..., 30] }
+  rollup: { method: freq_width, bins: 5, range: [10, 30] }
   relabel: {}                     # output spelling/merge fixes, e.g. {Macedonia: North Macedonia}
   place_tags: []                  # subnational places kept as their own tag, e.g. [Crimea]
 ```
@@ -825,9 +1314,26 @@ locations:
 - **label.addendum** — path (relative to the workspace) to project-specific labeling rules, or
   `null`.
 - **summarize.pool_sessions** — pool a narrator's session files into one summary.
-- **topics.sets** — one or more topic lists; each has a `file` and a `rollup` scheme (`flat`
-  with `threshold_pct`, or `binned` with a `thresholds` bar list, rarest band first).
-- **locations.rollup.thresholds / relabel / place_tags** — see [steps/locations.md](steps/locations.md).
+- **topics.sets** — one or more topic lists; each has a `file` and a `rollup` rule (below). A
+  list may also carry its own `prompt`, `model` and `reasoning`, which override the `topics`
+  section for that list alone — two lists are two pieces of work, with separate demos and
+  separate caches.
+- **rollup** (per topic list, and once for locations) — when a topic or place becomes one of an
+  interview's tags. `method` is one of:
+  - `freq_width` (the default) — the topics are split into `bins` bins by how often they come
+    up across the collection, over `range: [lowest, highest]` percent of an interview's clips,
+    and a rarer bin gets a lower threshold. Five bins over 10–30% are the thresholds 10, 15, 20,
+    25, 30. Two topics that come up equally often always get the same threshold.
+  - `equal_count` — the same, except each bin holds the same number of topics. It spreads the
+    thresholds evenly over your list, at the cost of splitting equally-frequent topics between
+    bins.
+  - `flat` — one `threshold_pct` threshold for every topic.
+
+  `toolkit topics thresholds --set <name>` and `toolkit locations thresholds` draw what each of
+  these would tag before you choose. The older spelling (`scheme: flat|binned` with the
+  thresholds written out as `thresholds: [...]`) is still read, and a hand-written list is still
+  used exactly as written.
+- **locations.relabel / place_tags** — see [steps/locations.md](steps/locations.md).
 - **export.locations** — how location tags appear in the xlsx: `countries` (only those tagged
   directly), `countries_and_regions` (default; those countries plus a separate Regions column), or
   `countries_incl_regions` (one column, with regions mapped down into it). See
@@ -851,7 +1357,8 @@ when to stop waiting (re-running the command resumes the same job).
 Editable files, read live at run time (changing them re-stales the demo):
 
 - `prompts/*.md` — one prompt per LLM step. Restore a pristine copy with
-  `toolkit init --reset-prompt <name>`.
+  `toolkit init --reset-prompt <name>`. `toolkit status` prints which file each step reads, and
+  the app has the same file behind *The prompt for this step* on that step's page.
 - `topics/*.csv|xlsx` — your topic lists.
 - `locations/regions.yaml`, `locations/region_to_country.csv` — the location vocabulary and
   mapping.
@@ -874,6 +1381,16 @@ harmless — the git line is the real failure.
 
 **"OPENAI_API_KEY not set"** — put your key in the workspace's `.env` file
 (`OPENAI_API_KEY=sk-...`). Ask your admin for a key.
+
+**"OpenAI refused the request: the OpenAI account is out of credit"** (or *"has reached a billing
+limit"*). Nothing is wrong with your project or your key, and nothing you have run is lost —
+whoever looks after your OpenAI account needs to put money on it. Send them the message the
+toolkit printed; it names the two pages they need. The one that catches people out is the
+**credit balance** (platform.openai.com → Settings → Organization → Billing): a balance of zero
+stops every call even when the monthly spending limit is nowhere near being reached, and if
+auto-recharge is switched on but the balance is still empty, the automatic payment is being
+declined by the bank — buying credit by hand on that page works when the automatic charge does
+not. Once it is topped up, re-run the same command and it carries on from where it stopped.
 
 **"Not inside a toolkit workspace"** — run the command from inside your project folder (the one
 `toolkit init` created), or pass `--project /path/to/project`.
@@ -933,12 +1450,22 @@ toolkit's price table. Update the toolkit (`uv tool upgrade transcript-toolkit`)
 model to `defaults/pricing.yaml`. Runs are not blocked by this — the spend estimate just shows
 "cost unknown".
 
-**How do I update the toolkit?** `toolkit update`. (It runs `uv tool upgrade
-transcript-toolkit` for you. `toolkit upgrade` works too.)
+**How do I update the toolkit?** `toolkit update`, or **Update to the most recent version**
+behind the gear in the app. (It runs `uv tool upgrade transcript-toolkit` for you. `toolkit
+upgrade` works too.) In the app, quit and open it again afterwards — the copy already running
+keeps using the old version until you do.
 
-**How much have I spent?** `toolkit cost` (all steps) or `toolkit cost <step>`. Each line is
-priced at the transport it actually used — `sync` or `batch` — so the total is money spent, not a
-hypothetical; a closing line tells you what the synchronous part would have cost on the Batch API.
+**The update button says uv is not installed, but I installed with uv.** Update to 0.2.7 or
+later (`uv tool upgrade transcript-toolkit` in Terminal, once). An app opened from the Dock gets
+almost no `PATH` from macOS, so earlier versions could not find uv from there even though it was
+sitting in `~/.local/bin`. The toolkit now looks for it where it lives.
+
+**How much have I spent?** `toolkit cost` (all steps) or `toolkit cost <step>` is the project's
+cost report, and the app shows the same figures on the workspace page. Each line is priced at the
+transport it actually used — `sync` or `batch` — so the total is money spent, not a hypothetical;
+a closing line tells you what the synchronous part would have cost on the Batch API. It counts
+every call ever made in the project, demos included, and the calls behind a prompt you have since
+rewritten: re-running a step you have already run adds nothing, because its answers are kept.
 `--to-n N` extrapolates a demo's per-call cost to a full run of N calls, and quotes both
 transports (you haven't picked one for that run yet).
 
@@ -967,9 +1494,10 @@ your own project. Nothing here runs on its own; copy the parts you need into you
 ## Things worth copying from this example
 
 - **Two topic sets** tagged independently: point `--set collection` / `--set filter` at each.
-- **Rollup schemes**: the broad collection uses a flat 30% bar; the sparse 36-topic filter uses
-  rarity-binned bars (rare topics clear a lower share-of-clips bar than common ones) — see the
-  `thresholds` list and `toolkit topics thresholds`.
+- **Rollup rules chosen per list**: the broad collection uses one flat 30% bar; the sparse
+  36-topic filter uses rarity bins, where a rare topic gets a lower share-of-clips threshold
+  than a common one. Both were picked by reading `toolkit topics thresholds --set <name>`, which draws
+  what each rule would tag.
 - **Location canon**: `relabel` fixes model spelling variants and merges (e.g. Israel + Palestine
   into one tag); `place_tags` keeps subnational places (Chechnya, Crimea) as their own tag.
 - **Descriptions matter**: the filter topics are tagged only on a *specific, substantive* mention
@@ -989,7 +1517,16 @@ $ toolkit init
   create a new project workspace (or restore a default prompt)
   --project DIR — workspace directory (default: walk up from the current directory)
   dir (positional) — directory to create
+  --name NAME — what the project is called (config.yaml project.name, shown in the app). Give a directory and the name is derived from it; give a name and the directory is derived from that.
   --reset-prompt NAME — restore one prompt in the current workspace to the packaged default
+
+$ toolkit app
+  open the toolkit's window in your browser (the point-and-click app)
+  --project DIR — workspace directory (default: walk up from the current directory)
+  --port PORT — port to serve on (default 8377)
+  --no-browser — start the server without opening a browser window
+  --from-launcher — ==SUPPRESS==
+  --install-launcher — create the double-clickable app in your Applications folder (macOS)
 
 $ toolkit update
   install the latest version of the toolkit
@@ -1004,13 +1541,14 @@ $ toolkit docs
 $ toolkit import
   parse the .docx transcripts in data/ into the paragraph dataset
   --project DIR — workspace directory (default: walk up from the current directory)
+  --unsynced — read data/unsynced/ instead: transcripts that were never SYNC'd. Without timestamps nothing can be clipped, so these can only be summarized
 
 $ toolkit sample
   draw the demo sample of interviews used by clip/label demo runs
   --project DIR — workspace directory (default: walk up from the current directory)
-  --n N — sample size (default 5)
+  --n N — sample size (default 5, allowed 3-10)
   --seed SEED — random seed (default 0)
-  --interviews IDS — comma-separated interview ids to use instead of a random draw
+  --interviews IDS — comma-separated interview ids to put in the sample. With --n, the rest of the sample is drawn at random from the others; without it, the sample is exactly these.
 
 $ toolkit clip
   split each interview into clips (demo-first)
@@ -1054,6 +1592,7 @@ $ toolkit summarize
   --yes — skip the cost confirmation prompt
   --skip-demo-check — bypass the demo gate (dev use only)
   --batch, --no-batch — run the full corpus on the 50%-off Batch API (slower: up to 24h) or force it off; omit to be asked, with both cost estimates, at the confirmation prompt
+  --unsynced — summarize the transcripts in data/unsynced/ instead of the collection
 
 $ toolkit summarize annotate
   re-render the review page from the existing deliverable
@@ -1088,9 +1627,12 @@ $ toolkit topics rollup
   --set SET_NAME — which topic set to use — the name of your topic spreadsheet in topics/ (topics/collection.xlsx -> --set collection). Required: there is no default.
 
 $ toolkit topics thresholds
-  decision aid for the rollup thresholds
+  compare rollup rules before choosing one (decision aid)
   --project DIR — workspace directory (default: walk up from the current directory)
   --set SET_NAME — which topic set to use — the name of your topic spreadsheet in topics/ (topics/collection.xlsx -> --set collection). Required: there is no default.
+  --bins N,N — how many rarity bins to compare, e.g. --bins 5,9
+  --ranges LO-HI,LO-HI — lowest-highest threshold per range, e.g. --ranges 10-30,20-40
+  --flat PCT,PCT — single thresholds to compare for the flat method, e.g. --flat 20,30
 
 $ toolkit topics annotate
   re-render the per-interview review pages
@@ -1127,8 +1669,11 @@ $ toolkit locations rollup
   --project DIR — workspace directory (default: walk up from the current directory)
 
 $ toolkit locations thresholds
-  decision aid for the rollup scheme
+  compare rollup rules before choosing one (decision aid)
   --project DIR — workspace directory (default: walk up from the current directory)
+  --bins N,N — how many rarity bins to compare, e.g. --bins 5,9
+  --ranges LO-HI,LO-HI — lowest-highest threshold per range, e.g. --ranges 10-30,20-40
+  --flat PCT,PCT — single thresholds to compare for the flat method, e.g. --flat 20,30
 
 $ toolkit locations annotate
   re-render the review page

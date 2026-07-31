@@ -165,3 +165,71 @@ def test_batch_failures_are_not_silently_dropped(project, monkeypatch):
     monkeypatch.setattr(batch_mod, "run_batch", half_failing)
     with pytest.raises(ToolkitError, match="uncached"):
         run_summarize(project, yes=True, skip_demo_check=True, batch=True)
+
+
+# --- transcripts that were never SYNC'd -------------------------------------------------------
+
+def with_unsynced(project):
+    """Put the untimed fixture in the workspace and read it in. Its narrator is `fake_gamma`,
+    which nobody in the collection is."""
+    from transcript_toolkit.steps.import_ import run_import_unsynced
+
+    project.unsynced_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy(FIXTURES / "unsynced" / "Fake_Gamma_Transcript.docx",
+                project.unsynced_dir / "Fake_Gamma_Transcript.docx")
+    run_import_unsynced(project)
+    return project
+
+
+def test_untimed_transcripts_are_summarized_and_nothing_else(project):
+    with_unsynced(project)
+    df = run_summarize(project, demo=True, unsynced=True)
+    assert list(df["interview_key"]) == ["fake_gamma_transcript"]
+    assert not df["synced"].any()
+    page = project.diags_dir / "summarize" / "demo_unsynced_summaries.html"
+    assert page.exists() and "never SYNC'd" in page.read_text()
+    # its own bookkeeping: a demo of the collection is not a demo of these
+    assert "summarize:unsynced" in load_state(project)["steps"]
+    assert "summarize" not in load_state(project)["steps"]
+
+
+def test_their_summaries_join_the_collections_own(project):
+    with_unsynced(project)
+    run_summarize(project, demo=True)
+    run_summarize(project, yes=True)
+    run_summarize(project, demo=True, unsynced=True)
+    run_summarize(project, yes=True, unsynced=True)
+
+    df = pd.read_parquet(out_path(project)).set_index("interview_key")
+    assert set(df.index) == {"fake_alpha", "fake_beta", "fake_gamma_transcript"}
+    assert not bool(df.loc["fake_gamma_transcript", "synced"])
+    assert bool(df.loc["fake_alpha", "synced"])
+
+
+def test_a_full_run_of_one_pile_leaves_the_other_standing(project):
+    """Each run is the whole truth about its own pile and says nothing about the other. A
+    transcript taken out of data/ should disappear without the untimed summaries going too."""
+    with_unsynced(project)
+    for unsynced in (False, True):
+        run_summarize(project, demo=True, unsynced=unsynced)
+        run_summarize(project, yes=True, unsynced=unsynced)
+
+    (project.data_dir / "Fake, Beta_SYNC.docx").unlink()
+    run_import(project)
+    run_summarize(project, yes=True, skip_demo_check=True)
+    keys = set(pd.read_parquet(out_path(project))["interview_key"])
+    assert keys == {"fake_alpha", "fake_gamma_transcript"}       # beta gone, gamma untouched
+
+
+def test_a_full_untimed_run_is_refused_behind_its_own_demo(project):
+    """The collection's demo says nothing about these transcripts, so it does not let them
+    through."""
+    with_unsynced(project)
+    run_summarize(project, demo=True)
+    with pytest.raises(ToolkitError, match="summarize --unsynced --demo"):
+        run_summarize(project, yes=True, unsynced=True)
+
+
+def test_untimed_summaries_need_the_untimed_import(project):
+    with pytest.raises(ToolkitError, match="import --unsynced"):
+        run_summarize(project, demo=True, unsynced=True)

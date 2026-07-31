@@ -14,7 +14,7 @@ deliverables from cache. Idempotent + resumable via .toolkit/cache/locations.jso
 """
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from datetime import datetime, timezone
 from threading import Lock
 from typing import Literal
@@ -29,6 +29,8 @@ from ...core.cache import JsonlAppender, cache_key, latest_records
 from ...core.config import load_step_config, require
 from ...core.console import choose_transport, reveal
 from ...core.llm import build_schema, call_llm, check_levels, openai_client
+from ...core.parallel import worker_pool
+from ...core.prompts import load_prompt
 from ...core.render import render_clip_plain
 from ...core.sampling import sample_clips_spread
 from ...core.tables import (load_clips, load_paragraphs, merge_subset, paragraphs_by_interview,
@@ -42,14 +44,6 @@ STEP = "locations"
 
 
 # --- assembly -------------------------------------------------------------------------------
-
-def load_prompt(project: Project, name: str) -> str:
-    path = project.prompts_dir / name
-    if not path.exists():
-        raise ToolkitError(f"Prompt not found: {path}. Restore the default with "
-                           f"`toolkit init --reset-prompt {name}`.")
-    return path.read_text().strip()
-
 
 def load_regions(project: Project, cfg: dict) -> list[str]:
     """The canonical region vocabulary (workspace locations/regions.yaml) — the single source of
@@ -152,7 +146,7 @@ def _context(project: Project, justify: bool):
 
 def run_locations_tag(project: Project, demo: bool = False, sample_n: int | None = None,
                       seed: int | None = None, interviews: list[str] | None = None,
-                      justify: bool | None = None, batch: bool = False, yes: bool = False,
+                      justify: bool | None = None, batch: bool | None = None, yes: bool = False,
                       skip_demo_check: bool = False) -> pd.DataFrame:
     if demo and (sample_n or interviews):
         raise ToolkitError("--demo cannot be combined with --sample or --interview.")
@@ -302,7 +296,7 @@ def _run_units(project: Project, cfg: dict, instructions: str, fingerprint: str,
             cache[u["cache_key"]] = record
         return u["clip_id"], record, False
 
-    with ThreadPoolExecutor(max_workers=int(cfg["max_workers"])) as ex:
+    with worker_pool(int(cfg["max_workers"])) as ex:
         futures = [ex.submit(work, u) for u in units]
         for i, fut in enumerate(as_completed(futures), start=1):
             cid, rec, from_cache = fut.result()

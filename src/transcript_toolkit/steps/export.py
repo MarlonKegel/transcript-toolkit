@@ -33,6 +33,7 @@ LOCATION_MODES = {
     "countries_incl_regions": "one column: direct countries plus regions mapped down to countries",
 }
 DEFAULT_LOCATION_MODE = "countries_and_regions"
+DEFAULT_FILENAME = "export.xlsx"
 
 
 def _location_mode(project: Project, override: str | None = None) -> str:
@@ -128,10 +129,16 @@ def build_interviews_sheet(project: Project, sets: list[str],
 
     summaries = _read(project.outputs_dir / "summaries" / "summaries.parquet")
     if summaries is not None:
+        # A transcript that was never SYNC'd can only be summarized, so its row is a summary and
+        # nothing else. The column appears only where there is one, and it is what tells a reader
+        # that the empty tags are a fact about the transcript rather than a gap in the work.
+        some_unsynced = "synced" in summaries.columns and not summaries["synced"].all()
         for r in summaries.itertuples():
             rr = row(r.interview_key)
             rr["Sessions"] = str(r.session_ids).replace("|", ", ")
             rr["Summary"] = r.summary
+            if some_unsynced:
+                rr["Transcript"] = "SYNC'd" if getattr(r, "synced", True) else "not SYNC'd"
 
     for set_name in sets:
         wide = _read(project.outputs_dir / "topics" / f"{set_name}_interview_topics_wide.parquet")
@@ -218,7 +225,7 @@ def run_export(project: Project, out: str | None = None, locations: str | None =
     if not categories_df.empty:
         _write_sheet(wb, tabs.get("categories", "Categories"), categories_df)
 
-    out_path = (project.root / out) if out else (project.outputs_dir / cfg.get("filename", "export.xlsx"))
+    out_path = (project.root / out) if out else (project.outputs_dir / cfg.get("filename", DEFAULT_FILENAME))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(out_path)
 

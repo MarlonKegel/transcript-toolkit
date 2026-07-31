@@ -1,43 +1,67 @@
-"""`toolkit locations thresholds` — compare clip->interview rollover schemes (decision aid).
+"""`toolkit locations thresholds` — the decision aid that comes BEFORE `toolkit locations rollup`.
 
-Prints per-scheme totals for three candidate rollovers on the mapped clip tags:
-  hybrid        — what `toolkit locations rollup` ships: direct+place labels and regions rolled
-                  over separately, interview region-tags mapped down to countries and unioned;
-  direct-only   — freq-width bins on direct+place labels alone (drops the region info);
-  filter-recipe — freq-width bins on the FINAL label set (region fan-out spreads one region tag's
-                  clip share over every country in it).
-Writes one comparison figure to diags/locations/plots/ when matplotlib is available. No deliverables.
+Same shape as the topics one: every candidate rollup rule is worked out against the tags that are
+already there, and the answers are drawn side by side — a panel per method, the recommended one
+open — so the rule is chosen by looking at what it would do.
+
+Two things are particular to places. First, every rule is run through the whole hybrid rollover
+(direct places rolled up as places, regions rolled up as regions and then expanded into their
+countries), so the counts are the ones a rollup would actually write. Second, a place that only
+ever comes up as part of a region has no bar of its own; the bar shown for it is the region's,
+which is the bar it really had to clear.
+
+A last panel compares the hybrid rollover itself against the two simpler ones it was chosen over.
+Reads the mapped clip tags only: no deliverables, no API calls.
 """
 from __future__ import annotations
 
 import pandas as pd
 
+from ...core import reviewdoc, thresholdreview, thresholds
 from ...core.config import load_step_config, require
 from ...core.ids import narrator_key
-from ...core.thresholds import freq_width_thresholds
 from ...errors import ToolkitError
 from ...project import Project
+from ...state import rolled_up_with
 from .map import load_region_map
-from .rollup import rollover
+from .rollup import locations_rollup, rollover
 
 STEP = "locations"
+
+BRACKETS = (
+    "In brackets after a place's name is how many clips named it outright, which is the "
+    "frequency its threshold is set from. A place that only ever came up inside a region shows 0 "
+    "there and is drawn grey: it has no threshold of its own, and the threshold printed beside "
+    "its bar is the one its region had to clear.")
+
+HYBRID_LEAD = (
+    "How a region becomes an interview's places, which is a separate question from where the bar "
+    "sits. The toolkit ships the first of these. In it, regions are rolled up as regions and only "
+    "then expanded into their countries, so a country arrives through a region only when the "
+    "region itself is what the interview is about. The alternatives either throw the region "
+    "information away, or spread one region's clips across every country in it — which quietly "
+    "tags a lot of countries nobody talked about."
+)
 
 
 def _pairs(tag: pd.DataFrame) -> set[tuple[str, str]]:
     return {(k, c) for k, row in tag.iterrows() for c in tag.columns[row.values]}
 
 
-def run_locations_thresholds(project: Project) -> None:
+def run_locations_thresholds(project: Project, bins: list[int] | None = None,
+                             ranges: list[tuple[float, float]] | None = None,
+                             flat: list[float] | None = None) -> None:
     cfg = load_step_config(project, STEP)
-    require(cfg, ["rollup", "region_map_file"], STEP)
-    bars = list((cfg["rollup"] or {}).get("thresholds") or [])
-    if not bars:
-        raise ToolkitError("locations.rollup.thresholds is missing or empty (config.yaml).")
+    require(cfg, ["region_map_file"], STEP)
+    configured = locations_rollup(cfg)
+    # What the interview tags on disk were built with, not what config.yaml currently says.
+    applied = rolled_up_with(project, STEP)
+    current = thresholds.parse(applied, "the last rollup") if applied else None
     session_regex = load_step_config(project, "import")["session_regex"]
     region_map = load_region_map(project.root / cfg["region_map_file"])
     relabel = dict(cfg.get("relabel") or {})
 
-    out_dir = project.outputs_dir / "locations"
+    out_dir = project.outputs_dir / STEP
     cw_path = out_dir / "clip_countries.parquet"
     if not cw_path.exists():
         raise ToolkitError(f"{cw_path} not found. Run `toolkit locations map` first.")
@@ -48,63 +72,105 @@ def run_locations_thresholds(project: Project) -> None:
     cw["interview_key"] = cw["interview_id"].map(key)
     cl["interview_key"] = cl["interview_id"].map(key)
     n_clips = cw.groupby("interview_key").size()
+    n_int = len(n_clips)
     final = cl.rename(columns={"country": "label"})
     direct = final[final["via"].str.split("|")
                    .map(lambda v: "direct" in v or "place" in v).astype(bool)]
-
-    f_tag, _, _ = rollover(final, "label", n_clips, bars)
-    d_tag, _, _ = rollover(direct, "label", n_clips, bars)
-    # hybrid = direct rollover ∪ interview region-tags mapped down to countries
     regs = (cw[cw["regions"] != ""].assign(region=lambda d: d["regions"].str.split("|"))
             .explode("region")[["interview_key", "region", "clip_id"]])
-    r_tag, _, _ = rollover(regs, "region", n_clips, bars)
-    hybrid_pairs = set(_pairs(d_tag))
-    for k, region in _pairs(r_tag):
-        hybrid_pairs |= {(k, relabel.get(c, c)) for c in region_map.get(region, [])}
 
-    d_pct = rollover(direct, "label", n_clips, bars)[1]
-    schemes = {"hybrid (shipped)": hybrid_pairs,
-               "direct-only": _pairs(d_tag),
-               "filter-recipe (final labels)": _pairs(f_tag)}
-    print(f"{len(n_clips)} interviews · {len(cw)} clips · bars {sorted(bars)} (freq-width bins)\n")
-    for name, pairs in schemes.items():
-        labels_reached = {c for _, c in pairs}
-        untagged = len(n_clips) - len({k for k, _ in pairs})
-        no_direct = sum(1 for k, c in pairs
-                        if c not in d_pct.columns or d_pct.at[k, c] == 0)
-        print(f"  {name:32} total tags {len(pairs):4} | labels reached {len(labels_reached):3} | "
-              f"untagged interviews {untagged} | tags w/o direct evidence "
-              f"{no_direct} ({100 * no_direct / max(len(pairs), 1):.0f}%)")
+    labels = list(final.groupby("label")["clip_id"].nunique().index)
+    # The number shown beside a place has to be the number its threshold was set from, and the
+    # direct rollover bins on clips that named the place outright. Counting every clip that
+    # reaches it — including the ones arriving through a region — would print a frequency next to
+    # a threshold that was never derived from it. A place only ever named inside a region shows 0
+    # here, which is why it has no threshold of its own and is drawn grey.
+    freq = direct.groupby("label")["clip_id"].nunique().reindex(labels).fillna(0).astype(int)
+    order = sorted(labels, key=lambda t: (int(freq[t]), t))
 
-    try:
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-    except ImportError:
-        print("\nmatplotlib not installed; skipping the comparison figure.")
-        return
-    freq = final.groupby("label")["clip_id"].nunique()
-    order = sorted(freq.index, key=lambda t: (int(freq[t]), t))
-    fig, axes = plt.subplots(1, len(schemes), figsize=(4.5 * len(schemes), max(6, 0.28 * len(order))),
-                             sharey=True, squeeze=False)
-    y = range(len(order))
-    for ax, (name, pairs) in zip(axes[0], schemes.items()):
-        reach = pd.Series(0, index=order, dtype=int)
-        for _, c in pairs:
-            if c in reach.index:
-                reach[c] += 1
-        ax.barh(list(y), reach.values, color="#3b6ea5", edgecolor="white")
-        ax.set_title(f"{name}\n{int((reach > 0).sum())}/{len(order)} labels · "
-                     f"{len(pairs)} tags", fontsize=9)
-        ax.set_xlabel("# interviews tagged", fontsize=8)
-        ax.spines[["top", "right"]].set_visible(False)
-    axes[0][0].set_yticks(list(y))
-    axes[0][0].set_yticklabels([f"{t}  ({int(freq[t])})" for t in order], fontsize=6)
-    fig.suptitle("locations: interviews reached per label, by rollover scheme "
-                 "(labels sorted by clip-frequency)", fontsize=11)
-    plot_dir = project.diags_dir / "locations" / "plots"
-    plot_dir.mkdir(parents=True, exist_ok=True)
-    out_path = plot_dir / "rollup_schemes.png"
-    fig.savefig(out_path, dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"\nWrote {out_path}")
+    def hybrid(rollup: thresholds.Rollup):
+        """(interview, place) pairs the shipped rollover would produce under this rule, and the
+        bar each place had to clear to be in them."""
+        d_tag, _, d_thr = rollover(direct, "label", n_clips, rollup)
+        r_tag, _, r_thr = rollover(regs, "region", n_clips, rollup)
+        pairs = set(_pairs(d_tag))
+        for interview, region in _pairs(r_tag):
+            pairs |= {(interview, relabel.get(c, c)) for c in region_map.get(region, [])}
+        return pairs, _bar_per_label(labels, d_thr, r_thr, region_map, relabel)
+
+    def evaluate(rollup: thresholds.Rollup):
+        pairs, thr = hybrid(rollup)
+        reach = pd.Series(0, index=labels, dtype=int)
+        for _, label in pairs:
+            if label in reach.index:
+                reach[label] += 1
+        return thr, reach, n_int - len({k for k, _ in pairs})
+
+    options = thresholds.compare_options(cfg)
+    for name, given in (("bins", bins), ("ranges", ranges), ("flat", flat)):
+        if given:
+            options[name] = given
+
+    panels = thresholdreview.build(options, current, evaluate, thresholds.PLACES)
+    said = (f"your results were built with {current.describe(thresholds.PLACES)}" if current
+            else "nothing has been rolled up yet")
+    print(f"Comparing rollup rules · {n_int} interviews · {len(cw)} clips · {len(labels)} places")
+    print(f"Set in config.yaml: {configured.describe(thresholds.PLACES)} — {said}")
+    thresholdreview.report(panels, n_int)
+
+    schemes = _schemes(final, direct, regs, n_clips, current or configured, region_map, relabel)
+    _report_schemes(schemes, n_int)
+    out = thresholdreview.write(
+        project.diags_dir / STEP, "locations",
+        title="Locations · deciding how clip tags become interview tags",
+        subtitle=f"{len(labels)} places · {n_int} interviews · {said}",
+        panels=panels, order=order, freq=freq, n_int=n_int, brackets=BRACKETS,
+        choose="Roll up to interview places",
+        extra=reviewdoc.panel("How regions become an interview's places",
+                              _scheme_table(schemes, n_int), lead=HYBRID_LEAD, aside=True))
+    print(f"\nWrote {out}")
+
+
+def _bar_per_label(labels: list[str], d_thr: pd.Series, r_thr: pd.Series, region_map: dict,
+                   relabel: dict) -> pd.Series:
+    """The bar each place had to clear: its own where it has one, else the easiest bar among the
+    regions that would carry it in."""
+    via_region: dict[str, float] = {}
+    for region, bar in r_thr.items():
+        for country in (relabel.get(c, c) for c in region_map.get(region, [])):
+            via_region[country] = min(via_region.get(country, bar), float(bar))
+    return pd.Series({label: float(d_thr[label]) if label in d_thr.index
+                      else via_region.get(label, float("nan"))
+                      for label in labels})
+
+
+def _schemes(final, direct, regs, n_clips, rollup, region_map, relabel) -> dict[str, set]:
+    """The three ways of getting from clip tags to interview places, under the current rule."""
+    f_tag, _, _ = rollover(final, "label", n_clips, rollup)
+    d_tag, _, _ = rollover(direct, "label", n_clips, rollup)
+    r_tag, _, _ = rollover(regs, "region", n_clips, rollup)
+    hybrid = set(_pairs(d_tag))
+    for interview, region in _pairs(r_tag):
+        hybrid |= {(interview, relabel.get(c, c)) for c in region_map.get(region, [])}
+    return {"Regions rolled up as regions, then expanded (what the toolkit does)": hybrid,
+            "Only places said outright; region information dropped": _pairs(d_tag),
+            "Every country a region covers, counted as if said outright": _pairs(f_tag)}
+
+
+def _scheme_rows(schemes: dict[str, set], n_int: int) -> list[list[str]]:
+    return [[name, f"{len({c for _, c in pairs})}", f"{len(pairs)}",
+             f"{n_int - len({k for k, _ in pairs})}"]
+            for name, pairs in schemes.items()]
+
+
+def _scheme_table(schemes: dict[str, set], n_int: int) -> str:
+    return reviewdoc.table(["Rollover", "Places reached", "Tags in total",
+                            f"Interviews with none (of {n_int})"],
+                           _scheme_rows(schemes, n_int), numeric={1, 2, 3})
+
+
+def _report_schemes(schemes: dict[str, set], n_int: int) -> None:
+    print("\nHow regions become an interview's places (under the rule you have now)")
+    for name, places, tags, none in _scheme_rows(schemes, n_int):
+        print(f"  {name}\n    {places} places reached · {tags} tags · {none} of {n_int} "
+              f"interviews with none")

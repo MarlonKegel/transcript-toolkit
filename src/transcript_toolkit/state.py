@@ -55,6 +55,25 @@ def record_full(project: Project, step_key: str, fingerprint: str,
     save_state(project, state)
 
 
+def record_rollup(project: Project, step_key: str, rule: dict) -> None:
+    """What the interview-level tags now in `outputs/` were actually rolled up with.
+
+    Kept apart from `full` because a rollup is not an LLM run: it is free, deterministic and
+    re-run whenever the rule changes. The decision aid marks the rule the saved results were
+    built with, and that is only true of a rollup that has actually happened — a rule sitting
+    in config.yaml that nobody has applied yet is a plan, not a state of the project.
+    """
+    state = load_state(project)
+    _step(state, step_key)["rollup"] = {"at": _now(), "rule": rule}
+    save_state(project, state)
+
+
+def rolled_up_with(project: Project, step_key: str) -> dict | None:
+    """The rule behind the interview tags on disk, or None if none have been made."""
+    record = load_state(project)["steps"].get(step_key, {}).get("rollup")
+    return record["rule"] if record else None
+
+
 def demo_status(project: Project, step_key: str, fingerprint: str) -> str:
     """'none' | 'stale' | 'current' for the recorded demo vs the current fingerprint."""
     demo = load_state(project)["steps"].get(step_key, {}).get("demo")

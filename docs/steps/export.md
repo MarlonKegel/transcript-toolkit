@@ -19,7 +19,10 @@ it overwrites the file. `toolkit status` shows what the next export would includ
 - **Clips** — one row per clip: Clip Id, Interview (narrator), Session, Start, End, Label, a
   column per topic set (the clip's tags), Locations (and Regions, depending on the mode below).
 - **Interviews** — one row per narrator: Sessions, Summary, a column per topic set (interview
-  tags), Locations (and Regions).
+  tags), Locations (and Regions). If any transcripts came in without timestamps
+  (`data/unsynced/` — see [summarize.md](summarize.md)), a **Transcript** column says which
+  rows are SYNC'd and which are not: the latter have a summary and no tags, which is a fact
+  about the transcript rather than work left undone.
 - **Categories** — the vocabularies (each topic set's names, the country and region lists) as
   reference columns. These follow the same mode, so you never see a reference value that appears
   in no row.

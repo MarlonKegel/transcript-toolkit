@@ -45,7 +45,20 @@ toolkit update
 The toolkit also tells you, at most once a day, when a newer version is out. It never updates
 itself — that is always your call.
 
-## 4. Create a project workspace
+## 4. Rather not use Terminal? Install the app
+
+Everything from here on can be done in a window instead. One more command:
+
+```sh
+toolkit app --install-launcher
+```
+
+That puts **Transcript Toolkit** in your Applications folder — open it like any other app, and
+[APP.md](APP.md) takes over from this page: creating a project, adding your key and your
+transcripts all happen in the window. Steps 5–7 below are the Terminal way of doing the same
+things; skip them if you use the app.
+
+## 5. Create a project workspace
 
 Pick a folder name for your project (here `my-archive`):
 
@@ -55,15 +68,25 @@ toolkit init my-archive
 cd my-archive
 ```
 
+The project is then called "My Archive" wherever a name is shown. To choose the name instead
+and let the folder follow from it, give `--name`:
+
+```sh
+cd ~/Documents
+toolkit init --name "Anderson Family Oral History"    # -> anderson-family-oral-history/
+```
+
+Either way there is only ever one name to keep track of.
+
 This creates the project folder with everything in place: `config.yaml` (your settings),
 `prompts/` (editable prompt texts), `topics/` (your topic lists go here), `data/` (transcripts
 go here), `outputs/` (results appear here), `diags/` (review files appear here).
 
-## 5. Add your OpenAI API key
+## 6. Add your OpenAI API key
 
 Every LLM step calls the OpenAI API with a key billed to your team. Ask your admin for a key.
 `toolkit init` already created a `.env` file inside your project folder — you just need to add
-the key to it. Make sure you are inside the workspace (the `cd my-archive` from step 4), then
+the key to it. Make sure you are inside the workspace (the `cd my-archive` from step 5), then
 open it (it's hidden in Finder — in Terminal: `open -e .env`) and paste the key after the `=`:
 
 ```
@@ -72,7 +95,7 @@ OPENAI_API_KEY=sk-...
 
 Then **save the file** (in TextEdit: `⌘S`) and close it — the key isn't stored until you save.
 
-## 6. Add transcripts and import
+## 7. Add transcripts and import
 
 Copy your SYNC'd transcript `.docx` files into `data/` (one file per interview, or per session
 for multi-session interviews — see [steps/import.md](steps/import.md) for the required
