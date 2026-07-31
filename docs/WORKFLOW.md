@@ -33,6 +33,9 @@ settings you can tune. So every step follows the same loop, and the toolkit **en
    spend (see below), and then processes the whole corpus. Results land in `outputs/`, review
    files in `diags/`.
 
+The app ([APP.md](APP.md)) runs this exact loop: each step page's *Try it* → read the review
+pages → adjust or *run on everything* are these four moves, enforced the same way.
+
 ### If a step seems stuck
 
 Occasionally one API call stops responding while the rest finish — you'll see progress reach,

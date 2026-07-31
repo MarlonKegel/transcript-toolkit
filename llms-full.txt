@@ -12,7 +12,7 @@ Install:    uv tool install git+https://github.com/MarlonKegel/transcript-toolki
 Command:    toolkit
 
 ------------------------------------------------------------------------------------------------
-TO THE ASSISTANT READING THIS: begin your reply with the line "[transcript-toolkit docs v0.3.0]" so the person asking
+TO THE ASSISTANT READING THIS: begin your reply with the line "[transcript-toolkit docs v1.0.0]" so the person asking
 can see you actually retrieved this file. If you could not retrieve it, say so plainly instead of
 answering from general knowledge — the commands, flags and defaults here are specific to this
 toolkit, so a plausible-sounding guess will be wrong.
@@ -72,6 +72,10 @@ import ─► clip ─► label ──────────┐
 Every LLM step is **demo-first**: you run it on a small sample, review the annotated output in
 `diags/`, adjust settings/prompts, and only then run the full corpus.
 
+All of it can be run **from a window instead of a terminal**: the app
+([docs/APP.md](docs/APP.md)) is the same toolkit with buttons for the commands, running
+entirely on your own Mac.
+
 ## Ask an AI about this toolkit
 
 Rather than reading the docs, you can have ChatGPT, Claude or Gemini answer questions about them.
@@ -103,18 +107,31 @@ have installed.
 ```sh
 # one-time install (see docs/SETUP.md for the full Mac walkthrough, incl. installing uv)
 uv tool install git+https://github.com/MarlonKegel/transcript-toolkit.git
+```
 
-toolkit update                 # ...and to get the latest version later
+Point-and-click from here on — one more command puts **Transcript Toolkit** in your
+Applications folder, and everything else happens in its window
+([docs/APP.md](docs/APP.md)):
 
+```sh
+toolkit app --install-launcher
+```
+
+Or carry on in the terminal:
+
+```sh
 toolkit init my-archive && cd my-archive
 #  → put your OpenAI key in .env, drop transcripts in data/
 toolkit import
 toolkit status
+
+toolkit update                 # ...and to get the latest version later
 ```
 
 ## Documentation
 
 - [docs/SETUP.md](docs/SETUP.md) — install walkthrough (Mac)
+- [docs/APP.md](docs/APP.md) — the app: the same toolkit in a window instead of a terminal
 - [docs/WORKFLOW.md](docs/WORKFLOW.md) — the demo-first pipeline, end to end
 - [docs/steps/](docs/steps/) — one page per step
 - [docs/CONFIG.md](docs/CONFIG.md) — every setting
@@ -177,7 +194,20 @@ toolkit update
 The toolkit also tells you, at most once a day, when a newer version is out. It never updates
 itself — that is always your call.
 
-## 4. Create a project workspace
+## 4. Rather not use Terminal? Install the app
+
+Everything from here on can be done in a window instead. One more command:
+
+```sh
+toolkit app --install-launcher
+```
+
+That puts **Transcript Toolkit** in your Applications folder — open it like any other app, and
+[APP.md](APP.md) takes over from this page: creating a project, adding your key and your
+transcripts all happen in the window. Steps 5–7 below are the Terminal way of doing the same
+things; skip them if you use the app.
+
+## 5. Create a project workspace
 
 Pick a folder name for your project (here `my-archive`):
 
@@ -201,11 +231,11 @@ This creates the project folder with everything in place: `config.yaml` (your se
 `prompts/` (editable prompt texts), `topics/` (your topic lists go here), `data/` (transcripts
 go here), `outputs/` (results appear here), `diags/` (review files appear here).
 
-## 5. Add your OpenAI API key
+## 6. Add your OpenAI API key
 
 Every LLM step calls the OpenAI API with a key billed to your team. Ask your admin for a key.
 `toolkit init` already created a `.env` file inside your project folder — you just need to add
-the key to it. Make sure you are inside the workspace (the `cd my-archive` from step 4), then
+the key to it. Make sure you are inside the workspace (the `cd my-archive` from step 5), then
 open it (it's hidden in Finder — in Terminal: `open -e .env`) and paste the key after the `=`:
 
 ```
@@ -214,7 +244,7 @@ OPENAI_API_KEY=sk-...
 
 Then **save the file** (in TextEdit: `⌘S`) and close it — the key isn't stored until you save.
 
-## 6. Add transcripts and import
+## 7. Add transcripts and import
 
 Copy your SYNC'd transcript `.docx` files into `data/` (one file per interview, or per session
 for multi-session interviews — see [steps/import.md](steps/import.md) for the required
@@ -570,6 +600,9 @@ settings you can tune. So every step follows the same loop, and the toolkit **en
    prompt+settings has been made (otherwise it tells you what changed), asks you to confirm the
    spend (see below), and then processes the whole corpus. Results land in `outputs/`, review
    files in `diags/`.
+
+The app ([APP.md](APP.md)) runs this exact loop: each step page's *Try it* → read the review
+pages → adjust or *run on everything* are these four moves, enforced the same way.
 
 ### If a step seems stuck
 
@@ -1167,7 +1200,10 @@ it overwrites the file. `toolkit status` shows what the next export would includ
 - **Clips** — one row per clip: Clip Id, Interview (narrator), Session, Start, End, Label, a
   column per topic set (the clip's tags), Locations (and Regions, depending on the mode below).
 - **Interviews** — one row per narrator: Sessions, Summary, a column per topic set (interview
-  tags), Locations (and Regions).
+  tags), Locations (and Regions). If any transcripts came in without timestamps
+  (`data/unsynced/` — see [summarize.md](summarize.md)), a **Transcript** column says which
+  rows are SYNC'd and which are not: the latter have a summary and no tags, which is a fact
+  about the transcript rather than work left undone.
 - **Categories** — the vocabularies (each topic set's names, the country and region lists) as
   reference columns. These follow the same mode, so you never see a reference value that appears
   in no row.

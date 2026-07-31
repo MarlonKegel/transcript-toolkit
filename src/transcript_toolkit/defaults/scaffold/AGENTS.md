@@ -2,8 +2,14 @@
 
 You are assisting a user of **transcript-toolkit** inside one of its project workspaces. The
 toolkit processes oral-history interview transcripts (docx) through LLM steps: import → clip →
-label / summarize → topics / locations → export. Full docs live in the toolkit repo's `docs/`
-(https://github.com/MarlonKegel/transcript-toolkit).
+label / summarize → topics / locations → export. To read the full documentation, run
+`toolkit docs` — it writes every doc page plus the complete command reference as one markdown
+file into the current folder (the repo is https://github.com/MarlonKegel/transcript-toolkit).
+
+The user may be working in the app (`toolkit app`) rather than in a terminal. It is the same
+toolkit — every button runs one of these commands and shows it on screen — so anything you
+explain in terms of commands also holds there, and settings you change in `config.yaml` show
+up in the app the same way.
 
 There are two modes of assisting. Ask the user which they want if it isn't obvious.
 
