@@ -69,9 +69,10 @@ much faster than 24h, but don't count on it). A batch job is resumable — press
 the same command later and it re-attaches to the same job rather than paying again.
 
 Skip the question with `--batch` or `--no-batch`; `--yes` runs immediately without asking.
-Available on `label`, `summarize`, `topics tag` and `locations tag`. **Not** on `clip`: its chunks
-are sequential within an interview (each chunk's prompt is built from the previous chunk's
-result), so they can't all be submitted up front.
+Available on every money step. On `clip` it is the slow road: an interview's chunks build on
+each other, so a batch run goes in waves — every interview's next chunk at a time, each wave up
+to 24h — and the prompt says how many waves your collection needs. Half price, but count in
+days rather than hours (see [steps/clip.md](steps/clip.md)).
 
 ## A typical project, in commands
 

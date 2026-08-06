@@ -23,6 +23,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from ..core import manifest as manifest_mod
 from ..core.config import load_step_config, require
 from ..core.docx import parse_docx_paragraphs, parse_untimed_paragraphs, paragraphs_to_records
 from ..core.ids import interview_id_from_filename, narrator_key
@@ -95,11 +96,20 @@ def run_import(project: Project) -> pd.DataFrame:
         raise ToolkitError(
             "No parsable paragraphs in: " + ", ".join(empty) + f"\nCheck the files — {EXPECTED_FORMAT_HINT}")
 
+    # The manifest knows what each file looked like when it was last imported. A changed or
+    # vanished transcript takes its old results with it — the purge runs BEFORE the manifest is
+    # saved, so a crash in between leaves the old hashes in place and the next import redoes
+    # the purge instead of skipping it.
+    updated, diff = manifest_mod.plan_update(project, manifest_mod.SYNCED, ids)
+    outdated = diff["changed"] + diff["gone"]
+    purged = _purge_results(project, outdated, cfg["session_regex"]) if outdated else []
+
     df = pd.DataFrame(records)
     project.data_dir.mkdir(parents=True, exist_ok=True)
     df.to_parquet(project.paragraphs_path, index=False)
     if cfg.get("write_csv", True):
         df.to_csv(project.paragraphs_path.with_suffix(".csv"), index=False)
+    manifest_mod.save_manifest(project, updated)
 
     regimes = timestamp_regimes(df)
     flagged = [r for r in regimes if not r["ok"]]
@@ -109,6 +119,7 @@ def run_import(project: Project) -> pd.DataFrame:
     _write_log(warn_path, flagged, orphan_lines, note_lines)
 
     _print_summary(df, ids, cfg["session_regex"], regimes, orphan_lines, note_lines, warn_path)
+    _print_changes(diff, purged)
     return df
 
 
@@ -144,11 +155,16 @@ def run_import_unsynced(project: Project) -> pd.DataFrame:
             "No speaker turns found in: " + ", ".join(empty) + "\nEvery turn has to start with a "
             "paragraph like `SPEAKER: text`. See docs/steps/import.md.")
 
+    updated, diff = manifest_mod.plan_update(project, manifest_mod.UNSYNCED, ids)
+    outdated = diff["changed"] + diff["gone"]
+    purged = _purge_results(project, outdated, cfg["session_regex"]) if outdated else []
+
     df = pd.DataFrame(records)
     project.data_dir.mkdir(parents=True, exist_ok=True)
     df.to_parquet(project.unsynced_paragraphs_path, index=False)
     if cfg.get("write_csv", True):
         df.to_csv(project.unsynced_paragraphs_path.with_suffix(".csv"), index=False)
+    manifest_mod.save_manifest(project, updated)
 
     warn_path = project.logs_dir / "import_unsynced.log"
     warn_path.parent.mkdir(parents=True, exist_ok=True)
@@ -171,7 +187,110 @@ def run_import_unsynced(project: Project) -> pd.DataFrame:
         print(f"\n{len(front_lines)} paragraph(s) before the first speaker — a title page or a "
               f"preface — were left out of the interview -> {warn_path}")
     print("\nThese can be summarized and nothing else: `toolkit summarize --unsynced --demo`.")
+    _print_changes(diff, purged)
     return df
+
+
+def _purge_results(project: Project, ids: list[str], session_regex: str) -> list[Path]:
+    """Remove every processing result made from these interviews' old text.
+
+    A corrected transcript replaces the old one, results included: rows for the changed ids
+    (and their narrators) are dropped from every table under outputs/ and the demo tables.
+    Caches are untouched — they key on the text itself — so re-running a step redoes only the
+    changed interviews and the rest comes back free."""
+    wanted = set(ids)
+    narrators = {narrator_key(i, session_regex) for i in ids}
+    touched: list[Path] = []
+    for folder in (project.outputs_dir, project.demo_dir):
+        if not folder.is_dir():
+            continue
+        for path in sorted(folder.rglob("*.parquet")):
+            table = pd.read_parquet(path)
+            for column, gone in (("interview_id", wanted), ("interview_key", narrators)):
+                if column not in table.columns:
+                    continue
+                keep = ~table[column].isin(gone)
+                if not keep.all():
+                    kept = table[keep]
+                    kept.to_parquet(path, index=False)
+                    csv = path.with_suffix(".csv")
+                    if csv.exists():
+                        kept.to_csv(csv, index=False)
+                    touched.append(path)
+                break
+    from ..core import overrides as overrides_mod
+    if overrides_mod.purge_interviews(project, ids):
+        touched.append(project.label_overrides_path)
+    if touched:
+        _lower_unit_counts(project)
+    return touched
+
+
+def _lower_unit_counts(project: Project) -> None:
+    """Full-run records say how many units they covered; purged rows shrink that coverage.
+
+    Recounted from the deliverables themselves, so `freshness` (and the app's greyed-out
+    buttons) report the purged interviews as work remaining rather than done."""
+    from ..state import load_state, save_state
+
+    state = load_state(project)
+    lowered = False
+    for key, record in state.get("steps", {}).items():
+        full = record.get("full")
+        if not full:
+            continue
+        covered = _covered(project, key)
+        if covered is not None and covered < int(full.get("n_units") or 0):
+            full["n_units"] = covered
+            lowered = True
+    if lowered:
+        save_state(project, state)
+
+
+def _covered(project: Project, step_key: str) -> int | None:
+    """What the deliverable on disk still covers, counted the way the step counts its units:
+    interviews for clip and label, narrators for summarize, clips for topics and locations."""
+    out = project.outputs_dir
+
+    def distinct(path: Path, column: str) -> int | None:
+        if not path.exists():
+            return None
+        return int(pd.read_parquet(path, columns=[column])[column].nunique())
+
+    if step_key == "clip":
+        return distinct(out / "clips" / "clips.parquet", "interview_id")
+    if step_key == "label":
+        return distinct(out / "labels" / "labels.parquet", "interview_id")
+    if step_key in ("summarize", "summarize:unsynced"):
+        path = out / "summaries" / "summaries.parquet"
+        if not path.exists():
+            return None
+        table = pd.read_parquet(path)
+        synced = table["synced"] if "synced" in table.columns else pd.Series(True,
+                                                                             index=table.index)
+        return int(synced.sum()) if step_key == "summarize" else int((~synced).sum())
+    if step_key.startswith("topics:"):
+        set_name = step_key.split(":", 1)[1]
+        path = out / "topics" / f"{set_name}_clip_topics_wide.parquet"
+        return None if not path.exists() else int(len(pd.read_parquet(path)))
+    if step_key == "locations":
+        path = out / "locations" / "clip_locations.parquet"
+        return None if not path.exists() else int(len(pd.read_parquet(path)))
+    return None
+
+
+def _print_changes(diff: dict, purged: list[Path]) -> None:
+    """What this import replaced, said out loud — silence here would leave results made from
+    superseded text sitting in outputs/ looking finished."""
+    if diff["changed"]:
+        print(f"\n{len(diff['changed'])} transcript(s) changed since they were last imported: "
+              + ", ".join(sorted(diff["changed"])))
+    if diff["gone"]:
+        print(f"\n{len(diff['gone'])} previously imported transcript(s) are no longer in the "
+              f"folder: " + ", ".join(sorted(diff["gone"])))
+    if purged:
+        print("  Results made from the old text were removed — run the steps again to redo "
+              "just these; everything unchanged stays done, and its calls stay cached.")
 
 
 def _refuse_narrators_already_in_the_corpus(project: Project, ids: dict[str, Path],

@@ -207,6 +207,42 @@ def test_multichunk_locked_context_and_stitching(project):
 
 # --- validation failure ------------------------------------------------------------------------
 
+def test_batch_runs_in_waves(project, monkeypatch):
+    """--batch on clip: each wave submits every interview's next uncached chunk as one Batch-API
+    job, and the assembly pass afterwards makes no synchronous call. Single-chunk interviews
+    drop out after wave one — only the longest interview needs every wave."""
+    from transcript_toolkit.core import batch as batch_mod
+
+    adv = project.advanced_dir / "clip.yaml"
+    adv.write_text(adv.read_text().replace("chunk_threshold_tokens: 20000",
+                                           "chunk_threshold_tokens: 600"))
+    draw_interview_sample(project, explicit=["fake_alpha_20240101_session1"])
+    run_clip(project, demo=True)                 # caches the sample's chunks
+
+    waves: list[list[str]] = []
+
+    def fake_run_batch(client, units, batch_dir, **kwargs):
+        waves.append(sorted(u["custom_id"] for u in units))
+        return {u["custom_id"]:
+                (segmentation_for(decision_region_idxs(u["user_content"])), USAGE)
+                for u in units}, []
+
+    monkeypatch.setattr(batch_mod, "run_batch", fake_run_batch)
+
+    def no_sync_call(*a, **k):
+        raise AssertionError("a --batch run made a synchronous API call")
+
+    monkeypatch.setattr(clip_run, "call_llm", no_sync_call)
+
+    df = run_clip(project, yes=True, batch=True)
+    assert sorted(df["interview_id"].unique()) == ["fake_alpha_20240101_session1",
+                                                   "fake_alpha_20240108_session2", "fake_beta"]
+    assert len(waves) >= 2                       # fake_beta spans chunks at this threshold
+    sizes = [len(w) for w in waves]
+    assert sizes == sorted(sizes, reverse=True)  # interviews drop out, wave by wave
+    assert any("fake_beta" in cid for cid in waves[-1])   # the longest interview goes last
+
+
 def test_coverage_failure_fails_interview_loudly(project, monkeypatch):
     def bad_call_llm(client, model, reasoning, verbosity, schema, instructions,
                      user_content, prompt_cache_key_str, **kwargs):

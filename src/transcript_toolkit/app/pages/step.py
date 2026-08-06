@@ -81,9 +81,10 @@ def step_page(slug: str, set: str | None = None,               # noqa: A002 - UR
             # because it reads what the tagging produced.
             _tuning(project, step, set_name, refresh_all)
             _sequels(project, step, set_name, href, refresh_all)
-            if step.key == "summarize":
-                unsynced_section(refresh_all)
             _extras(step, set_name, href)
+            if step.key == "summarize":
+                # Last on the page, as its own fold: for most projects it never applies.
+                unsynced_section(refresh_all)
 
         actions()
         rest()
@@ -598,24 +599,140 @@ COMPARE_BLURB = ("What to draw. Leave these as they are unless the picture does 
                  "question — then change one and compare again.")
 
 
+class _Says:
+    """Stands where an input box would: `.value` is the flag text the structured controls
+    currently come to, read the moment the Compare button is pressed."""
+
+    def __init__(self, read):
+        self._read = read
+
+    @property
+    def value(self) -> str:
+        return self._read()
+
+
 def _compare_options(project, step: content.Step, boxes: dict) -> None:
-    """The variants the comparison draws, as boxes. Their contents start at whatever this
+    """The variants the comparison draws — the same spinners, words and live thresholds as the
+    rule chooser below, because they are the same numbers. They start at whatever this
     project's advanced settings say, which is what the command would do on its own."""
     from ...core import thresholds
     from ...core.config import load_step_config
 
+    items = thresholds.PLACES if step.key == "locations" else thresholds.TOPICS
     try:
-        current = thresholds.compare_text(
-            thresholds.compare_options(load_step_config(project, step.key)))
+        current = thresholds.compare_options(load_step_config(project, step.key))
     except ToolkitError as e:
         guard(e)
         return
+
+    bin_rows: list[dict] = []
+    range_rows: list[dict] = []
+    flat_rows: list[dict] = []
+    derived: dict = {"label": None}
+
+    def show() -> None:
+        if derived["label"] is not None:
+            derived["label"].set_text(_variant_lines(bin_rows, range_rows))
+
+    def pct_box(value) -> ui.number:
+        box = ui.number(min=0.5, max=100, step=0.5, value=value) \
+            .props("dense outlined suffix=%").classes("w-28")
+        box.on_value_change(lambda _: show())
+        return box
+
+    def closer(holder, rows, entry, row) -> None:
+        ui.button(icon="close",
+                  on_click=lambda: (rows.remove(entry), holder.remove(row), show())) \
+            .props("flat dense round")
+
     with ui.expansion("What to compare", icon="tune").classes("w-full mt-1"):
         ui.label(COMPARE_BLURB).classes("text-xs opacity-70 max-w-2xl")
-        for key, _flag, label, hint in content.COMPARE_FIELDS:
-            boxes[key] = ui.input(label, value=current.get(key, "")) \
-                .props("dense outlined").classes("w-full")
-            ui.label(hint).classes("text-xs opacity-60 max-w-2xl")
+
+        ui.label(thresholds.phrase("Rarity bins to try — each count of bins is drawn as a "
+                                   "ladder of its own", items)) \
+            .classes("text-sm font-medium mt-2")
+        bins_holder = ui.row().classes("items-center gap-2 flex-wrap")
+
+        def add_bins(value=thresholds.DEFAULT_BINS) -> None:
+            with bins_holder, ui.row().classes("items-center gap-1") as row:
+                box = ui.number("Bins", min=1, max=20, step=1, precision=0, value=value) \
+                    .props("dense outlined").classes("w-24")
+                box.on_value_change(lambda _: show())
+                entry = {"box": box}
+                bin_rows.append(entry)
+                closer(bins_holder, bin_rows, entry, row)
+
+        for b in current["bins"]:
+            add_bins(b)
+        ui.button("Add a bin count", icon="add", on_click=lambda: add_bins()) \
+            .props("flat dense")
+
+        ui.label("Ranges to try — from the rarest bin's threshold to the commonest bin's. "
+                 "Every bin count is drawn over every range.") \
+            .classes("text-sm font-medium mt-2")
+        ranges_holder = ui.column().classes("gap-1")
+
+        def add_range(low=thresholds.DEFAULT_RANGE[0], high=thresholds.DEFAULT_RANGE[1]) -> None:
+            with ranges_holder, ui.row().classes("items-center gap-2") as row:
+                ui.label("from").classes("text-sm opacity-70")
+                lo = pct_box(low)
+                ui.label("to").classes("text-sm opacity-70")
+                hi = pct_box(high)
+                entry = {"low": lo, "high": hi}
+                range_rows.append(entry)
+                closer(ranges_holder, range_rows, entry, row)
+
+        for lo, hi in current["ranges"]:
+            add_range(lo, hi)
+        ui.button("Add a range", icon="add", on_click=lambda: add_range()).props("flat dense")
+
+        derived["label"] = ui.label().classes("text-xs opacity-70 whitespace-pre-line")
+
+        ui.label(thresholds.phrase("Flat thresholds to draw beside those — one bar every "
+                                   "{item} has to clear", items)) \
+            .classes("text-sm font-medium mt-2")
+        flat_holder = ui.row().classes("items-center gap-2 flex-wrap")
+
+        def add_flat(value=thresholds.DEFAULT_FLAT_PCT) -> None:
+            with flat_holder, ui.row().classes("items-center gap-1") as row:
+                entry = {"box": pct_box(value)}
+                flat_rows.append(entry)
+                closer(flat_holder, flat_rows, entry, row)
+
+        for f in current["flat"]:
+            add_flat(f)
+        ui.button("Add one", icon="add", on_click=lambda: add_flat()).props("flat dense")
+
+        show()
+
+    number = thresholds.number
+    boxes["bins"] = _Says(lambda: ",".join(
+        str(int(e["box"].value)) for e in bin_rows if e["box"].value is not None))
+    boxes["ranges"] = _Says(lambda: ",".join(
+        f"{number(float(e['low'].value))}-{number(float(e['high'].value))}"
+        for e in range_rows if e["low"].value is not None and e["high"].value is not None))
+    boxes["flat"] = _Says(lambda: ",".join(
+        str(number(float(e["box"].value))) for e in flat_rows if e["box"].value is not None))
+
+
+def _variant_lines(bin_rows: list[dict], range_rows: list[dict]) -> str:
+    """What each binned variant comes to, in the chooser's own words — the numbers made visible
+    while they are being set."""
+    from ...core import thresholds
+
+    lines = []
+    for r in range_rows:
+        for b in bin_rows:
+            try:
+                bars = thresholds.spread(float(r["low"].value), float(r["high"].value),
+                                         int(b["box"].value))
+            except (TypeError, ValueError, ToolkitError):
+                continue
+            shown = ", ".join(f"{thresholds.number(x)}%" for x in bars)
+            lines.append(f"{int(b['box'].value)} bins from "
+                         f"{thresholds.number(float(r['low'].value))}% to "
+                         f"{thresholds.number(float(r['high'].value))}% — thresholds: {shown}")
+    return "\n".join(lines)
 
 
 def _tuning(project, step: content.Step, set_name: str | None, refresh) -> None:

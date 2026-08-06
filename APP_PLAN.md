@@ -1249,3 +1249,21 @@ obstacle, it is the thing that keeps `llms-full.txt` honest. Run the generator, 
   to do and what will happen; rationale belongs in code comments. `docs/APP.md` is the register to
   match.
 
+
+## 29. Feedback round 8 (2026-08-06) — after the v1.0.0 presentation
+
+The first round against the shipped 1.0.0, from Marlon's own use and colleague feedback at the
+meeting. Item by item, with the standing UI-vs-CLI call for each:
+
+| # | Feedback | What was done | UI or CLI? |
+|---|---|---|---|
+| 1 | Can't see what was uploaded to the unSYNC'd pile, or whether it was read in | The fold on the Summarize page now has the same per-file listing as the Workspace list (file, read-in state, narrator, words) and the same shared upload box (`pages/common.transcript_upload`, factored out of both pages). The fold moved to the bottom of the page. | UI only |
+| 2 | Clip's full run never asks run-now vs Batch | Clip now has a real `--batch`: waves — every interview's next uncached chunk as one batch job, repeated until nothing is missing (`clip/run._fill_cache_in_waves`). The transport prompt states the wave count and warns "days, not hours". Marlon chose this over run-now-only-with-explanation. | Both (CLI transport + flag; app renders the CLI's own prompt) |
+| 3 | Export needs an imported-at column; re-importing a same-named file must replace the old one incl. results | `.toolkit/import_manifest.json`: per-transcript sha256 + imported-at, both piles. Unchanged files keep their stamp; changed/removed files purge their rows from every deliverable + demo tables + label overrides, state `n_units` recounted so freshness says "more to run". Interviews tab gains **Imported**. App drop replaces changed files ("changed — import again"); `everything_imported` is hash-aware. | Both |
+| 4 | Manually edit one label in the demo viewer; export must not overwrite labels edited in the sheet | `label_overrides.csv` (workspace root): edit control in the label review pages (POST `/api/labels/edit`, custom-header-guarded like `/api/quit`; page on disk patched in place), export harvest (`.toolkit/export_manifest.json` records what was exported; a differing sheet cell is a human edit → kept), and the file itself is hand-editable. Overrides are pinned to the clip's span and dropped out loud when it changes; `labels.parquet` stays pure model output. | Both (store + apply in core/steps; the pencil is UI) |
+| 5 | Confirm the default rollup adapts: equal frequencies → flat thresholds | It did NOT for near-equal counts (10 vs 11 → 10% vs 30%). `freq_width` now fans thresholds out from the ladder midpoint by reach = (max−min)/max over *seen* frequencies: equal → flat at the midpoint, near-equal → near-flat, skewed → nearly unchanged. Marlon chose proportional damping. Hand-computed test expectations updated deliberately. | CLI (core/thresholds; both front ends inherit) |
+| 6 | Run-now / Stop unresponsive once during topics run (OpenAI overload suspected) | Real app bug found: `run_status` tore down and rebuilt the prompt/Stop buttons every 0.4 s tick for the whole life of a prompt; a click landing between teardown and rebuild was silently dropped (worst when the loop is busy — e.g. output churn during an outage). Header and body now rebuild only when their render keys change; the duration label updates by text. Stop shows "stopping…" immediately (`Job.stop_requested`). Regression test pins element identity across ticks. | UI only |
+| 7 | Compare-methods settings are raw flag-syntax text boxes with unclear labels | Rebuilt with the rule chooser's own controls: bin-count spinners, from/to % spinners per range, flat % spinners, add/remove rows, and a live "N bins from X% to Y% — thresholds: …" preview per variant. The Compare button still produces the same CLI flags (`_Says` adapter). | UI only |
+
+Also in this round: version 1.1.0; docs updated (clip/label/import/export/CONFIG/WORKFLOW/APP,
+plus the freq_width wording); the docs bundle rebuilt.

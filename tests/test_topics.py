@@ -289,22 +289,25 @@ def test_rollup_defaults_to_rarity_bins(project):
     """A set nobody has configured rolls up the recommended way: 5 rarity bands over 10-30%."""
     write_hand_wide(project)
     # frequencies [education 6, career 1, family 0] over 5 equal-width bands: education lands in
-    # the top band (bar 30%), career and family in the bottom one (bar 10%). Alpha's career is
-    # 25% of its clips — under a flat 30% bar it would be dropped; here it clears its own.
+    # the top band, career and family in the bottom one. The bars fan out from the midpoint
+    # (20%) by the spread of the seen frequencies — reach (6-1)/6 = 5/6, so the top band bar is
+    # 20 + 5/6*10 = 28.33% and the bottom 11.67%. Alpha's career is 25% of its clips — under a
+    # flat 30% bar it would be dropped; here it clears its own.
     wide = run_topics_rollup(project, "main").set_index("interview_key")
     assert wide.loc["fake_alpha", "topics"] == "education|career"
     _, long_p = interview_paths(project)
     long = pd.read_parquet(long_p)
     bars = long.drop_duplicates("topic_id").set_index("topic_id")["threshold_pct"]
-    assert bars["education"] == 30.0 and bars["career"] == 10.0 and bars["family"] == 10.0
+    assert bars["education"] == 28.33 and bars["career"] == 11.67 and bars["family"] == 11.67
 
 
 def test_rollup_binned_hand_computed(project):
     write_hand_wide(project)
     set_entry(project, rollup={"method": "freq_width", "bins": 2, "range": [10, 30]})
     # 2 equal-width bins over frequencies [6, 1, 0]: family(0) and career(1) fall in the rare
-    # band -> bar 10%; education(6) in the common band -> bar 30%. So alpha's career (25% of
-    # clips) now clears its 10% bar while education still needs (and clears) 30%.
+    # band, education(6) in the common one. Reach = (6-1)/6 = 5/6 of the [10, 30] ladder around
+    # its 20% midpoint: rare bar 11.67%, common bar 28.33%. So alpha's career (25% of clips)
+    # clears its bar while education still needs (and clears) its higher one.
     wide = run_topics_rollup(project, "main").set_index("interview_key")
     assert wide.loc["fake_alpha", "topics"] == "education|career"
     assert wide.loc["fake_alpha", "n_topics"] == 2
@@ -312,9 +315,24 @@ def test_rollup_binned_hand_computed(project):
     _, long_p = interview_paths(project)
     long = pd.read_parquet(long_p)
     career = long[(long["interview_key"] == "fake_alpha") & (long["topic_id"] == "career")].iloc[0]
-    assert career["threshold_pct"] == 10.0 and career["tagged"]
+    assert career["threshold_pct"] == 11.67 and career["tagged"]
     edu = long[long["topic_id"] == "education"].iloc[0]
-    assert edu["threshold_pct"] == 30.0
+    assert edu["threshold_pct"] == 28.33
+
+
+def test_rollup_thresholds_spread_only_as_far_as_the_frequencies_do():
+    """The default method adapts to the distribution: equally-common topics all face one
+    threshold, near-equal counts get near-equal thresholds instead of being stretched to the
+    extremes, and a topic that never comes up does not stretch the ladder for the ones that do."""
+    rule = thresholds.Rollup()                            # freq_width, 5 bins, 10-30%
+    equal = rule.thresholds(pd.Series({"a": 12, "b": 12, "c": 12}))
+    assert set(equal) == {20.0}                           # dead flat at the midpoint
+    close = rule.thresholds(pd.Series({"a": 10, "b": 11}))
+    assert list(close) == [19.09, 20.91]                  # a one-count difference stays minor
+    skewed = rule.thresholds(pd.Series({"a": 1, "b": 50}))
+    assert list(skewed) == [10.2, 29.8]                   # a real skew uses almost the full ladder
+    unseen = rule.thresholds(pd.Series({"a": 12, "b": 12, "zero": 0}))
+    assert unseen["a"] == unseen["b"] == 20.0             # frequency-0 items don't stretch it
 
 
 def test_rollup_reads_the_older_spelling(project):

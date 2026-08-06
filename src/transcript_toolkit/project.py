@@ -55,6 +55,12 @@ class Project:
     @property
     def state_path(self) -> Path: return self.toolkit_dir / "state.json"
     @property
+    def import_manifest_path(self) -> Path: return self.toolkit_dir / "import_manifest.json"
+    @property
+    def export_manifest_path(self) -> Path: return self.toolkit_dir / "export_manifest.json"
+    @property
+    def label_overrides_path(self) -> Path: return self.root / "label_overrides.csv"
+    @property
     def cache_dir(self) -> Path: return self.toolkit_dir / "cache"
     @property
     def demo_sample_path(self) -> Path: return self.toolkit_dir / "demo_sample.txt"

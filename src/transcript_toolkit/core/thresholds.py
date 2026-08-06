@@ -6,7 +6,9 @@ question is which threshold, and the answer is a *method* rather than a hand-wri
   freq_width   — the recommended one. The items are split into equal-width bins by how often
                  they come up across the collection, and a rarer bin clears a lower threshold.
                  Rare topics get off zero without common ones being tagged everywhere. Two items
-                 that come up equally often always share a threshold.
+                 that come up equally often always share a threshold, and the thresholds spread
+                 out only as far as the frequencies do — an evenly-spread collection is judged
+                 (near-)flat rather than tiny count differences being stretched to the extremes.
   equal_count  — the same idea, but each bin holds the same NUMBER of items rather than covering
                  the same width of frequency. Two equally-frequent items can land in different
                  bins and be judged differently, which is why it is the advanced option.
@@ -41,7 +43,10 @@ METHOD_BLURB = {
         "collection and split into bins of equal width; the rarest bin gets the lowest threshold "
         "and the commonest the highest. A {item} that only comes up here and there can still "
         "become an interview's tag, without the common ones being tagged everywhere. Two {items} "
-        "that come up equally often always get the same threshold.",
+        "that come up equally often always get the same threshold, and the thresholds spread "
+        "out from the middle of your range only as far as the frequencies themselves do — when "
+        "every {item} comes up about equally often, every {item} faces (nearly) the same "
+        "threshold.",
     EQUAL_COUNT:
         "The same idea, except every bin holds the same number of {items} rather than covering "
         "the same range of frequency. It spreads the thresholds evenly over your list, but two "
@@ -160,10 +165,23 @@ def spread(low: float, high: float, bins: int) -> list[float]:
 
 
 def freq_width_thresholds(freq: pd.Series, thresholds) -> pd.Series:
-    """Equal-WIDTH frequency bins: item -> threshold. `thresholds` is the list, rarest bin first."""
+    """Equal-WIDTH frequency bins: item -> threshold. `thresholds` is the list, rarest bin first.
+
+    The fan-out is proportional: thresholds spread from the ladder's midpoint only as far as
+    the frequencies themselves are spread — reach = (max - min) / max, measured over the items
+    that come up at all. A collection where every item comes up about equally often gets
+    (near-)identical thresholds, instead of a one-count difference being stretched across the
+    whole range; a genuinely skewed collection uses almost the full ladder. An item that never
+    comes up cannot be tagged anyway, so it does not stretch the ladder for the ones that do.
+    """
     thr = sorted(float(t) for t in thresholds)
+    if freq.empty:
+        return pd.Series(dtype=float)
+    seen = freq[freq > 0]
+    reach = (float(seen.max()) - float(seen.min())) / float(seen.max()) if not seen.empty else 0.0
+    mid = (thr[0] + thr[-1]) / 2
     bins = pd.cut(freq, bins=len(thr), labels=False, include_lowest=True)   # 0..k-1, 0 = rarest
-    return bins.map(lambda b: float(thr[int(b)]))
+    return bins.map(lambda b: round(mid + reach * (float(thr[int(b)]) - mid), 2))
 
 
 def equal_count_thresholds(freq: pd.Series, thresholds) -> pd.Series:

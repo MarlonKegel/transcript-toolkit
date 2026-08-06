@@ -14,9 +14,14 @@ toolkit clip            # full corpus (after a demo of the current settings)
 `toolkit clip preview` shows how each interview would be chunked (for long interviews) without
 calling the API. `toolkit clip annotate` re-renders the review pages from existing results.
 
-Clip is the one step with no Batch-API option: a long interview's chunks run in sequence, because
-each chunk's prompt carries the previous chunk's clip decisions as locked context. They therefore
-can't all be submitted up front the way the other steps' calls can.
+A full run asks whether to run now or on the 50%-off
+[Batch API](../WORKFLOW.md#run-now-or-run-cheap-the-batch-api) — but clip is the slow one to
+batch. A long interview's chunks run in sequence (each chunk's prompt carries the previous
+chunk's clip decisions as locked context), so they can't all be submitted up front; a batch run
+goes in **waves** instead, every interview's next chunk at a time, and each wave can take up to
+24h. The prompt says how many waves your collection needs. Half price — but count in days
+rather than hours; on interviews short enough for one chunk each, it is one wave like any
+other step.
 
 ## Reviewing
 

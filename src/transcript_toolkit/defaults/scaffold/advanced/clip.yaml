@@ -7,3 +7,5 @@ overlap_paragraphs: 20            # chunk seam overlap; half locked context, hal
 max_workers: 12                    # interviews processed in parallel
 poll_interval_s: 4
 max_total_wait_s: 600          # give up on one stuck call; re-run resumes free
+batch_poll_interval_s: 30       # --batch: how often to check the Batch API job
+batch_max_total_wait_s: 86400   # --batch: give up polling after this; re-run to resume

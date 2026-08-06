@@ -94,7 +94,16 @@ def build_clips_sheet(project: Project, sets: list[str],
     })
     included = ["clips"]
     if labels is not None:
-        df["Label"] = clips["label"]
+        from ..core import overrides as overrides_mod
+
+        edits, complaints = overrides_mod.overlay(project, clips)
+        for reason in complaints:
+            print(f"⚠ {reason}")
+        df["Label"] = [edits.get(cid, lab)
+                       for cid, lab in zip(clips["clip_id"], clips["label"])]
+        if edits:
+            print(f"{len(edits)} label(s) are edited by hand (label_overrides.csv) — the sheet "
+                  f"shows your versions.")
         included.append("labels")
 
     for set_name in sets:
@@ -161,9 +170,30 @@ def build_interviews_sheet(project: Project, sets: list[str],
 
     if not frames:
         return None
+
+    # When each narrator's transcripts were imported — one timestamp per session, aligned with
+    # the Sessions cell. A corrected transcript re-imported later carries a newer stamp, which
+    # is how a reader checks a sheet against the current text ("exported before that → redo").
+    stamps = _imported_stamps(project, session_regex)
+    for key, rr in frames.items():
+        if key in stamps:
+            rr["Imported"] = stamps[key]
+
     # a Session column derived from clips if summaries didn't populate one
     df = pd.DataFrame(list(frames.values()))
     return df.sort_values("Interview").reset_index(drop=True)
+
+
+def _imported_stamps(project: Project, session_regex: str) -> dict[str, str]:
+    """narrator -> "2026-08-06 14:32" (comma-joined per session, in session id order)."""
+    from ..core import manifest as manifest_mod
+
+    stamps: dict[str, dict[str, str]] = {}
+    for pile in (manifest_mod.SYNCED, manifest_mod.UNSYNCED):
+        for iid, iso in manifest_mod.imported_at(project, pile).items():
+            stamps.setdefault(narrator_key(iid, session_regex), {})[iid] = iso
+    return {key: ", ".join(manifest_mod.local_stamp(by_id[i]) for i in sorted(by_id))
+            for key, by_id in stamps.items()}
 
 
 def build_categories_sheet(project: Project, sets: list[str],
@@ -197,6 +227,76 @@ def build_categories_sheet(project: Project, sets: list[str],
     return pd.DataFrame({k: v + [""] * (width - len(v)) for k, v in columns.items()})
 
 
+def _write_export_manifest(project: Project, clips_df: pd.DataFrame) -> None:
+    """What this export said each label was — the reference the next export diffs the sheet
+    against. A cell that differs from it was edited by a person; a cell that matches was not,
+    even if the pipeline has re-labeled since."""
+    import json
+
+    if "Label" not in clips_df.columns:
+        return
+    project.export_manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    project.export_manifest_path.write_text(json.dumps({
+        "schema": 1,
+        "labels": dict(zip(clips_df["Clip Id"].astype(str), clips_df["Label"].astype(str))),
+    }, indent=2) + "\n")
+
+
+def _harvest_sheet_edits(project: Project, out_path: Path, clips_tab: str) -> int:
+    """Labels edited in the exported sheet, upserted into label_overrides.csv.
+
+    Only a cell that differs from what the LAST export wrote counts as an edit; without that
+    reference, a regenerated label would be indistinguishable from a hand-fix. Editing a cell
+    back to the model's own words removes the override again."""
+    import json
+
+    if not out_path.exists() or not project.export_manifest_path.exists():
+        return 0
+    last = (json.loads(project.export_manifest_path.read_text()).get("labels")) or {}
+    labels = _read(project.outputs_dir / "labels" / "labels.parquet")
+    if not last or labels is None:
+        return 0
+
+    from openpyxl import load_workbook
+    try:
+        wb = load_workbook(out_path, read_only=True, data_only=True)
+    except Exception as e:
+        raise ToolkitError(
+            f"Could not read the existing {out_path.name}, so labels edited in the sheet could "
+            f"not be kept. Close it if it is open in Excel, or delete it if there is nothing "
+            f"in it to keep. ({e})") from e
+    if clips_tab not in wb.sheetnames:
+        wb.close()
+        return 0
+
+    from ..core import overrides as overrides_mod
+
+    rows = wb[clips_tab].iter_rows(values_only=True)
+    header = list(next(rows, ()) or ())
+    if "Clip Id" not in header or "Label" not in header:
+        wb.close()
+        return 0
+    id_col, label_col = header.index("Clip Id"), header.index("Label")
+    model_label = dict(zip(labels["clip_id"].astype(str), labels["label"].astype(str)))
+    kept = 0
+    for row in rows:
+        cid = None if row[id_col] is None else str(row[id_col])
+        if not cid or cid not in model_label:
+            continue                    # a clip this pipeline no longer knows — nothing to pin
+        sheet_label = "" if row[label_col] is None else str(row[label_col])
+        exported = last.get(cid)
+        if exported is None or sheet_label == exported or not sheet_label.strip():
+            continue                    # untouched (or emptied, which is not a label)
+        if sheet_label == model_label[cid]:
+            if overrides_mod.remove(project, cid):      # edited back to the model's own words
+                kept += 1
+            continue
+        overrides_mod.upsert(project, cid, sheet_label, labels, replaces=model_label[cid])
+        kept += 1
+    wb.close()
+    return kept
+
+
 def _write_sheet(wb: Workbook, title: str, df: pd.DataFrame) -> None:
     ws = wb.create_sheet(title)
     ws.append(list(df.columns))
@@ -211,6 +311,13 @@ def run_export(project: Project, out: str | None = None, locations: str | None =
     cfg = load_step_config(project, "export")
     sets = _topic_sets(project)
     mode = _location_mode(project, locations)
+    tabs = cfg.get("tabs") or {}
+    out_path = (project.root / out) if out else (project.outputs_dir /
+                                                 cfg.get("filename", DEFAULT_FILENAME))
+
+    # Before the old sheet is overwritten: labels edited in it become overrides, so a re-export
+    # never silently undoes a curator's hand-fix.
+    kept = _harvest_sheet_edits(project, out_path, tabs.get("clips", "Clips"))
 
     clips_df, included = build_clips_sheet(project, sets, mode)
     interviews_df = build_interviews_sheet(project, sets, mode)
@@ -218,18 +325,20 @@ def run_export(project: Project, out: str | None = None, locations: str | None =
 
     wb = Workbook()
     wb.remove(wb.active)
-    tabs = cfg.get("tabs") or {}
     _write_sheet(wb, tabs.get("clips", "Clips"), clips_df)
     if interviews_df is not None:
         _write_sheet(wb, tabs.get("interviews", "Interviews"), interviews_df)
     if not categories_df.empty:
         _write_sheet(wb, tabs.get("categories", "Categories"), categories_df)
 
-    out_path = (project.root / out) if out else (project.outputs_dir / cfg.get("filename", DEFAULT_FILENAME))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(out_path)
+    _write_export_manifest(project, clips_df)
 
     print(f"Wrote {out_path}")
+    if kept:
+        print(f"  Kept {kept} label(s) you edited in the sheet -> "
+              f"{project.label_overrides_path.name}")
     print(f"  Clips tab: {len(clips_df)} clips, columns include: {', '.join(included)}")
     if interviews_df is not None:
         print(f"  Interviews tab: {len(interviews_df)} narrators")

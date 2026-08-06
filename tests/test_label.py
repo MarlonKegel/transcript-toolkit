@@ -120,7 +120,7 @@ def test_demo_writes_mds_only_and_records_state(project):
     assert not out_path(project).exists()
     for iid in SAMPLE:
         page = project.diags_dir / "label" / f"{iid}.html"
-        assert page.exists() and "Label:</span> Clip starting at" in page.read_text()
+        assert page.exists() and 'Label:</span> <span class="labeltext">Clip starting at' in page.read_text()
     assert (project.diags_dir / "label" / "index.html").exists()
     demo = load_state(project)["steps"]["label"]["demo"]
     assert demo["units"] == SAMPLE
@@ -291,7 +291,7 @@ def test_annotate_rerenders_from_deliverable(project):
     page = project.diags_dir / "label" / "fake_beta.html"
     page.unlink()
     annotate_labels(project)
-    assert page.exists() and "Label:</span> Clip starting at" in page.read_text()
+    assert page.exists() and 'Label:</span> <span class="labeltext">Clip starting at' in page.read_text()
 
 
 def test_annotate_without_deliverable_fails(project):

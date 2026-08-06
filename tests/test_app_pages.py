@@ -190,6 +190,18 @@ def test_quitting_needs_the_toolkits_own_header(server):
     assert get(server, "/api/health")[0] == 200          # still running
 
 
+def test_editing_a_label_needs_the_toolkits_own_header(server):
+    """Same defence as /api/quit: a cross-origin POST cannot carry the custom header, so no
+    other page the user has open can rewrite their labels."""
+    request = urllib.request.Request(f"http://127.0.0.1:{server}/api/labels/edit",
+                                     method="POST")
+    try:
+        urllib.request.urlopen(request, timeout=10)
+        pytest.fail("an unmarked POST was accepted")
+    except urllib.error.HTTPError as e:
+        assert e.code == 403
+
+
 def test_only_this_mac_can_reach_the_app(server):
     """Without a host check, a page elsewhere could point a name at 127.0.0.1 and read the
     review pages — which are the transcripts."""
@@ -398,7 +410,11 @@ def test_rolling_up_is_deciding_then_doing(server):
     positions = [body.index(text) for text in order]
     assert positions == sorted(positions), order
     assert "6 ·" not in body
-    assert "What to compare" in body and "Bins to compare" in body
+    assert "What to compare" in body and "Rarity bins to try" in body
+    # the compare settings speak the chooser's language: spinners and live thresholds,
+    # not flag syntax typed into a text box
+    assert "5 bins from 10% to 30% — thresholds: 10%, 15%, 20%, 25%, 30%" in body
+    assert "Ranges to try" in body and "Flat thresholds to draw" in body
 
 
 def test_the_rollup_rule_is_two_numbers_and_the_method_is_folded_away(server):

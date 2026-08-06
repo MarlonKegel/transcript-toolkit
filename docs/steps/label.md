@@ -24,6 +24,26 @@ in your house style. For project-wide consistency rules (e.g. "always write UNHC
 Refugee Agency"), put them in a file and point `config.yaml` → `label.addendum` at it (e.g.
 `prompts/prompt_addendums/label_addendum.md`); the text is appended to the label prompt.
 
+## Fixing a label by hand
+
+Sometimes one label needs one word changed, and re-prompting the model over it is the wrong
+tool. Three ways to fix it yourself, all landing in **`label_overrides.csv`** at the workspace
+root:
+
+- **In the review page** (app only): an *edit* control sits next to each label — change it
+  right where you read it. Labels you fixed are marked *edited by hand*.
+- **In the exported sheet**: edit the Label column of `outputs/export.xlsx`; the next
+  `toolkit export` notices the difference against what it wrote last time and keeps your
+  version instead of overwriting it. Editing a cell back to the model's own words lifts the
+  override again.
+- **In the file itself**: `label_overrides.csv` is a plain table (`clip_id,label,...`) you can
+  edit in any editor.
+
+The model's own labels in `outputs/labels/` are never rewritten — your version is laid over
+them wherever labels are shown or exported. An override is pinned to its clip's span, so if the
+clip itself changes (a corrected transcript is re-imported, or clip boundaries move), the
+override is dropped with a printed warning rather than silently applied to different text.
+
 ## Settings
 
 `config.yaml` → `label`: `model`, `reasoning`, `addendum`. `advanced/label.yaml`:

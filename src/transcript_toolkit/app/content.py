@@ -154,7 +154,7 @@ STEPS: tuple[Step, ...] = (
     Step(
         key="clip", slug="clip", title="Clip", order=1,
         blurb="Split each interview into topically coherent clips.",
-        argv=("clip",), deliverable="clips", needs_sample=True,
+        argv=("clip",), batch=True, deliverable="clips", needs_sample=True,
         reviews=(Review("index.html", "Open the review pages"),),
         review_hint="Read a few interviews through: do the clips start and end where a subject "
                     "changes, and is anything long left in one piece that should be two?",

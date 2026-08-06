@@ -152,7 +152,7 @@ def test_an_empty_key_setting_does_not_count_as_set(tmp_path):
 def test_transcripts_land_where_import_looks_for_them(tmp_path):
     project = init_project(str(tmp_path / "ws"))
     assert workspaces.transcript_count(project) == 0
-    path = workspaces.add_transcript(project, "Some Person_SYNC.docx", b"pretend docx")
+    path, _ = workspaces.add_transcript(project, "Some Person_SYNC.docx", b"pretend docx")
     assert path == project.data_dir / "Some Person_SYNC.docx"
     assert workspaces.transcript_count(project) == 1
 
@@ -165,7 +165,7 @@ def test_only_docx_is_accepted(tmp_path):
 
 def test_a_path_in_the_upload_name_cannot_escape_the_data_folder(tmp_path):
     project = init_project(str(tmp_path / "ws"))
-    path = workspaces.add_transcript(project, "../../evil.docx", b"x")
+    path, _ = workspaces.add_transcript(project, "../../evil.docx", b"x")
     assert path.parent == project.data_dir
 
 

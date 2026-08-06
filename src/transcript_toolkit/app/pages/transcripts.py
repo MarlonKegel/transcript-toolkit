@@ -11,7 +11,7 @@ from nicegui import ui
 from ...errors import ToolkitError
 from .. import content, theme, workspaces
 from ..context import CONTEXT
-from .common import guard, info, inline_state, launch, section
+from .common import guard, info, inline_state, launch, section, transcript_upload
 from .settings_form import settings_form
 
 HREF = "/workspace"
@@ -33,28 +33,10 @@ def transcripts_section(refresh) -> None:
 
         listing()
 
-        # The upload box is built once and never rebuilt by an upload: refreshing the part of
-        # the page that holds it while files are still arriving is what used to drop most of a
-        # multi-file drop on the floor. Only the list above is redrawn.
-        async def receive(e) -> None:
-            added, refused = [], []
-            for upload in e.files:
-                try:
-                    workspaces.add_transcript(project, upload.name, await upload.read())
-                    added.append(upload.name)
-                except ToolkitError as err:
-                    refused.append(str(err))
-            listing.refresh()
-            if added:
-                ui.notify(f"Added {len(added)} transcript{'s' if len(added) != 1 else ''}. "
-                          f"Click Import to read them in.", type="positive")
-            for message in refused:
-                guard(ToolkitError(message))
-
-        ui.upload(on_multi_upload=receive, multiple=True, auto_upload=True,
-                  label="Drop .docx files here").props("accept=.docx flat bordered") \
-            .classes("w-full")
-        ui.label(f"They are copied into {project.data_dir}").classes("text-xs opacity-60")
+        transcript_upload(project, listing.refresh, unsynced=False,
+                          label="Drop .docx files here",
+                          next_move="Click Import to read them in.",
+                          note=f"They are copied into {project.data_dir}")
 
         with ui.row().classes("gap-2 items-center mt-2"):
             ui.button("Import", icon="play_arrow", on_click=_import_click).props("dense")
@@ -128,7 +110,8 @@ def _row(row: dict, facts: dict | None) -> None:
         with ui.column().classes("gap-0 grow min-w-0"):
             ui.label(row["filename"]).classes("text-xs font-mono truncate")
             if not done:
-                ui.label("not imported yet").classes("text-xs tk-caution")
+                ui.label("changed — import again" if row.get("changed")
+                         else "not imported yet").classes("text-xs tk-caution")
         if facts:
             sessions = (f" · {facts['sessions']} sessions" if facts["sessions"] > 1 else "")
             ui.label(facts["narrator"] + sessions).classes("text-xs opacity-70 w-40 truncate")

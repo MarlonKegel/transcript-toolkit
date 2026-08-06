@@ -26,6 +26,7 @@ from .context import CONTEXT, DEFAULT_PORT
 
 MARKER = "transcript-toolkit"
 QUIT_HEADER = "x-toolkit-quit"
+EDIT_HEADER = "x-toolkit-edit"
 PROBE_TIMEOUT_S = 1.5
 SHUTDOWN_WAIT_S = 10.0
 
@@ -150,6 +151,47 @@ def _register_routes(allowed_hosts: list[str]) -> None:
         app.shutdown()
         return {"stopping": True}
 
+    @app.post("/api/labels/edit")
+    async def edit_label(request: Request) -> dict:
+        """The edit control in a label review page saves through here: the override lands in
+        label_overrides.csv (the file the CLI's export and annotate read too) and the page on
+        disk is updated in place. The custom header keeps it unreachable from any other page,
+        same as /api/quit."""
+        if request.headers.get(EDIT_HEADER) != "1":
+            raise HTTPException(status_code=403, detail="Edit labels from the review page.")
+        if CONTEXT.project is None:
+            raise HTTPException(status_code=404, detail="No workspace is open.")
+        said = await request.json()
+        clip_id = str(said.get("clip_id") or "").strip()
+        label = str(said.get("label") or "").strip()
+        was = str(said.get("was") or "")
+        if not clip_id:
+            raise HTTPException(status_code=422, detail="Which clip?")
+        if not label:
+            raise HTTPException(status_code=422, detail="A label cannot be empty.")
+
+        from ..core import overrides as overrides_mod
+        from ..core.tables import load_clips
+        from ..errors import ToolkitError as _TkErr
+
+        project = CONTEXT.project
+        try:
+            clips = load_clips(project, allow_demo=True)
+            existing = overrides_mod.load(project)
+            mine = existing[existing["clip_id"] == clip_id]
+            model_words = mine.iloc[0]["replaces"] if not mine.empty else was
+            if label == model_words:
+                overrides_mod.remove(project, clip_id)      # back to the model's own words
+                overridden = False
+            else:
+                overrides_mod.upsert(project, clip_id, label, clips, replaces=model_words)
+                overridden = True
+        except _TkErr as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+
+        _patch_label_page(project, clip_id, label, overridden)
+        return {"label": label, "overridden": overridden}
+
     @app.get("/app-icon.png")
     def app_icon() -> FileResponse:
         """The icon in the header, served from the package — the same file the desktop app's
@@ -167,6 +209,29 @@ def _register_routes(allowed_hosts: list[str]) -> None:
         if not target.is_file() or not target.is_relative_to(root):
             raise HTTPException(status_code=404, detail="No such review page.")
         return FileResponse(target)
+
+
+def _patch_label_page(project, clip_id: str, label: str, overridden: bool) -> None:
+    """Rewrite one label paragraph inside the review page already on disk.
+
+    The page may have been rendered from a demo, whose labels live only in the LLM cache — so
+    it cannot simply be re-rendered here. The paragraph is spliced in through the same
+    `label_line` that rendered it, and the next real render (demo, full run or annotate)
+    rebuilds the page from label_overrides.csv anyway."""
+    import re
+
+    from ..steps.label.annotate import label_line
+
+    interview_id = clip_id.rsplit("_", 1)[0]
+    path = project.diags_dir / "label" / f"{interview_id}.html"
+    if not path.exists():
+        return
+    html = path.read_text()
+    pattern = re.compile(r'<p class="label[^"]*" data-clip="%s">.*?</p>' % re.escape(clip_id),
+                         re.S)
+    html, n = pattern.subn(label_line(clip_id, label, overridden).replace("\\", "\\\\"), html)
+    if n:
+        path.write_text(html)
 
 
 LOCAL_HOSTS = ["127.0.0.1", "localhost"]

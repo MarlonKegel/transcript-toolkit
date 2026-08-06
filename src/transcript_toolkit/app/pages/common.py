@@ -233,7 +233,9 @@ def run_status(titles=None, on_fix: Callable[[str], None] | None = None,
     # `fresh`: this slot has not seen a job yet. A slot now lives inside the section it asks to
     # be rebuilt, so it is itself replaced when a run finishes — and the replacement must not
     # announce that same finish again, or the page would rebuild itself forever.
-    seen = {"id": None, "revision": -1, "finished": None, "fresh": True}
+    seen = {"id": None, "revision": -1, "finished": None, "fresh": True,
+            "header": None, "body": None}
+    parts: dict = {"duration": None}
     wanted = None if titles is None else set(titles)
 
     with ui.card().classes("w-full") as card:
@@ -242,8 +244,10 @@ def run_status(titles=None, on_fix: Callable[[str], None] | None = None,
         prompt_area = ui.column().classes("w-full gap-2")
         error_area = ui.column().classes("w-full gap-2")
 
-    def redraw(job: jobs.Job) -> None:
+    def redraw_header(job: jobs.Job) -> None:
         icon, colour, word = STATE_LOOK[job.state]
+        if job.live and job.stop_requested:
+            word = "stopping"
         done = job.state == jobs.SUCCEEDED
         card.classes(replace=DONE_CARD if done else "w-full")
         header.clear()
@@ -252,13 +256,19 @@ def run_status(titles=None, on_fix: Callable[[str], None] | None = None,
             ui.label(f"{job.title} — {word}").classes(
                 "break-words min-w-0 " + ("text-sm opacity-70" if done else "font-medium"))
             ui.space()
-            ui.label(f"{job.duration:.0f}s").classes("text-xs opacity-60 shrink-0")
-            if job.live:
+            parts["duration"] = ui.label(f"{job.duration:.0f}s").classes(
+                "text-xs opacity-60 shrink-0")
+            if job.live and job.stop_requested:
+                ui.button("Stopping…", icon="hourglass_top").props("outline dense disable") \
+                    .tooltip("Ctrl-C is sent. The step finishes the call it is in the middle "
+                             "of, then stops — everything finished is saved.")
+            elif job.live:
                 ui.button("Stop", icon="stop", on_click=_stop, color="negative") \
                     .props("outline dense").tooltip(
                         "Safe to stop: every finished call is saved, so running this again "
                         "carries on from where it stopped.")
 
+    def redraw_body(job: jobs.Job) -> None:
         progress_area.clear()
         if job.live:
             with progress_area:
@@ -325,9 +335,20 @@ def run_status(titles=None, on_fix: Callable[[str], None] | None = None,
         if not mine:
             return
         note(seen, job)
-        if job.revision != seen["revision"] or job.live or job.unanswered_question():
-            seen["revision"] = job.revision
-            redraw(job)
+        # The header (with Stop) and the body (with the answer buttons) are rebuilt only when
+        # what they show has changed. Rebuilding on every tick replaced the very button being
+        # pressed ~2.5 times a second, and a click landing between teardown and rebuild was
+        # silently dropped — a Run now / Stop that did nothing.
+        header_key = (job.id, job.state, job.stop_requested)
+        if header_key != seen["header"]:
+            seen["header"] = header_key
+            redraw_header(job)
+        body_key = (job.id, job.revision, bool(job.unanswered_question()))
+        if body_key != seen["body"]:
+            seen["body"] = body_key
+            redraw_body(job)
+        if parts["duration"] is not None:
+            parts["duration"].text = f"{job.duration:.0f}s"
         if finished_now(seen, job) and on_finished:
             on_finished()                       # the page's own sections are now out of date
 
@@ -461,6 +482,49 @@ def _question_block(job: jobs.Job) -> str:
             break
         block.append(line)
     return "\n".join(reversed(block))
+
+
+def transcript_upload(project, on_added: Callable[[], None], *, unsynced: bool,
+                      label: str, next_move: str, note: str) -> None:
+    """The drop box for transcript .docx files — the same box on the Workspace page and in the
+    unSYNC'd pile on the Summarize page.
+
+    Built once and never rebuilt by an upload: redrawing the box while files are still arriving
+    drops most of a multi-file drop on the floor, so `on_added` must refresh only a listing
+    that does not contain this box.
+    """
+    from .. import workspaces
+
+    async def receive(e) -> None:
+        outcomes: dict[str, list[str]] = {"added": [], "replaced": [], "unchanged": []}
+        refused: list[str] = []
+        for upload in e.files:
+            try:
+                _, outcome = workspaces.add_transcript(project, upload.name,
+                                                       await upload.read(), unsynced=unsynced)
+                outcomes[outcome].append(upload.name)
+            except ToolkitError as err:
+                refused.append(str(err))
+        on_added()
+        if outcomes["added"]:
+            n = len(outcomes["added"])
+            ui.notify(f"Added {n} transcript{'s' if n != 1 else ''}. {next_move}",
+                      type="positive")
+        if outcomes["replaced"]:
+            ui.notify(f"Replaced {_named(outcomes['replaced'])} with the version you dropped. "
+                      f"{next_move}", type="warning")
+        if outcomes["unchanged"]:
+            ui.notify(f"{_named(outcomes['unchanged'])} — already here, unchanged.")
+        for message in refused:
+            guard(ToolkitError(message))
+
+    ui.upload(on_multi_upload=receive, multiple=True, auto_upload=True, label=label) \
+        .props("accept=.docx flat bordered").classes("w-full")
+    ui.label(note).classes("text-xs opacity-60 max-w-2xl")
+
+
+def _named(names: list[str]) -> str:
+    return " and ".join(names) if len(names) <= 2 else f"{names[0]} and {len(names) - 1} others"
 
 
 async def launch(title: str, argv: list[str], href: str = "/") -> None:

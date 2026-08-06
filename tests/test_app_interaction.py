@@ -92,6 +92,42 @@ async def test_the_full_run_button_lets_the_cli_ask_about_money(user: User, open
 
 
 @pytest.mark.asyncio
+async def test_the_answer_buttons_are_not_rebuilt_while_they_wait(user: User, open_workspace,
+                                                                  monkeypatch):
+    """The money prompt's buttons (and Stop) keep their element identity while the run panel's
+    refresh timer ticks: the panel used to tear them down and rebuild them ~2.5 times a second
+    for the whole life of the prompt, and a click landing between teardown and rebuild was
+    silently dropped — a "Run now" that did nothing."""
+    import sys
+    monkeypatch.setattr(jobs, "CHILD_COMMAND", [sys.executable, "-u", "-c", (
+        "import sys\n"
+        "sys.stdout.write('Tag 5 interview(s) with gpt: 5 fresh calls.\\n')\n"
+        "sys.stdout.write('  [1] Run now         ~$1.00\\n')\n"
+        "sys.stdout.write('  [2] Use the Batch API   ~$0.50\\n')\n"
+        "answer = input('Choose [1/2/n] ')\n"
+        "print('GOT', answer)\n")])
+
+    await user.open("/step/clip")
+    user.find("Run the demo").click()
+    await settle(user)
+    await user.should_see("Run now")
+
+    from nicegui import ui
+
+    def button_ids(text: str):
+        return sorted(e.id for e in user.find(kind=ui.button, content=text).elements)
+
+    run_now, stop = button_ids("Run now"), button_ids("Stop")
+    await asyncio.sleep(1.3)                       # several of the panel's 0.4s ticks
+    assert button_ids("Run now") == run_now        # same elements, not lookalike replacements
+    assert button_ids("Stop") == stop
+
+    user.find(kind=ui.button, content="Run now").click()   # and the stable button still answers
+    await settle(user)
+    assert any("GOT 1" in line for line in CONTEXT.jobs.current.lines)
+
+
+@pytest.mark.asyncio
 async def test_a_second_run_is_refused_while_one_is_live(user: User, open_workspace, monkeypatch):
     import sys
     monkeypatch.setattr(jobs, "CHILD_COMMAND",
@@ -218,13 +254,24 @@ async def test_dropping_a_transcript_puts_it_where_import_looks(user: User, open
 
 
 @pytest.mark.asyncio
-async def test_dropping_a_transcript_twice_refuses_rather_than_replaces(user: User,
-                                                                       open_workspace):
+async def test_dropping_a_changed_transcript_replaces_the_old_version(user: User,
+                                                                      open_workspace):
+    """A corrected transcript comes in as the same filename. The drop replaces the old file
+    and says so — the import is what then picks the change up."""
     await user.open("/workspace")
     await _drop(user, "Twice_SYNC.docx", b"first")
     await _drop(user, "Twice_SYNC.docx", b"second")
-    assert (open_workspace.data_dir / "Twice_SYNC.docx").read_bytes() == b"first"
-    await user.should_see("already in this project")
+    assert (open_workspace.data_dir / "Twice_SYNC.docx").read_bytes() == b"second"
+    await user.should_see("Replaced")
+
+
+@pytest.mark.asyncio
+async def test_dropping_the_identical_file_again_changes_nothing(user: User, open_workspace):
+    await user.open("/workspace")
+    await _drop(user, "Same_SYNC.docx", b"same bytes")
+    await _drop(user, "Same_SYNC.docx", b"same bytes")
+    assert (open_workspace.data_dir / "Same_SYNC.docx").read_bytes() == b"same bytes"
+    await user.should_see("already here, unchanged")
 
 
 async def _drop_many(user: User, files: dict[str, bytes]) -> None:

@@ -89,7 +89,10 @@ has to be tagged with it. That is a judgement about your collection, so look bef
 
 One threshold for every topic is the obvious rule and usually the wrong one: set it high enough
 for a common topic to mean something and the rare topics — often the interesting ones — never
-reach it. `freq_width` asks less of a rarer bin, which is why it is the default.
+reach it. `freq_width` asks less of a rarer bin, and its thresholds spread out only as far as
+the frequencies themselves do — topics that come up about equally often face (nearly) the same
+threshold, so an evenly-spread collection is judged flat without you switching methods. That
+adaptivity is why it is the default.
 
 ## Settings
 

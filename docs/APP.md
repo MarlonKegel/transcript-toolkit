@@ -88,7 +88,9 @@ The workspace page always names one next thing to do, and the pages follow the s
    - **One list of transcripts**, showing every `.docx` in the project, whose interview it is,
      how many paragraphs were read out of it, and whether it has been imported yet. A
      drag-and-drop that half worked is visible here rather than something you find out about
-     three steps later. On a big collection the list scrolls inside itself, so what comes after
+     three steps later. Dropping a corrected transcript under its old filename **replaces** the
+     old file, the row says *changed — import again*, and importing takes the superseded
+     results with it (see [steps/import.md](steps/import.md)). On a big collection the list scrolls inside itself, so what comes after
      it is still on screen.
    - **How transcripts are read** — which speaker labels are the interviewer, and which endings
      to strip off a filename — is folded up under that list, because it is the one thing you may
@@ -108,6 +110,9 @@ The workspace page always names one next thing to do, and the pages follow the s
       fraction of the whole collection.
    2. **Read what came out.** The step writes review pages; the page says what to look for in
       them. They open in a tab of their own, and each interview has a link back to the list.
+      On the Label step the review pages are also where a label can be fixed by hand — an
+      *edit* control sits next to each one, and your version is kept everywhere labels appear
+      (see [steps/label.md](steps/label.md)).
    3. **Then one of these** — change the prompt or a setting and try it again, or run it on
       everything.
 
@@ -195,7 +200,8 @@ paragraph, and that is what lets the toolkit cut it into clips — which is what
 places are all attached to. A summary is the exception: it is made from the interview as a whole,
 so it needs no times at all.
 
-Drop those files there and they are kept in a folder of their own, out of the collection. Read
+Drop those files there and they are kept in a folder of their own, out of the collection — the
+fold lists each file and whether it has been read in, the same way the Workspace list does. Read
 them in, try it on a couple, read what came back, then summarize them all — the same three moves,
 with a demo of their own. Their summaries go into the same file as the rest, and the export's
 Interviews tab gains a **Transcript** column saying which is which: those rows have a summary and
@@ -237,7 +243,9 @@ many calls it needs and how many it already has cached, then asks — in the app
 
 Both prices are shown, and the `i` beside the buttons explains what you are choosing between.
 The figures are worked out by the step itself, not by the app, so what you see is what will
-actually be spent. Clipping has no Batch option — it asks a plain yes or no.
+actually be spent. On Clip the Batch API runs in waves (an interview's chunks build on each
+other), and the question says how many waves — half price, but count in days rather than
+hours.
 
 Demos do not ask: they are small on purpose, usually a few cents.
 

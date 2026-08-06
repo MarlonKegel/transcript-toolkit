@@ -217,9 +217,13 @@ def set_api_key(project: Project, key: str) -> None:
 # --- transcripts ---------------------------------------------------------------------------
 
 def add_transcript(project: Project, filename: str, data: bytes,
-                   unsynced: bool = False) -> Path:
+                   unsynced: bool = False) -> tuple[Path, str]:
     """Put an uploaded .docx where the toolkit looks for it: `data/` for a SYNC'd transcript,
-    `data/unsynced/` for one that was never SYNC'd and can therefore only be summarized."""
+    `data/unsynced/` for one that was never SYNC'd and can therefore only be summarized.
+
+    Dropping a file that is already here replaces the old version — that is how a corrected
+    transcript comes in. The outcome ("added", "replaced" or "unchanged") goes back to the
+    page, which tells the user what happened and to import again."""
     name = Path(filename).name
     if not name.lower().endswith(".docx"):
         raise ToolkitError(f"{name} is not a .docx file. Transcripts must be Word documents.")
@@ -227,11 +231,12 @@ def add_transcript(project: Project, filename: str, data: bytes,
     folder.mkdir(parents=True, exist_ok=True)
     dest = folder / name
     if dest.exists():
-        raise ToolkitError(f"{name} is already in this project, so it was not added again. "
-                           f"To put a different version in its place, delete the one in "
-                           f"{folder} first.")
+        if dest.read_bytes() == data:
+            return dest, "unchanged"
+        dest.write_bytes(data)
+        return dest, "replaced"
     dest.write_bytes(data)
-    return dest
+    return dest, "added"
 
 
 def transcript_files(project: Project) -> list[Path]:
@@ -262,6 +267,15 @@ def imported_ids(project: Project) -> set[str]:
     return set(pd.read_parquet(project.paragraphs_path, columns=["interview_id"])["interview_id"])
 
 
+def unsynced_imported_ids(project: Project) -> set[str]:
+    """Interview ids already in the unsynced paragraph dataset."""
+    if not project.unsynced_paragraphs_path.exists():
+        return set()
+    import pandas as pd
+    return set(pd.read_parquet(project.unsynced_paragraphs_path,
+                               columns=["interview_id"])["interview_id"])
+
+
 def transcript_rows(project: Project) -> list[dict]:
     """Every transcript in the workspace with the id import gives it and whether it is in the
     dataset yet — the answer to "did my drag-and-drop work, and do I need to import again?"."""
@@ -273,15 +287,46 @@ def transcript_rows(project: Project) -> list[dict]:
         return []
     suffixes = load_step_config(project, "import").get("strip_suffixes") or []
     done = imported_ids(project)
-    rows = []
+    return _file_rows(project, files, suffixes, done, "synced")
+
+
+def unsynced_transcript_rows(project: Project) -> list[dict]:
+    """`transcript_rows`, for the never-SYNC'd pile: what is in `data/unsynced/` and whether
+    the unsynced dataset has it yet."""
+    from ..core.config import load_step_config
+    from ..core.ids import interview_id_from_filename
+
+    files = unsynced_files(project)
+    if not files:
+        return []
+    suffixes = load_step_config(project, "import").get("strip_suffixes") or []
+    done = unsynced_imported_ids(project)
+    return _file_rows(project, files, suffixes, done, "unsynced")
+
+
+def _file_rows(project: Project, files: list[Path], suffixes, done: set[str],
+               pile: str) -> list[dict]:
+    """One row per file: its id, whether the dataset has it, and whether the file has changed
+    since — a replaced transcript reads as not imported (`changed`), so the list and the Import
+    button both say there is something to do."""
+    from ..core import manifest
+    from ..core.ids import interview_id_from_filename
+
+    by_id: dict[str, Path] = {}
+    named = []
     for path in files:
         try:
             iid = interview_id_from_filename(path, suffixes)
         except ToolkitError:
             iid = ""            # import will refuse it and say why; the file still shows here
-        rows.append({"filename": path.name, "interview_id": iid,
-                     "imported": bool(iid) and iid in done})
-    return rows
+        named.append((path, iid))
+        if iid:
+            by_id[iid] = path
+    stale = manifest.stale_ids(project, pile, by_id)
+    return [{"filename": path.name, "interview_id": iid,
+             "imported": bool(iid) and iid in done and iid not in stale,
+             "changed": iid in stale}
+            for path, iid in named]
 
 
 def everything_imported(project: Project) -> bool:

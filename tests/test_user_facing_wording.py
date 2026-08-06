@@ -46,19 +46,17 @@ def test_no_message_explains_itself_to_its_author(path):
         for line, text, phrase in offenders)
 
 
-def test_the_duplicate_transcript_message_tells_you_what_to_do(tmp_path):
-    """The message a curator meets most often. It has to say what happened and what to do —
-    and nothing about what the alternative implementation would have been like."""
+def test_dropping_a_known_filename_replaces_and_says_which(tmp_path):
+    """A corrected transcript arrives under the filename it always had. The drop must replace
+    the old version — and report what it did, so the page can tell the curator to import
+    again rather than leaving a stale dataset behind a fresh file."""
     from transcript_toolkit.app import workspaces
-    from transcript_toolkit.errors import ToolkitError
     from transcript_toolkit.project import init_project
 
     project = init_project(str(tmp_path / "ws"))
-    workspaces.add_transcript(project, "Person_SYNC.docx", b"x")
-    with pytest.raises(ToolkitError) as e:
-        workspaces.add_transcript(project, "Person_SYNC.docx", b"y")
-
-    message = str(e.value)
-    assert "already in this project" in message
-    assert str(project.data_dir) in message          # where to go
-    assert "delete" in message.lower()               # what to do
+    path, outcome = workspaces.add_transcript(project, "Person_SYNC.docx", b"x")
+    assert outcome == "added"
+    path, outcome = workspaces.add_transcript(project, "Person_SYNC.docx", b"x")
+    assert outcome == "unchanged" and path.read_bytes() == b"x"
+    path, outcome = workspaces.add_transcript(project, "Person_SYNC.docx", b"y")
+    assert outcome == "replaced" and path.read_bytes() == b"y"

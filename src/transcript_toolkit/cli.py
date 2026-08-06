@@ -134,9 +134,10 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--yes", action="store_true", help="skip the cost confirmation prompt")
         p.add_argument("--skip-demo-check", action="store_true",
                        help="bypass the demo gate (dev use only)")
-        if step == "label":     # clip cannot batch: its chunks are sequential within an interview
-            p.add_argument("--batch", action=argparse.BooleanOptionalAction, default=None,
-                           help=BATCH_HELP)
+        # clip batches in waves (one per chunk depth — each wave can take up to 24h);
+        # the run's own prompt says so before anything is spent.
+        p.add_argument("--batch", action=argparse.BooleanOptionalAction, default=None,
+                       help=BATCH_HELP)
         p.set_defaults(func=run_fn)
         csub = p.add_subparsers(dest="action", metavar="")
         pa = csub.add_parser("annotate", parents=[common],
@@ -360,7 +361,7 @@ def cmd_clip(args) -> None:
     from .steps.clip import run_clip
 
     run_clip(_project(args), demo=args.demo, interviews=_split_interviews(args),
-             yes=args.yes, skip_demo_check=args.skip_demo_check)
+             yes=args.yes, skip_demo_check=args.skip_demo_check, batch=args.batch)
 
 
 def cmd_clip_annotate(args) -> None:

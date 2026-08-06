@@ -18,8 +18,10 @@ COMMANDS = [
     ["export"], ["cost"], ["status"],
 ]
 
-# steps whose units are all planned before any call, so they can go to the Batch API
-BATCHABLE = [["label"], ["summarize"], ["topics", "tag"], ["locations", "tag"]]
+# steps that can go to the Batch API. Clip is the odd one: its chunks are sequential (chunk
+# N's prompt is built from chunk N-1's output), so it batches in WAVES — one wave per chunk
+# depth, each up to 24h — and the run's own prompt says so before anything is spent.
+BATCHABLE = [["clip"], ["label"], ["summarize"], ["topics", "tag"], ["locations", "tag"]]
 
 
 @pytest.mark.parametrize("argv", COMMANDS, ids=lambda a: " ".join(a) or "root")
@@ -65,13 +67,6 @@ def test_update_has_an_upgrade_alias():
     parser = build_parser()
     for name in ("update", "upgrade"):
         assert parser.parse_args([name]).func.__name__ == "cmd_update"
-
-
-def test_clip_has_no_batch_flag():
-    """Clip's chunks are sequential within an interview (chunk N's prompt is built from chunk
-    N-1's output), so its calls cannot all be submitted up front."""
-    with pytest.raises(SystemExit):
-        build_parser().parse_args(["clip", "--batch"])
 
 
 def test_init_takes_a_directory_or_a_name(tmp_path, capsys, monkeypatch):

@@ -74,8 +74,11 @@ locations:
   interview's tags. `method` is one of:
   - `freq_width` (the default) — the topics are split into `bins` bins by how often they come
     up across the collection, over `range: [lowest, highest]` percent of an interview's clips,
-    and a rarer bin gets a lower threshold. Five bins over 10–30% are the thresholds 10, 15, 20,
-    25, 30. Two topics that come up equally often always get the same threshold.
+    and a rarer bin gets a lower threshold. Five bins over 10–30% make the ladder 10, 15, 20,
+    25, 30. Two topics that come up equally often always get the same threshold, and the
+    thresholds fan out from the middle of the range only as far as the frequencies themselves
+    are spread — a collection where every topic comes up about equally often is judged
+    (near-)flat, instead of tiny count differences being stretched to the extremes.
   - `equal_count` — the same, except each bin holds the same number of topics. It spreads the
     thresholds evenly over your list, at the cost of splitting equally-frequent topics between
     bins.
@@ -100,9 +103,10 @@ step-specific tunables — `clip`: `chunk_threshold_tokens`, `overlap_paragraphs
 `justify_min_score`; `import`: `session_regex`; `locations`: `regions_file`, `region_map_file`,
 `survey.*`; `export`: `filename`, `tabs`.
 
-The four steps that can use the Batch API (`label`, `summarize`, `topics`, `locations`) also take
-`batch_poll_interval_s` and `batch_max_total_wait_s` — how often to check a submitted job, and
-when to stop waiting (re-running the command resumes the same job).
+The steps that can use the Batch API (`clip`, `label`, `summarize`, `topics`, `locations`)
+also take `batch_poll_interval_s` and `batch_max_total_wait_s` — how often to check a submitted
+job, and when to stop waiting (re-running the command resumes the same job). On `clip` a batch
+run goes in waves — see [steps/clip.md](steps/clip.md).
 
 ## Prompts and vocabularies
 

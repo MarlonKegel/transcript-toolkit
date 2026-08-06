@@ -5,6 +5,11 @@ run as a single call; longer ones split into balanced chunks with a locked-conte
 overlap at each seam. Chunks within an interview run sequentially (each chunk N>=1 needs the
 previous chunk's output for its locked-context preamble); interviews run in parallel.
 
+Batch API: available, but in WAVES — the Batch API wants every request up front, and a chunk's
+prompt is built from the previous chunk's output, so each wave submits every interview's next
+uncached chunk as one batch and waits for it (up to 24h apiece). Half price; count in days
+rather than hours when interviews span several chunks. The full-run prompt says so.
+
 Demo-first: `--demo` clips the persisted `toolkit sample` interviews and writes the annotated
 review pages only; a full run is demo-gated, confirms cost, writes
 outputs/clips/{clips,paragraphs_clipped}.{parquet,csv} and the review pages (diags/clip/*.html).
@@ -24,7 +29,7 @@ from pydantic import BaseModel
 from ...core import cost as costmod
 from ...core.cache import JsonlAppender, cache_key, latest_records
 from ...core.config import load_step_config, require
-from ...core.console import confirm_or_abort, reveal
+from ...core.console import choose_transport, reveal
 from ...core.llm import build_schema, call_llm, check_levels, openai_client
 from ...core.parallel import worker_pool
 from ...core.render import format_paragraph_full
@@ -399,16 +404,19 @@ def _context(project: Project):
     return cfg, instructions, fingerprint
 
 
-def _plan_calls(frames: dict[str, pd.DataFrame], cache: dict, cfg: dict, instructions: str) -> tuple[int, int]:
-    """(n_cached, n_total) chunk calls for the selected interviews. Chunk N>=1's input depends
-    on chunk N-1's output, so only each interview's consecutive prefix of cache hits is
-    countable; everything after the first miss counts as fresh."""
+def _plan_calls(frames: dict[str, pd.DataFrame], cache: dict, cfg: dict,
+                instructions: str) -> tuple[int, int, int]:
+    """(n_cached, n_total, waves) chunk calls for the selected interviews. Chunk N>=1's input
+    depends on chunk N-1's output, so only each interview's consecutive prefix of cache hits is
+    countable; everything after the first miss counts as fresh. `waves` is how many rounds a
+    Batch-API run would need: the longest interview's count of still-uncached chunks."""
     model, reasoning, verbosity = cfg["model"], cfg["reasoning"], cfg["verbosity"]
-    n_cached = n_total = 0
+    n_cached = n_total = waves = 0
     for iid, df_interview in frames.items():
         chunks = chunk_paragraphs(df_interview, int(cfg["chunk_threshold_tokens"]),
                                   int(cfg["overlap_paragraphs"]))
         n_total += len(chunks)
+        prefix = 0
         prev_seg: ChunkSegmentation | None = None
         for chunk in chunks:
             if chunk.is_first:
@@ -419,17 +427,79 @@ def _plan_calls(frames: dict[str, pd.DataFrame], cache: dict, cfg: dict, instruc
             rec = cache.get(cache_key(model, reasoning, verbosity, instructions, user_content))
             if rec is None:
                 break
-            n_cached += 1
+            prefix += 1
             prev_seg = _seg_from_record(rec)
-    return n_cached, n_total
+        n_cached += prefix
+        waves = max(waves, len(chunks) - prefix)
+    return n_cached, n_total, waves
 
 
-def _estimate(cache: dict, fingerprint: str, model: str, n_fresh: int) -> str:
-    """Standard-tier cost suffix for clip's confirm. Clip has no Batch-API option: chunks within
-    an interview are sequential (chunk N's prompt is built from chunk N-1's output), so its calls
-    cannot all be submitted up front."""
-    est = costmod.estimate_pair(cache, fingerprint, model, n_fresh)
-    return f", ~${est[0]:.2f} est." if est else ""
+def _fill_cache_in_waves(project: Project, frames: dict, cache: dict, appender: JsonlAppender,
+                         cfg: dict, instructions: str, fingerprint: str, schema: dict) -> None:
+    """Batch transport for clip, in waves.
+
+    The Batch API wants every request up front, but a chunk's prompt is built from the previous
+    chunk's output — so each wave submits every interview's NEXT uncached chunk as one batch,
+    waits for it, and repeats until nothing is missing. Single-chunk interviews are done after
+    wave one; only the longest interview needs them all. Resumable like everything else: every
+    wave lands in the cache, and re-running attaches to an in-flight batch instead of paying
+    again."""
+    from ...core.batch import fill_cache_via_batch
+
+    model, reasoning, verbosity = cfg["model"], cfg["reasoning"], cfg["verbosity"]
+    client = openai_client(project.root)
+    wave = 0
+    while True:
+        pending = []
+        for iid, df_interview in frames.items():
+            chunks = chunk_paragraphs(df_interview, int(cfg["chunk_threshold_tokens"]),
+                                      int(cfg["overlap_paragraphs"]))
+            prev_seg: ChunkSegmentation | None = None
+            unit = None
+            for chunk in chunks:
+                if chunk.is_first:
+                    user_content = build_user_content(chunk, df_interview)
+                else:
+                    user_content = build_chunked_user_content(
+                        chunk, df_interview, prev_seg.clips, prev_seg.procedural_paragraph_idxs)
+                ck = cache_key(model, reasoning, verbosity, instructions, user_content)
+                rec = cache.get(ck)
+                if rec is None:
+                    unit = {"custom_id": f"{iid}__c{chunk.chunk_idx}", "user_content": user_content,
+                            "cache_key": ck, "iid": iid, "chunk": chunk}
+                    break
+                prev_seg = _seg_from_record(rec)
+            if unit is not None:
+                pending.append(unit)
+        if not pending:
+            return
+        wave += 1
+        print(f"\nBatch wave {wave}: the next uncached chunk of {len(pending)} interview(s).")
+
+        def make_record(unit: dict, parsed: dict, usage: dict) -> dict:
+            seg = ChunkSegmentation.model_validate(parsed)
+            chunk = unit["chunk"]
+            return {
+                "cache_key": unit["cache_key"], "fingerprint": fingerprint,
+                "interview_id": unit["iid"], "chunk_idx": chunk.chunk_idx,
+                "shown_start": chunk.shown_start, "shown_end": chunk.shown_end,
+                "decision_start": chunk.decision_start,
+                "owned_start": chunk.owned_start, "owned_end": chunk.owned_end,
+                "clips": [c.model_dump() for c in seg.clips],
+                "procedural_paragraph_idxs": list(seg.procedural_paragraph_idxs),
+                "model": model, "reasoning_effort": reasoning, "verbosity": verbosity,
+                "usage": usage, "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            }
+
+        fill_cache_via_batch(
+            client, pending, project.cache_dir / "clip_batch",
+            schema=schema, model=model, reasoning=reasoning, verbosity=verbosity,
+            instructions=instructions,
+            prompt_cache_key=cache_key(model, reasoning, verbosity, instructions),
+            make_record=make_record, cache=cache, appender=appender,
+            poll_interval_s=float(cfg.get("batch_poll_interval_s", 30)),
+            max_total_wait_s=float(cfg.get("batch_max_total_wait_s", 86400)),
+            unit_noun="chunk call")
 
 
 def _log_failures(project: Project, failed: list[tuple[str, list[str]]], filename: str):
@@ -445,7 +515,8 @@ def _log_failures(project: Project, failed: list[tuple[str, list[str]]], filenam
 
 
 def run_clip(project: Project, demo: bool = False, interviews: list[str] | None = None,
-             yes: bool = False, skip_demo_check: bool = False) -> pd.DataFrame:
+             yes: bool = False, skip_demo_check: bool = False,
+             batch: bool | None = None) -> pd.DataFrame:
     if demo and interviews:
         raise ToolkitError("--demo and --interview are mutually exclusive.")
     cfg, instructions, fingerprint = _context(project)
@@ -467,25 +538,37 @@ def run_clip(project: Project, demo: bool = False, interviews: list[str] | None 
     cache_path = project.cache_dir / "clip.jsonl"
     cache = latest_records(cache_path, "cache_key")
     frames = {iid: paragraphs_df[paragraphs_df["interview_id"] == iid] for iid in keys}
-    n_cached, n_total = _plan_calls(frames, cache, cfg, instructions)
+    n_cached, n_total, waves = _plan_calls(frames, cache, cfg, instructions)
     n_fresh = n_total - n_cached
 
+    use_batch = False
     if not demo:
         check_demo_gate(project, STEP, fingerprint,
                         demo_command="toolkit clip --demo", skip=skip_demo_check)
-        estimate = _estimate(cache, fingerprint, model, n_fresh)
-        confirm_or_abort(
-            f"Clip {len(keys)} interview(s) with {model} "
-            f"({n_cached} of {n_total} chunk calls cached, {n_fresh} fresh API calls{estimate})?", yes)
+        summary = (f"Clip {len(keys)} interview(s) with {model} "
+                   f"({n_cached} of {n_total} chunk calls cached, {n_fresh} fresh call(s)).")
+        if waves > 1:
+            summary += (f"\n  On this step the Batch API runs in {waves} waves: an interview's "
+                        f"chunks build on each other, so each wave waits for the one before it "
+                        f"(up to 24h apiece). Half price — but count in days, not hours.")
+        use_batch = choose_transport(summary, costmod.estimate_pair(cache, fingerprint, model,
+                                                                    n_fresh), yes=yes, batch=batch)
 
     print(f"Clipping {len(keys)} interview(s) · {model}/{reasoning} · "
           f"chunk threshold {cfg['chunk_threshold_tokens']} tokens / overlap "
-          f"{cfg['overlap_paragraphs']} paragraphs · {n_cached} cached / {n_fresh} fresh chunk calls")
+          f"{cfg['overlap_paragraphs']} paragraphs · {n_cached} cached / {n_fresh} fresh chunk calls"
+          + (" · Batch API" if use_batch else ""))
 
-    client = openai_client(project.root) if n_fresh else None
     appender = JsonlAppender(cache_path)
     lock = Lock()
     schema = build_schema(ChunkSegmentation, "ChunkSegmentation")
+
+    if use_batch and n_fresh:       # fill the cache first; the per-interview pass makes no call
+        _fill_cache_in_waves(project, frames, cache, appender, cfg, instructions,
+                             fingerprint, schema)
+        n_cached, n_total, _ = _plan_calls(frames, cache, cfg, instructions)
+        n_fresh = n_total - n_cached
+    client = openai_client(project.root) if n_fresh else None
 
     results: dict[str, dict] = {}
     failed: list[tuple[str, list[str]]] = []

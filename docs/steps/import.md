@@ -44,6 +44,24 @@ Reads the printed output carefully:
 `data/paragraphs.parquet` (+ `.csv`). Re-running is safe and cheap; do it whenever you add or
 change transcripts.
 
+## Re-importing a corrected transcript
+
+A corrected transcript comes back under the filename it always had — drop it into `data/` (or
+onto the app, which replaces the old file and says so) and run `toolkit import` again. Import
+keeps a record of what each file looked like when it was read in, so it knows the difference
+between the same file again and a changed one:
+
+- **Unchanged files** keep their original imported-at timestamp — the record means "when this
+  text came in", not "when import last ran".
+- **A changed file** replaces its old rows AND takes its old results with it: the clips,
+  labels, summaries and tags made from the superseded text are removed from `outputs/` (and
+  any hand-edited labels for it), the steps show that there is work to do again, and import
+  prints exactly what happened. Re-running the steps redoes only the changed interviews —
+  everything else is already cached and comes back free.
+- The **Interviews tab of the export** shows each transcript's imported-at date and time, so a
+  spreadsheet can be checked against a correction: exported before the correction was imported
+  means that row is out of date.
+
 ## Transcripts that were never SYNC'd
 
 `toolkit import --unsynced` reads `data/unsynced/` instead — transcripts with no timestamps

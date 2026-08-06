@@ -67,6 +67,7 @@ class Job:
     emitted: int = 0                    # lines ever written, including ones aged out of `lines`
     pending: str = ""                   # output with no newline yet — usually a question
     pending_at: float = 0.0             # when that unfinished line last changed
+    stop_requested: bool = False        # Ctrl-C sent; it finishes its current call, then stops
 
     def add_line(self, line: str) -> None:
         self.lines.append(line)
@@ -303,6 +304,7 @@ class JobManager:
             raise ToolkitError("Nothing is running.")
         job.add_line("")
         job.add_line("--- stopping (Ctrl-C) ---")
+        job.stop_requested = True
         job.revision += 1
         proc.send_signal(signal.SIGINT)
         self._killer = asyncio.create_task(self._kill_if_stuck(proc, job))

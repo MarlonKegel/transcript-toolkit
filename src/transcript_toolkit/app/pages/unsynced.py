@@ -16,7 +16,7 @@ from nicegui import ui
 from ...errors import ToolkitError
 from .. import content, workspaces
 from ..context import CONTEXT
-from .common import guard, inline_state, launch, run_status
+from .common import inline_state, launch, run_status, transcript_upload
 
 HREF = "/step/summarize"
 
@@ -35,59 +35,59 @@ def unsynced_section(refresh) -> None:
         def listing() -> None:
             _listing(project)
 
-        # Built once and never rebuilt by an upload: redrawing the box while files are still
-        # arriving drops most of a multi-file drop on the floor (see pages/transcripts.py).
-        async def receive(e) -> None:
-            added, refused = [], []
-            for upload in e.files:
-                try:
-                    workspaces.add_transcript(project, upload.name, await upload.read(),
-                                              unsynced=True)
-                    added.append(upload.name)
-                except ToolkitError as err:
-                    refused.append(str(err))
-            listing.refresh()
-            if added:
-                ui.notify(f"Added {len(added)} transcript{'s' if len(added) != 1 else ''}. "
-                          f"Read them in next.", type="positive")
-            for message in refused:
-                guard(ToolkitError(message))
-
-        ui.upload(on_multi_upload=receive, multiple=True, auto_upload=True,
-                  label="Drop transcripts that were never SYNC'd here") \
-            .props("accept=.docx flat bordered").classes("w-full")
-        ui.label(f"They are copied into {project.unsynced_dir}. {FOLDER_NOTE}") \
-            .classes("text-xs opacity-60 max-w-2xl")
-
         listing()
+        transcript_upload(project, listing.refresh, unsynced=True,
+                          label="Drop transcripts that were never SYNC'd here",
+                          next_move="Read them in next.",
+                          note=f"They are copied into {project.unsynced_dir}. {FOLDER_NOTE}")
         _flow(project, refresh)
 
 
 def _listing(project) -> None:
-    """What is in the folder, and what the toolkit has made of it."""
+    """What is in the folder, file by file — the same answer the Workspace list gives: did my
+    drop land, and has it been read in yet?"""
     from ...steps.import_ import unsynced_interview_rows
 
-    files = workspaces.unsynced_files(project)
+    files = workspaces.unsynced_transcript_rows(project)
     if not files:
         return
     try:
-        rows = unsynced_interview_rows(project)
+        facts = {r["interview_id"]: r for r in unsynced_interview_rows(project)}
     except ToolkitError:
-        rows = []
-    if not rows:
-        ui.label(f"{len(files)} file{'s' if len(files) != 1 else ''} waiting to be read in: "
-                 + ", ".join(p.name for p in files)).classes("text-sm max-w-2xl")
-        return
+        facts = {}
 
-    read_in = {r["interview_id"] for r in rows}
-    with ui.column().classes("gap-0 mt-2"):
-        for row in rows:
-            sessions = f" · {row['sessions']} sessions pooled" if row["sessions"] > 1 else ""
-            ui.label(f"{row['narrator']} — {row['words']:,} words, "
-                     f"{row['paragraphs']} paragraphs{sessions}").classes("text-sm")
-    if len(read_in) < len(files):
-        ui.label(f"{len(files) - len(read_in)} of the {len(files)} files have not been read in "
-                 f"yet — use 'Read them in'.").classes("text-xs tk-caution")
+    waiting = [f for f in files if not f["imported"]]
+    headline = f"{len(files)} transcript{'s' if len(files) != 1 else ''}"
+    headline += (f" · {len(waiting)} not read in yet — use 'Read them in'" if waiting
+                 else " · all read in")
+    ui.label(headline).classes("text-sm font-medium mt-2")
+
+    with ui.row().classes("w-full items-center gap-2 px-1 text-xs opacity-60 font-medium"):
+        ui.label("File").classes("grow")
+        ui.label("Narrator").classes("w-40")
+        ui.label("Words").classes("w-24 text-right")
+    with ui.column().classes("w-full gap-0"):
+        for f in files:
+            _row(f, facts.get(f["interview_id"]))
+
+
+def _row(row: dict, facts: dict | None) -> None:
+    done = row["imported"]
+    with ui.row().classes("items-center gap-2 w-full py-1 tk-row"):
+        ui.icon("check_circle" if done else "schedule") \
+            .classes("tk-good" if done else "tk-caution").props("size=1rem")
+        with ui.column().classes("gap-0 grow min-w-0"):
+            ui.label(row["filename"]).classes("text-xs font-mono truncate")
+            if not done:
+                ui.label("changed — read it in again" if row.get("changed")
+                         else "not read in yet").classes("text-xs tk-caution")
+        if facts:
+            sessions = f" · {facts['sessions']} sessions" if facts["sessions"] > 1 else ""
+            ui.label(facts["narrator"] + sessions).classes("text-xs opacity-70 w-40 truncate")
+            ui.label(f"{facts['words']:,}").classes("text-xs opacity-70 w-24 text-right")
+        else:
+            ui.label("").classes("w-40")
+            ui.label("").classes("w-24")
 
 
 def _flow(project, refresh) -> None:
