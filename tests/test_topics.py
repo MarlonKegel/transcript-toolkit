@@ -145,6 +145,16 @@ def test_justify_on_demo_approves_justify_off_full_run(project):
     assert len(project.llm_calls) == 2 * n_demo
 
 
+def test_a_full_run_leaves_pages_to_read(project):
+    """The same rule as every other step: a run that has been paid for leaves something on disk
+    to check it by, without having to know that `annotate` exists."""
+    run_topics_tag(project, "main", demo=True)
+    assert (project.diags_dir / "topics" / "main_demo.html").exists()
+    run_topics_tag(project, "main", yes=True)
+    assert (project.diags_dir / "topics" / "main_index.html").exists()
+    assert list((project.diags_dir / "topics").glob("main_fake_*.html"))
+
+
 def test_topic_spreadsheet_edit_stales_demo(project):
     run_topics_tag(project, "main", demo=True)
     (project.topics_dir / "main.csv").write_text(

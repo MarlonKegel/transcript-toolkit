@@ -37,10 +37,13 @@ dependencies (`pip install "transcript-toolkit[survey]"`, plus a spaCy model and
 
 ## Reviewing
 
-`diags/locations/demo.html` (opened for you after a demo) shows each clip with its country/region
-tags (and justifications on demo runs); `toolkit locations annotate` writes the full-corpus
-`locations.html`. Check that only substantive places are tagged, not passing mentions. The prompt
-is `prompts/tag_locations.md`.
+Every run writes a page: a demo writes `diags/locations/demo.html` and opens it for you, and a
+full run writes `diags/locations/locations.html` for the whole corpus. Each shows every clip
+with its country/region tags, and its justifications on demo runs. Check that only substantive
+places are tagged, not passing mentions. The prompt is `prompts/tag_locations.md`.
+
+`toolkit locations annotate` rebuilds `locations.html` from the tags you already have — free and
+instant, for picking up a change to the page itself without paying for the step again.
 
 ## Rolling up: decide, then do
 

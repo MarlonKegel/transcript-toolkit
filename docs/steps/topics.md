@@ -62,8 +62,10 @@ pay for a full pass per taxonomy.
 
 ## Reviewing and tuning
 
-The demo opens `diags/topics/<set>_demo.html`; `toolkit topics annotate --set <name>` writes a
-per-interview page for every tagged clip (linked from `<set>_index.html`). Each clip is scored
+Every run writes a page: a demo writes `diags/topics/<set>_demo.html` and opens it for you, and a
+full run writes a per-interview page for every tagged clip, linked from `<set>_index.html`.
+(`toolkit topics annotate --set <name>` rebuilds those pages from the tags you already have —
+free and instant.) Each clip is scored
 0/1/2 per topic (0 = no, 1 = maybe, 2 = yes); a clip is "tagged" with a topic at score 2. If
 topics are over- or under-applied, sharpen the `description` in your spreadsheet and re-demo —
 that text, not the code, is where the tagging rules live.

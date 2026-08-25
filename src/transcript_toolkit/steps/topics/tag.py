@@ -34,6 +34,7 @@ from ...errors import ToolkitError
 from ...project import Project
 from ...state import check_demo_gate, record_demo, record_full
 from ...core.prompts import load_prompt
+from .annotate import render_review_pages
 from .taxonomy import TopicSet, build_legend, load_topic_set
 
 STEP = "topics"
@@ -220,6 +221,10 @@ def run_topics_tag(project: Project, set_name: str | None = None, demo: bool = F
     _print_distribution(wide_df[wide_df["clip_id"].isin(texts)], tset, cfg)
     print(f"\nWrote {len(wide_df)} clip taggings -> {wide_path}\n"
           f"      {len(long_df)} clip x topic rows -> {long_path}")
+    # Written on every run, the way clip and label write theirs. Last, after the deliverable
+    # and the run record, so that a run which has been paid for is saved whatever the
+    # rendering does; `toolkit topics annotate` re-makes the pages for nothing.
+    print(f"Review files: open {render_review_pages(project, sset, quiet=True)}")
     return wide_df
 
 

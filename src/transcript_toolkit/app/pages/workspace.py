@@ -130,6 +130,7 @@ def _next_step() -> None:
 
 def _pipeline() -> None:
     try:
+        project = CONTEXT.require_project()
         status, sets = _status_and_sets()
     except ToolkitError as e:
         guard(e)
@@ -139,7 +140,7 @@ def _pipeline() -> None:
     with ui.column().classes("w-full gap-2"):
         for step in content.STEPS:
             set_name = sets[0] if (step.per_set and sets) else None
-            word, colour = stage.step_state(status, step, set_name)
+            word, colour = stage.step_state(status, step, set_name, project)
             with ui.card().classes("w-full py-3"):
                 with ui.row().classes("items-center w-full gap-3"):
                     ui.label(str(step.order)).classes("text-sm opacity-40 w-4 text-right")

@@ -28,8 +28,15 @@ def ran_fully(status: dict, step: content.Step, set_name: str | None) -> bool:
     return bool(status["steps"].get(key, {}).get("full"))
 
 
-def step_state(status: dict, step: content.Step, set_name: str | None) -> tuple[str, str]:
-    """(word, colour) for one step, read off `toolkit status`."""
+def step_state(status: dict, step: content.Step, set_name: str | None,
+               project: Project) -> tuple[str, str]:
+    """(word, colour) for one step, read off `toolkit status` and what is on disk.
+
+    "Partly run" is a question about the step's OWN output — the same question the buttons
+    ask (`content.available`), not the export list. Judged by the export list, a locations
+    step that has tagged some interviews reads as never started, because what export counts
+    is written a command later by `locations map`.
+    """
     try:
         key = content.step_key(step, set_name)
     except ValueError:
@@ -37,7 +44,7 @@ def step_state(status: dict, step: content.Step, set_name: str | None) -> tuple[
     record = status["steps"].get(key, {})
     if record.get("full"):
         return "run on everything", "positive"
-    if step.deliverable in {d.split(":")[0] for d in status["deliverables"]}:
+    if step.deliverable in {d.split(":")[0] for d in content.available(project, set_name)}:
         return "partly run", "secondary"
     if record.get("demo"):
         return "demo reviewed", "primary"

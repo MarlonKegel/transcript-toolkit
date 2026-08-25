@@ -66,7 +66,14 @@ def _render_interview(interview_id: str, paragraphs: pd.DataFrame, clips: pd.Dat
                     back=(f"{set_name}_index.html", BACK_LABEL) if set_name else None)
 
 
-def annotate_topics(project: Project, set_name: str | None = None) -> None:
+def render_review_pages(project: Project, set_name: str | None = None, quiet: bool = False):
+    """Write this set's per-interview pages and its index, and return where the index went.
+
+    A full `topics tag` run calls this as its last move and so does `topics annotate`, so the
+    pages beside a finished run and the pages the rebuild button makes are the same pages made
+    the same way. `quiet` drops the per-interview lines, which a corpus run has already
+    printed one of per interview as it went.
+    """
     cfg = load_step_config(project, STEP)
     tset = load_topic_set(project, cfg, set_name)
     sset = tset.name
@@ -90,7 +97,11 @@ def annotate_topics(project: Project, set_name: str | None = None) -> None:
         path = out_dir / f"{sset}_{iid}.html"
         path.write_text(html)
         entries.append((path.name, iid, f"{len(sub_long)} tagged clips"))
-        print(f"  [{iid}] {len(sub_p)} paragraphs / {len(sub_c)} clips "
-              f"({len(sub_long)} tagged) -> {path}")
-    index = write_index(out_dir / f"{sset}_index.html", f"Topics ‘{sset}’ — review", entries)
-    print(f"Index: {index}")
+        if not quiet:
+            print(f"  [{iid}] {len(sub_p)} paragraphs / {len(sub_c)} clips "
+                  f"({len(sub_long)} tagged) -> {path}")
+    return write_index(out_dir / f"{sset}_index.html", f"Topics ‘{sset}’ — review", entries)
+
+
+def annotate_topics(project: Project, set_name: str | None = None) -> None:
+    print(f"Index: {render_review_pages(project, set_name)}")

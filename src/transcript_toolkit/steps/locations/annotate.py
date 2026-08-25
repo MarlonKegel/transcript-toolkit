@@ -62,7 +62,13 @@ def write_review_html(project: Project, wide: pd.DataFrame, long: pd.DataFrame,
     return path
 
 
-def annotate_locations(project: Project) -> None:
+def render_review_page(project: Project):
+    """Write locations.html from the tags on disk, and return where it went.
+
+    A full `locations tag` run calls this as its last move and so does `locations annotate`,
+    so the page sitting beside a finished run and the page the rebuild button makes are the
+    same page made the same way — there is no second renderer to drift.
+    """
     out_dir = project.outputs_dir / "locations"
     wide_path = out_dir / "clip_locations.parquet"
     if not wide_path.exists():
@@ -70,6 +76,9 @@ def annotate_locations(project: Project) -> None:
     wide = pd.read_parquet(wide_path)
     long = pd.read_parquet(out_dir / "clip_locations_long.parquet")
     para_by_interview = paragraphs_by_interview(load_paragraphs(project))
-    path = write_review_html(project, wide, long, para_by_interview, "locations.html",
+    return write_review_html(project, wide, long, para_by_interview, "locations.html",
                              title="Clip locations")
-    print(f"Wrote {path}")
+
+
+def annotate_locations(project: Project) -> None:
+    print(f"Wrote {render_review_page(project)}")

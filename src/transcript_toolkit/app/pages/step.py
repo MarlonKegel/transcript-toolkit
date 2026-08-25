@@ -71,7 +71,7 @@ def step_page(slug: str, set: str | None = None,               # noqa: A002 - UR
 
         @ui.refreshable
         def actions() -> None:
-            _prerequisites(step)
+            _prerequisites(step, set_name)
             _sample(step, href, refresh_all)
             _flow(project, step, set_name, href, refresh_all)
 
@@ -186,9 +186,10 @@ def _tabs(step: content.Step, sets: list[str], current: str | None) -> None:
     from .. import stage
 
     status = _status()
+    project = CONTEXT.require_project()
     with ui.row().classes("w-full gap-1 flex-wrap items-center"):
         for name in sets:
-            word, colour = stage.step_state(status, step, name)
+            word, colour = stage.step_state(status, step, name, project)
             classes = "text-sm px-3 py-1 rounded no-underline flex items-center gap-2"
             classes += " bg-primary text-white" if name == current else " text-primary"
             with ui.link(target=f"{href_for(step)}?{SET_QUERY}={name}").classes(classes) \
@@ -272,10 +273,26 @@ def _status() -> dict:
         return {"imported": False, "deliverables": [], "steps": {}}
 
 
-def _prerequisites(step: content.Step) -> None:
+def _available(set_name: str | None = None) -> set[str]:
+    """What is on disk for this page's step and topic list, in the names `needs` uses.
+
+    Every button that can be blocked asks this, and nothing here reads `toolkit status`'s
+    deliverable list: that list says what the spreadsheet would include, which is a different
+    question and, for locations, a different file (see content.available).
+    """
+    project = CONTEXT.project
+    if project is None:
+        return set()
+    try:
+        return content.available(project, set_name)
+    except (ToolkitError, OSError):
+        return set()
+
+
+def _prerequisites(step: content.Step, set_name: str | None = None) -> None:
     """Say plainly when an earlier step has to happen first, instead of letting the run fail."""
     status = _status()
-    have = {d.split(":")[0] for d in status["deliverables"]}
+    have = {d.split(":")[0] for d in _available(set_name)}
     if not status["imported"]:
         with ui.card().classes(f"w-full {theme.WARN}"):
             ui.label("Import the transcripts first.").classes("text-sm font-medium")
@@ -389,7 +406,7 @@ def _rebuild_button(step: content.Step, set_name: str | None, href: str) -> None
     """Re-render the review pages from results already saved. Free and instant, and the way to
     pick up an improvement to the pages themselves without paying for the step again."""
     annotate = next((a for a in step.extras if a.slug == "annotate"), None)
-    if annotate is None or content.missing_for(annotate, _status()["deliverables"], set_name):
+    if annotate is None or content.missing_for(annotate, _available(set_name), set_name):
         return
     title = content.action_title(step, annotate, set_name)
     ui.button("Rebuild these pages", icon="refresh",
@@ -483,6 +500,27 @@ DONE_DERIVED = ("This has already run on what is there now, and nothing it reads
                 "step it reads from, and this comes back.")
 
 
+def _nothing_to_read_yet(step: content.Step, missing: list[str]) -> str:
+    """Why a button is greyed out, pointing at whatever has to happen first.
+
+    What comes first is not always another step: three of the locations moves read what the
+    move above them on the same page wrote. Sending someone back to the step they have just
+    run, when the thing to press is a few inches higher up, is how a greyed-out button becomes
+    a dead end instead of an instruction.
+    """
+    for name in missing:
+        made_by = content.produces(name)
+        if made_by is not None:
+            earlier, action = made_by
+            number = content.sequel_number(earlier, action)
+            where = f"step {number}, {action.title}," if number else f"'{action.title}'"
+            return (f"Nothing to work from yet — this reads what {where} above produces. "
+                    f"Run that first.")
+    return (f"Nothing to work from yet — this reads the "
+            f"{', '.join(m.split(':')[0] for m in missing)} that "
+            f"'{step.title}' produces. Run this step first.")
+
+
 def _run_button(step: content.Step, action: content.Action, set_name: str | None, href: str,
                 *, flat: bool = False, label: str = "Run", argv=None, done: bool = False) -> None:
     """A Run button that is only clickable when it would do something.
@@ -492,15 +530,13 @@ def _run_button(step: content.Step, action: content.Action, set_name: str | None
     found out by pressing.
     """
     title = content.action_title(step, action, set_name)
-    missing = content.missing_for(action, _status()["deliverables"], set_name)
+    missing = content.missing_for(action, _available(set_name), set_name)
     build = argv or (lambda: content.action_argv(action, set_name))
     button = ui.button(label, on_click=lambda _, t=title: launch(t, build(), href)) \
         .props("dense" + (" flat" if flat else ""))
     if missing:
         button.disable()
-        button.tooltip(f"Nothing to work from yet — this reads the "
-                       f"{', '.join(m.split(':')[0] for m in missing)} that "
-                       f"'{step.title}' produces. Run this step first.")
+        button.tooltip(_nothing_to_read_yet(step, missing))
     elif done:
         button.disable()
         button.tooltip(DONE_DERIVED)
@@ -518,7 +554,7 @@ def _sequels(project, step: content.Step, set_name: str | None, href: str, refre
             "A clip is what the model reads; a catalogue entry is about an interview. These "
             "turn one into the other, and are worth running only once the whole collection "
             "has been tagged.")
-    for i, action in enumerate(step.sequels, start=4):
+    for i, action in enumerate(step.sequels, start=content.SEQUELS_START):
         _sequel(project, step, set_name, href, i, action, refresh)
 
 

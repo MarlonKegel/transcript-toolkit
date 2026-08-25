@@ -28,7 +28,7 @@ class Action:
     blurb: str
     argv: tuple[str, ...]
     needs_set: bool = False
-    needs: tuple[str, ...] = ()     # deliverables it reads; without them the button is disabled
+    needs: tuple[str, ...] = ()     # what it reads (see `available`); missing -> button disabled
     explain: str = ""               # the `i` tooltip: what this is, for someone new to it
     preview: str = ""               # renders in the app as a table: "chunks" | "batches"
     reviews: tuple[Review, ...] = ()   # pages it writes, linked once they are there
@@ -52,8 +52,8 @@ class Step:
     batch: bool = False             # can go to the Batch API
     per_set: bool = False           # needs --set (topics)
     needs_sample: bool = False      # its demo runs on the `toolkit sample` interviews
-    deliverable: str = ""           # name in gather_status()["deliverables"]
-    needs: tuple[str, ...] = ()     # deliverables that must exist first
+    deliverable: str = ""           # what a full run of this step produces (see `available`)
+    needs: tuple[str, ...] = ()     # what it reads; must exist before the step can run
     reviews: tuple[Review, ...] = field(default_factory=tuple)
     # The moves that follow tagging, in order. Numbered on the page, because the order is the
     # work: see what each way of deciding would tag, then roll up with the one you picked.
@@ -233,7 +233,8 @@ STEPS: tuple[Step, ...] = (
         key="locations", slug="locations", title="Locations", order=5,
         blurb="Tag clips with the countries and regions they talk about.",
         argv=("locations", "tag"), batch=True, deliverable="locations", needs=("clips",),
-        unit="clips", reviews=(Review("locations.html", "Open the review page"),),
+        unit="clips", reviews=(Review("demo.html", "Open the demo page"),
+                               Review("locations.html", "Open the review page")),
         review_hint="Check that places the narrator only mentions in passing are not tagged as "
                     "what the clip is about, and that spellings match across interviews.",
         sequels=(
@@ -245,14 +246,14 @@ STEPS: tuple[Step, ...] = (
                    "A place becomes one of an interview's places once enough of that "
                    "interview's clips talk about it — and 'enough' is your decision. This draws "
                    "what each way of deciding would tag, side by side. Nothing is sent to OpenAI.",
-                   ("locations", "thresholds"), needs=("locations",),
+                   ("locations", "thresholds"), needs=("locations.map",),
                    reviews=(Review("locations_thresholds.html", "Open the comparison"),),
                    options="compare", explain=ROLLUP_EXPLAINER),
             Action("rollup", "Roll up to interview places",
                    "Set the rule you settled on and apply it: the per-clip places become one set "
                    "per interview. The same rule applies to regions, which are rolled up as "
                    "regions and only then expanded into their countries.",
-                   ("locations", "rollup"), needs=("locations",), setting="rollup"),
+                   ("locations", "rollup"), needs=("locations.map",), setting="rollup"),
         ),
         extras=(
             Action("annotate", "Re-render review page",
@@ -366,16 +367,76 @@ def action_argv(action: Action, set_name: str | None = None) -> list[str]:
     return argv
 
 
-def missing_for(action: Action, deliverables: list[str], set_name: str | None = None) -> list[str]:
+def missing_for(action: Action, have, set_name: str | None = None) -> list[str]:
     """What this action reads that is not there yet.
 
     An action whose input does not exist can only fail, so the page disables the button and
     says what is missing — rather than letting someone click it and read a stack of words in
-    the terminal about a step they have not run.
+    the terminal about a step they have not run. `have` is what `available` found on disk.
     """
-    have = set(deliverables)
+    have = set(have)
     return [need.format(set=set_name or "") for need in action.needs
             if need.format(set=set_name or "") not in have]
+
+
+# --- what is on disk, in the names `needs` uses -----------------------------------------------
+#
+# Two kinds of name, because there are two kinds of thing a button can be waiting for:
+#
+#   `clips`, `labels`, `summaries`, `topics:<set>`, `locations`
+#       what a full run of that step writes itself;
+#   `locations.map`
+#       what one of the free moves that follow a step writes.
+#
+# Both are answered by `steps/freshness.py`, which owns the filenames — deliberately NOT by
+# `toolkit status`'s deliverable list. That list answers a different question ("what would the
+# spreadsheet include?"), and for locations it answers it with a file `locations map` writes,
+# one command after the tagging. Gating the buttons on it made `map` wait for its own output.
+
+
+def _deliverable_name(step: "Step", set_name: str | None) -> str:
+    return f"{step.deliverable}:{set_name}" if step.per_set and set_name else step.deliverable
+
+
+def available(project, set_name: str | None = None) -> set[str]:
+    """The names in `needs` whose files are on disk right now.
+
+    `set_name` is the topic list the page is about: a per-set step's output is only ever asked
+    about one list at a time, which is the same list `missing_for` formats its needs with.
+    """
+    from ..steps import freshness as fresh
+
+    have = {_deliverable_name(step, set_name) for step in STEPS
+            if fresh.wrote_its_results(project, step.key, set_name)}
+    have |= {f"{step_key}.{slug}" for step_key, slug in fresh.DERIVED
+             if fresh.derived_exists(project, step_key, slug, set_name)}
+    return have
+
+
+def produces(name: str) -> tuple["Step", Action] | None:
+    """The step, and the move on its page, that a `needs` name stands for.
+
+    `None` for a step's own output, which no single button produces — the step itself does.
+    """
+    step_key, _, slug = name.partition(".")
+    if not slug:
+        return None
+    step = next((s for s in STEPS if s.key == step_key), None)
+    if step is None:
+        return None
+    action = next((a for a in runnable(step) if a.slug == slug), None)
+    return (step, action) if action else None
+
+
+# The moves that follow a step's own run are numbered from here on its page: try it, read it
+# and then are 1, 2 and 3. Named so the page's numbering and anything that refers to a move by
+# its number cannot disagree.
+SEQUELS_START = 4
+
+
+def sequel_number(step: "Step", action: Action) -> int | None:
+    """What this move is called on the page — "4 · Expand regions into countries"."""
+    return SEQUELS_START + step.sequels.index(action) if action in step.sequels else None
 
 
 # Every step prints one `  [3/12] ...` line per unit as it finishes it, so how far a run has got

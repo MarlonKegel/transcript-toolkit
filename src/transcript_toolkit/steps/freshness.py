@@ -190,6 +190,22 @@ def _editable_input(project: Project, step: str, action: str):
     return project.root / where if where else None
 
 
+def derived_exists(project: Project, step: str, action: str,
+                   set_name: str | None = None) -> bool:
+    """Whether this free move's output is on disk at all.
+
+    A narrower question than `derived_state`: it asks only whether the file is there, not
+    whether it is still up to date. That is what a *later* move needs to know — `locations
+    rollup` reads what `locations map` wrote, and an out-of-date table is still something to
+    read, whereas a missing one can only make the run fail.
+    """
+    paths = DERIVED.get((step, action))
+    if paths is None:
+        return False
+    return all((project.outputs_dir / p.format(set=set_name or "")).exists()
+               for p in paths[0])
+
+
 def derived_state(project: Project, step: str, action: str, set_name: str | None = None) -> str:
     """CURRENT when this action's output is on disk and newer than everything it reads."""
     paths = DERIVED.get((step, action))
@@ -197,7 +213,7 @@ def derived_state(project: Project, step: str, action: str, set_name: str | None
         return NONE
     outputs, inputs = ([project.outputs_dir / p.format(set=set_name or "") for p in group]
                        for group in paths)
-    if not all(p.exists() for p in outputs):
+    if not derived_exists(project, step, action, set_name):
         return NONE
     watched = [*inputs, project.config_path, _editable_input(project, step, action)]
     newest_input = max((p.stat().st_mtime for p in watched if p and p.exists()), default=0.0)

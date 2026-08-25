@@ -180,6 +180,26 @@ def test_annotate_rerenders_and_requires_deliverable(project):
     assert (project.diags_dir / "locations" / "locations.html").exists()
 
 
+def test_a_full_run_leaves_a_page_to_read(project):
+    """Clip, label and summarize all write their review page as part of the run. Locations did
+    not: a corpus had been tagged and paid for, and there was nothing on disk to check it by
+    until somebody knew to run `annotate`."""
+    run_locations_tag(project, demo=True)
+    assert (project.diags_dir / "locations" / "demo.html").exists()
+    run_locations_tag(project, yes=True)
+    assert (project.diags_dir / "locations" / "locations.html").exists()
+
+
+def test_a_subset_run_renders_the_whole_collection(project):
+    """The page is made from the deliverable after the subset was merged into it, so re-running
+    two interviews does not reduce the review page to those two."""
+    run_locations_tag(project, demo=True)
+    run_locations_tag(project, yes=True)
+    run_locations_tag(project, interviews=["fake_beta"], yes=True)
+    page = (project.diags_dir / "locations" / "locations.html").read_text()
+    assert "fake_alpha" in page and "fake_beta" in page
+
+
 def test_batch_transport_fills_cache_and_builds_deliverables(project, monkeypatch):
     run_locations_tag(project, demo=True)
 

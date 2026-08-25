@@ -38,7 +38,7 @@ from ...core.tables import (load_clips, load_paragraphs, merge_subset, paragraph
 from ...errors import ToolkitError
 from ...project import Project
 from ...state import check_demo_gate, record_demo, record_full
-from .annotate import write_review_html
+from .annotate import render_review_page, write_review_html
 
 STEP = "locations"
 
@@ -257,6 +257,10 @@ def run_locations_tag(project: Project, demo: bool = False, sample_n: int | None
     n_place = int(wide["has_place"].sum())
     print(f"\nWrote {len(wide)} clip taggings -> {wide_path}")
     print(f"      {len(long)} place rows -> {long_path}")
+    # Written on every run, the way clip and label write theirs. Last, after the deliverable
+    # and the run record, so that a run which has been paid for is saved whatever the
+    # rendering does; `toolkit locations annotate` re-makes the page for nothing.
+    print(f"Review file: open {render_review_page(project)}")
     print(f"Clips with >=1 place: {n_place}/{len(wide)} ({100 * n_place / max(len(wide), 1):.0f}%). "
           f"Next: `toolkit locations map`.")
     return wide
