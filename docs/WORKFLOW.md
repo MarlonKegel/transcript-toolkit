@@ -78,6 +78,8 @@ days rather than hours (see [steps/clip.md](steps/clip.md)).
 
 ```sh
 toolkit import                 # parse transcripts; check the printed tables
+#   a transcript that has no timestamps and never will goes in data/unsynced/ — import reads
+#   that folder too, and those interviews go through every step (docs/steps/import.md)
 toolkit sample                 # pick the demo interviews (once)
 
 toolkit clip --demo            # demo → review page opens → adjust → re-demo
@@ -87,12 +89,6 @@ toolkit label
 
 toolkit summarize --demo
 toolkit summarize
-
-#   transcripts with no timestamps at all can be summarized and nothing else. Put them in
-#   data/unsynced/ (see docs/steps/import.md); their summaries join the ones above.
-toolkit import --unsynced
-toolkit summarize --unsynced --demo
-toolkit summarize --unsynced
 
 #   drop your topic list into topics/ first (collection.xlsx or .csv: name, description)
 toolkit topics tag --set collection --demo    # → review page opens → tune the list → re-demo

@@ -219,7 +219,7 @@ def set_api_key(project: Project, key: str) -> None:
 def add_transcript(project: Project, filename: str, data: bytes,
                    unsynced: bool = False) -> tuple[Path, str]:
     """Put an uploaded .docx where the toolkit looks for it: `data/` for a SYNC'd transcript,
-    `data/unsynced/` for one that was never SYNC'd and can therefore only be summarized.
+    `data/unsynced/` for one that was never SYNC'd, which import reads too.
 
     Dropping a file that is already here replaces the old version — that is how a corrected
     transcript comes in. The outcome ("added", "replaced" or "unchanged") goes back to the
@@ -268,12 +268,12 @@ def imported_ids(project: Project) -> set[str]:
 
 
 def unsynced_imported_ids(project: Project) -> set[str]:
-    """Interview ids already in the unsynced paragraph dataset."""
-    if not project.unsynced_paragraphs_path.exists():
-        return set()
-    import pandas as pd
-    return set(pd.read_parquet(project.unsynced_paragraphs_path,
-                               columns=["interview_id"])["interview_id"])
+    """Interview ids from the untimed folder that are already in the dataset.
+
+    The same dataset as everything else — one import reads both folders — so this is
+    `imported_ids` asked about the files in that folder.
+    """
+    return imported_ids(project)
 
 
 def transcript_rows(project: Project) -> list[dict]:
@@ -291,8 +291,8 @@ def transcript_rows(project: Project) -> list[dict]:
 
 
 def unsynced_transcript_rows(project: Project) -> list[dict]:
-    """`transcript_rows`, for the never-SYNC'd pile: what is in `data/unsynced/` and whether
-    the unsynced dataset has it yet."""
+    """`transcript_rows`, for the never-SYNC'd folder: what is in `data/unsynced/` and whether
+    the dataset has it yet."""
     from ..core.config import load_step_config
     from ..core.ids import interview_id_from_filename
 
@@ -329,7 +329,17 @@ def _file_rows(project: Project, files: list[Path], suffixes, done: set[str],
             for path, iid in named]
 
 
+def all_transcript_rows(project: Project) -> list[dict]:
+    """Every transcript in the project, both folders — what one Import reads."""
+    return [*transcript_rows(project), *unsynced_transcript_rows(project)]
+
+
 def everything_imported(project: Project) -> bool:
-    """Whether every transcript in the folder is already in the dataset."""
-    rows = transcript_rows(project)
+    """Whether every transcript in the project is already in the dataset.
+
+    Both folders: one import reads them together, so a file waiting in either of them is a
+    reason to run it — and a project whose only transcripts were never SYNC'd is still a
+    project with transcripts to read.
+    """
+    rows = all_transcript_rows(project)
     return bool(rows) and all(r["imported"] for r in rows)

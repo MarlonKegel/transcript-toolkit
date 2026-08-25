@@ -37,8 +37,8 @@ def current_fingerprint(project: Project, step: str, set_name: str | None = None
         from .label.run import _context
         return _context(project)[2]
     if step == "summarize":
-        from .summarize import UNSYNCED, _context
-        return _context(project, None, set_name == UNSYNCED)[2]
+        from .summarize import _context
+        return _context(project)[2]
     if step == "topics":
         from .topics.tag import _context
         return _context(project, set_name, None, False)[4]
@@ -63,8 +63,8 @@ def unit_count(project: Project, step: str, set_name: str | None = None) -> int:
         return int(pd.read_parquet(project.paragraphs_path,
                                    columns=["interview_id"])["interview_id"].nunique())
     if step == "summarize":
-        from .summarize import UNSYNCED, _context
-        return len(_context(project, None, set_name == UNSYNCED)[3])
+        from .summarize import _context
+        return len(_context(project)[3])
     from ..core.tables import clips_path
     path = clips_path(project)
     if not path.exists():

@@ -194,19 +194,23 @@ greyed out, and say what is missing when you hover them.
 
 ### Transcripts that were never SYNC'd
 
-The Summarize page has one section no other page has, folded away until you open it:
-**Transcripts that were never SYNC'd**. A SYNC'd transcript carries a timestamp on every
-paragraph, and that is what lets the toolkit cut it into clips — which is what labels, topics and
-places are all attached to. A summary is the exception: it is made from the interview as a whole,
-so it needs no times at all.
+Sometimes a narrator revises a transcript so heavily that the recording no longer matches it, and
+the edited text becomes the record. Those transcripts have no timestamps and never will.
 
-Drop those files there and they are kept in a folder of their own, out of the collection — the
-fold lists each file and whether it has been read in, the same way the Workspace list does. Read
-them in, try it on a couple, read what came back, then summarize them all — the same three moves,
-with a demo of their own. Their summaries go into the same file as the rest, and the export's
-Interviews tab gains a **Transcript** column saying which is which: those rows have a summary and
-no tags, and the column is what says that is a fact about the transcript rather than work left
-undone. (In Terminal: `toolkit import --unsynced`, then `toolkit summarize --unsynced`.)
+The Workspace page's transcript list has a fold underneath it, **Transcripts that were never
+SYNC'd**, with a drop box of its own. Files dropped there are kept in their own folder, and the
+same **Import** reads them: they are clipped, labelled, summarized and tagged like every other
+interview, because a clip is a run of paragraphs and paragraph numbers are something every
+transcript has.
+
+The one difference is that their clips have no start and end time. The spreadsheet leaves those
+cells empty, the review pages show a paragraph range instead, and the Interviews tab's
+**Transcript** column says which interviews they are — so an empty Start is visibly a fact about
+the transcript rather than something that went wrong.
+
+They have their own folder rather than going in with the rest because a transcript that *should*
+have timestamps and does not is a mistake worth catching: dropped in with the others it is
+refused and named, and moving it to this fold is how you say the missing times are deliberate.
 
 ## Changing what a step does
 

@@ -1,6 +1,6 @@
 ## Segment the interview into topically-coherent clips
 
-You are given the transcript of an oral history interview as a numbered list of paragraphs. Each line is prefixed with `[idx]` (the paragraph's 0-based index), an `[HH:MM:SS]` timestamp, a role marker `[Q]` (interviewer) or `[N]` (narrator), and a word-count flag `(Xw)` (e.g. `(89w)` means the paragraph has 89 words).
+You are given the transcript of an oral history interview as a numbered list of paragraphs. Each line is prefixed with `[idx]` (the paragraph's 0-based index), then — for transcripts that carry times — an `[HH:MM:SS]` timestamp, then a role marker `[Q]` (interviewer) or `[N]` (narrator), and a word-count flag `(Xw)` (e.g. `(89w)` means the paragraph has 89 words). Some transcripts have no times at all; their lines carry no timestamp, and nothing about the task changes, because a clip is identified by paragraph index either way.
 
 Segment the interview into topically-coherent "clips" by identifying each clip's start and end paragraph indices.
 

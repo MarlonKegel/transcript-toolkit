@@ -38,7 +38,15 @@ STEP = "summarize"
 
 def build_units(paragraphs_df: pd.DataFrame, pool_sessions: bool, session_regex: str) -> list[dict]:
     """Group paragraphs into interview units: one per narrator (sessions pooled, in id order)
-    or one per session file."""
+    or one per session file.
+
+    `untimed` marks a unit whose transcripts were never SYNC'd. A summary is made from the words
+    alone, so it is made the same way either way — the flag is what lets `--unsynced` pick those
+    out, and what the deliverable records so a reader can tell why such a row has no clips.
+    """
+    from ..core.tables import untimed_ids
+
+    never_synced = untimed_ids(paragraphs_df)
     key_fn = (lambda i: narrator_key(i, session_regex)) if pool_sessions else (lambda i: i)
     keyed: dict[str, list[str]] = {}
     for iid in sorted(paragraphs_df["interview_id"].unique()):
@@ -55,11 +63,12 @@ def build_units(paragraphs_df: pd.DataFrame, pool_sessions: bool, session_regex:
             "n_paragraphs": int(sum(len(f) for f in frames)),
             "total_words": int(sum(int(f["word_count"].sum()) for f in frames)),
             "text": render_interview(frames),
+            "untimed": all(sid in never_synced for sid in session_ids),
         })
     return units
 
 
-def _context(project: Project, pool_sessions_override: bool | None, unsynced: bool = False):
+def _context(project: Project, pool_sessions_override: bool | None = None):
     cfg = load_step_config(project, STEP)
     require(cfg, ["model", "reasoning", "verbosity", "prompt", "max_workers"], STEP)
     check_levels(cfg["reasoning"], cfg["verbosity"])
@@ -72,34 +81,15 @@ def _context(project: Project, pool_sessions_override: bool | None, unsynced: bo
     # It is deliberately left out when pooling is off, where it changes nothing.
     shape = f"pool_sessions={pool}" + (f" session_regex={session_regex}" if pool else "")
     fingerprint = cache_key(cfg["model"], cfg["reasoning"], cfg["verbosity"], instructions, shape)
-    units = build_units(_paragraphs(project, unsynced), pool, session_regex)
+    units = build_units(load_paragraphs(project), pool, session_regex)
     return cfg, instructions, fingerprint, units, pool
 
 
-# `summarize --unsynced` is bookkept as its own step, the way each topic list is: a separate
-# demo, a separate record of what has been run. The two sources are different transcripts, and
-# the point of the demo gate is to have looked at what comes back before paying for the rest.
+# `--unsynced` used to name a second pile with a step record of its own. There is one collection
+# now, so it names a subset of it: the transcripts that were never SYNC'd, summarized on their
+# own the way `--interview` summarizes chosen ones. One record, because one run of the step over
+# everything is what it is.
 UNSYNCED = "unsynced"
-
-
-def step_key(unsynced: bool) -> str:
-    return f"{STEP}:{UNSYNCED}" if unsynced else STEP
-
-
-def _paragraphs(project: Project, unsynced: bool) -> pd.DataFrame:
-    """Which transcripts this run summarizes.
-
-    The untimed ones are the only material in the toolkit that never reaches a clip, so they are
-    kept in a table of their own and nothing but this step reads it.
-    """
-    if not unsynced:
-        return load_paragraphs(project)
-    path = project.unsynced_paragraphs_path
-    if not path.exists():
-        raise ToolkitError(
-            f"{path} not found. Put transcripts that were never SYNC'd in "
-            f"{project.unsynced_dir}/ and run `toolkit import --unsynced` first.")
-    return pd.read_parquet(path)
 
 
 # --- run ------------------------------------------------------------------------------------
@@ -110,9 +100,16 @@ def run_summarize(project: Project, demo: bool = False, interviews: list[str] | 
                   unsynced: bool = False) -> pd.DataFrame:
     if demo and interviews:
         raise ToolkitError("--demo and --interview are mutually exclusive.")
-    cfg, instructions, fingerprint, units, pool = _context(project, pool_sessions, unsynced)
-    key = step_key(unsynced)
+    cfg, instructions, fingerprint, units, pool = _context(project, pool_sessions)
+    key = STEP
     what = "transcript(s) that were never SYNC'd" if unsynced else "interview(s)"
+    if unsynced:
+        # A subset of the one collection, chosen the way `--interview` chooses one.
+        units = [u for u in units if u["untimed"]]
+        if not units:
+            raise ToolkitError(
+                f"There are no transcripts in {project.unsynced_dir}/ in the collection. Put "
+                f"the ones that were never SYNC'd there and run `toolkit import` again.")
     by_key = {u["interview_key"]: u for u in units}
 
     if demo:
@@ -163,20 +160,19 @@ def run_summarize(project: Project, demo: bool = False, interviews: list[str] | 
         "total_words": u["total_words"],
         "summary": results[u["interview_key"]],
         "summary_word_count": len(results[u["interview_key"]].split()),
-        # Which pile the transcript came from. The two sit in one table, and everything else in
-        # the collection exists only for the SYNC'd ones — so a reader of the export has to be
-        # able to tell why a row has a summary and nothing else.
-        "synced": not unsynced,
+        # Whether this narrator's transcripts carry times. Everything else works either way, so
+        # this is not about what could be made from them — it is what tells a reader of the
+        # export why those rows' clips have no start and end.
+        "synced": not u["untimed"],
         "model": model,
         "reasoning_effort": reasoning,
     } for u in selected]
     df = pd.DataFrame(rows)
 
     if demo:
-        page = "demo_unsynced_summaries.html" if unsynced else "demo_summaries.html"
         lead = ("Summaries of transcripts that were never SYNC'd" if unsynced
                 else "Interview summaries")
-        diag = _write_html(project, df, page, title=f"{lead} — DEMO")
+        diag = _write_html(project, df, "demo_summaries.html", title=f"{lead} — DEMO")
         record_demo(project, key, fingerprint, units=keys, diag=str(diag))
         print(f"\nDemo review file: {diag}")
         print(f"Review it; adjust config.yaml / prompts/ and re-demo if needed. "
@@ -186,29 +182,17 @@ def run_summarize(project: Project, demo: bool = False, interviews: list[str] | 
 
     out_path = project.outputs_dir / "summaries" / "summaries.parquet"
     existing = pd.read_parquet(out_path) if out_path.exists() else None
-    # A full run is the whole truth about the pile it read and says nothing about the other one:
-    # a transcript taken out of data/ should disappear from the table without the untimed
-    # summaries going with it. A subset run splices into whatever is there, as it always did.
-    base = existing if interviews else _from_the_other_pile(existing, unsynced)
-    df = merge_subset(base, df, "interview_key")
+    # A run over everything is the whole truth about the collection and replaces the table; a
+    # run over a chosen few (`--interview`, `--unsynced`) splices into what is there.
+    subset = bool(interviews or unsynced)
+    df = merge_subset(existing if subset else None, df, "interview_key")
     write_deliverable(df, out_path, sort_by="interview_key")
     diag = _write_html(project, df.sort_values("interview_key"), "summaries.html",
                        title="Interview summaries")
-    if not interviews:
+    if not subset:
         record_full(project, key, fingerprint, model=model, n_units=len(selected))
     print(f"\nWrote {len(df)} summaries -> {out_path}\nReview file: {diag}")
     return df
-
-
-def _from_the_other_pile(existing: pd.DataFrame | None, unsynced: bool) -> pd.DataFrame | None:
-    """The rows this run has nothing to say about, so a full run of one pile leaves the other
-    one standing. A table written before untimed transcripts existed carries no `synced` column,
-    and everything in it came from a SYNC'd transcript."""
-    if existing is None:
-        return None
-    synced = (existing["synced"].astype(bool) if "synced" in existing.columns
-              else pd.Series(True, index=existing.index))
-    return existing[synced] if unsynced else existing[~synced]
 
 
 def _record(u: dict, ck: str, fingerprint: str, summary: str, usage: dict, cfg: dict) -> dict:

@@ -6,11 +6,16 @@ override comes to exist, all landing in this one file: the edit control in a lab
 page, editing the Label column of the exported sheet (the next export keeps the difference),
 or editing this file by hand.
 
-An override is pinned to the clip's span — its start and end timestamps. Re-running steps
-never disturbs it, but when the clip itself changes (a corrected transcript, different clip
-boundaries) the pin no longer matches and the override is skipped OUT LOUD rather than
-silently applied to different text. A re-imported transcript takes its overrides with it,
-the same way it takes the rest of its old results.
+An override is pinned to the clip's span. Re-running steps never disturbs it, but when the clip
+itself changes (a corrected transcript, different clip boundaries) the pin no longer matches and
+the override is skipped OUT LOUD rather than silently applied to different text. A re-imported
+transcript takes its overrides with it, the same way it takes the rest of its old results.
+
+The span is the clip's start and end timestamps where the transcript has times, and its first
+and last paragraph number (`p12`) where it does not — a transcript that was never SYNC'd has
+the same empty timestamp on every clip, so pinning to that would pin to nothing and the
+skipped-out-loud promise above would quietly stop being kept. Both are written into the same
+two columns, and both read the same way to somebody editing the file by hand.
 """
 from __future__ import annotations
 
@@ -20,6 +25,14 @@ from ..errors import ToolkitError
 from ..project import Project
 
 COLUMNS = ["clip_id", "label", "start_ts", "end_ts", "replaces"]
+
+
+def span_of(clip) -> tuple[str, str]:
+    """Where a clip starts and ends, in whatever terms that clip can be pinned by."""
+    start, end = str(clip.start_ts or ""), str(clip.end_ts or "")
+    if start or end:
+        return start, end
+    return f"p{int(clip.start_paragraph_idx)}", f"p{int(clip.end_paragraph_idx)}"
 
 
 def load(project: Project) -> pd.DataFrame:
@@ -50,10 +63,11 @@ def upsert(project: Project, clip_id: str, label: str, clips: pd.DataFrame,
     existing = df[df["clip_id"] == clip_id]
     if not existing.empty and not replaces:
         replaces = existing.iloc[0]["replaces"]     # keep pointing at the model's own words
+    start, end = span_of(next(row.itertuples()))
     df = df[df["clip_id"] != clip_id]
     df = pd.concat([df, pd.DataFrame([{
         "clip_id": clip_id, "label": str(label).strip(),
-        "start_ts": str(row.iloc[0]["start_ts"]), "end_ts": str(row.iloc[0]["end_ts"]),
+        "start_ts": start, "end_ts": end,
         "replaces": str(replaces),
     }])], ignore_index=True)
     save(project, df)
@@ -75,7 +89,7 @@ def overlay(project: Project, clips: pd.DataFrame) -> tuple[dict[str, str], list
     df = load(project)
     if df.empty:
         return {}, []
-    spans = {c.clip_id: (str(c.start_ts), str(c.end_ts)) for c in clips.itertuples()}
+    spans = {c.clip_id: span_of(c) for c in clips.itertuples()}
     shown: dict[str, str] = {}
     complaints: list[str] = []
     for r in df.itertuples():

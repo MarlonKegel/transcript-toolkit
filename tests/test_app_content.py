@@ -46,9 +46,15 @@ def test_what_to_compare_becomes_real_flags(step):
 def test_standalone_commands_are_real_commands():
     parses(list(content.SAMPLE.argv))
     parses(list(content.IMPORT.argv))
-    parses(list(content.UNSYNCED_IMPORT.argv))
-    parses(content.unsynced_argv(demo=True))
-    parses(content.unsynced_argv(demo=False))
+
+
+def test_one_import_reads_both_transcript_folders():
+    """There is no second import command for the untimed folder any more, and no button that
+    would run one: `toolkit import` reads both. A leftover argv here would be the app offering
+    a way through the toolkit that no longer exists."""
+    assert list(content.IMPORT.argv) == ["import"]
+    assert not hasattr(content, "UNSYNCED_IMPORT")
+    assert not hasattr(content, "unsynced_argv")
 
 
 @ALL_STEPS

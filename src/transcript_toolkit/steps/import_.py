@@ -12,10 +12,13 @@ per-clip timing is coarser. Import measures this per transcript and warns when t
 per-turn-only. Details (that fallback, plus paragraphs before the first speaker turn) go to
 logs/import_warnings.log.
 
-`--unsynced` is the one way into the toolkit for a transcript with no timestamps at all
-(`run_import_unsynced`). It reads `data/unsynced/` into a table of its own, and only
-`toolkit summarize --unsynced` ever looks at that table: a clip is a span between two times, so
-without them there is nothing to clip, label or tag.
+Two folders, one dataset. `data/` holds SYNC'd transcripts; `data/unsynced/` holds transcripts
+that were never SYNC'd, and one import reads both into `data/paragraphs.parquet`. They are
+separate folders because they are read by different parsers and because a file with no times in
+`data/` is a mistake worth failing on — not because what comes out of them is different. It is
+not: a clip is a run of paragraphs, and paragraph numbers are something every transcript has, so
+an untimed interview goes through the whole pipeline like any other. What it does not have is
+times to show, and its clips say so by leaving them blank.
 """
 from __future__ import annotations
 
@@ -37,23 +40,18 @@ EXPECTED_FORMAT_HINT = (
 
 
 def find_docx_files(project: Project) -> list[Path]:
-    files = sorted(p for p in project.data_dir.rglob("*.docx")
-                   if not p.name.startswith("~$")            # Word lock files
-                   and project.unsynced_dir not in p.parents)   # summaries only; see below
-    if not files:
-        raise ToolkitError(f"No .docx transcripts found under {project.data_dir}/")
-    return files
+    """The SYNC'd pile: everything in data/ except the untimed folder inside it."""
+    return sorted(p for p in project.data_dir.rglob("*.docx")
+                  if not p.name.startswith("~$")             # Word lock files
+                  and project.unsynced_dir not in p.parents)
 
 
 def find_unsynced_files(project: Project) -> list[Path]:
-    files = sorted(p for p in project.unsynced_dir.rglob("*.docx")
-                   if not p.name.startswith("~$"))
-    if not files:
-        raise ToolkitError(
-            f"No .docx transcripts found under {project.unsynced_dir}/\n"
-            f"That folder is for transcripts that were never SYNC'd — they can only be "
-            f"summarized. SYNC'd transcripts belong in {project.data_dir}/ instead.")
-    return files
+    """The untimed pile. Empty is the normal case — most projects never have one."""
+    if not project.unsynced_dir.is_dir():
+        return []
+    return sorted(p for p in project.unsynced_dir.rglob("*.docx")
+                  if not p.name.startswith("~$"))
 
 
 def _ids_for(files: list[Path], strip_suffixes) -> dict[str, Path]:
@@ -71,20 +69,26 @@ def _ids_for(files: list[Path], strip_suffixes) -> dict[str, Path]:
 
 
 def run_import(project: Project) -> pd.DataFrame:
+    """Read both folders into the one dataset every step works from."""
     cfg = load_step_config(project, "import")
     require(cfg, ["interviewer_labels", "strip_suffixes", "session_regex"], "import")
-    files = find_docx_files(project)
-    ids = _ids_for(files, cfg["strip_suffixes"])
+    timed = _ids_for(find_docx_files(project), cfg["strip_suffixes"])
+    untimed = _ids_for(find_unsynced_files(project), cfg["strip_suffixes"])
+    if not timed and not untimed:
+        raise ToolkitError(f"No .docx transcripts found under {project.data_dir}/")
+    _refuse_the_same_narrator_twice(timed, untimed, cfg["session_regex"])
 
     records: list[dict] = []
     orphan_lines: list[str] = []       # paragraphs before the first speaker turn (real warning)
     note_lines: list[str] = []         # benign: continuation had a colon after its own timestamp
-    empty: list[str] = []
-    for iid, path in ids.items():
+    front_lines: list[str] = []        # an untimed transcript's title page and preface
+    unreadable: list[str] = []
+
+    for iid, path in timed.items():
         paragraphs, orphans, mid_turn = parse_docx_paragraphs(
             path, iid, cfg["interviewer_labels"], cfg.get("other_labels") or [])
         if not paragraphs:
-            empty.append(path.name)
+            unreadable.append(path.name)
             continue
         records += paragraphs_to_records(paragraphs)
         for o in orphans:
@@ -92,15 +96,36 @@ def run_import(project: Project) -> pd.DataFrame:
         for t in mid_turn:
             note_lines.append(f"{path.name}: continuation paragraph with its own timestamp and a "
                               f"colon; kept with the current speaker (normal): {t[:100]}")
-    if empty:
+    if unreadable:
         raise ToolkitError(
-            "No parsable paragraphs in: " + ", ".join(empty) + f"\nCheck the files — {EXPECTED_FORMAT_HINT}")
+            "No parsable paragraphs in: " + ", ".join(unreadable)
+            + f"\nCheck the files — {EXPECTED_FORMAT_HINT}\n"
+            + f"If a transcript has no timestamps at all and never will, it belongs in "
+              f"{project.unsynced_dir.name}/ inside the data folder.")
+
+    for iid, path in untimed.items():
+        paragraphs, front_matter = parse_untimed_paragraphs(
+            path, iid, cfg["interviewer_labels"], cfg.get("other_labels") or [])
+        if not paragraphs:
+            unreadable.append(path.name)
+            continue
+        records += paragraphs_to_records(paragraphs)
+        front_lines += [f"{path.name}: {line[:160]}" for line in front_matter]
+    if unreadable:
+        raise ToolkitError(
+            "No speaker turns found in: " + ", ".join(unreadable) + "\nEvery turn has to start "
+            "with a paragraph like `SPEAKER: text`. See docs/steps/import.md.")
 
     # The manifest knows what each file looked like when it was last imported. A changed or
     # vanished transcript takes its old results with it — the purge runs BEFORE the manifest is
     # saved, so a crash in between leaves the old hashes in place and the next import redoes
-    # the purge instead of skipping it.
-    updated, diff = manifest_mod.plan_update(project, manifest_mod.SYNCED, ids)
+    # the purge instead of skipping it. Both piles are planned against the one manifest, so
+    # neither plan discards the other's.
+    updated = manifest_mod.load_manifest(project)
+    updated, timed_diff = manifest_mod.plan_update(project, manifest_mod.SYNCED, timed, updated)
+    updated, untimed_diff = manifest_mod.plan_update(project, manifest_mod.UNSYNCED, untimed,
+                                                     updated)
+    diff = {kind: timed_diff[kind] + untimed_diff[kind] for kind in ("new", "changed", "gone")}
     outdated = diff["changed"] + diff["gone"]
     purged = _purge_results(project, outdated, cfg["session_regex"]) if outdated else []
 
@@ -110,85 +135,59 @@ def run_import(project: Project) -> pd.DataFrame:
     if cfg.get("write_csv", True):
         df.to_csv(project.paragraphs_path.with_suffix(".csv"), index=False)
     manifest_mod.save_manifest(project, updated)
+    _put_away_the_old_untimed_table(project)
 
     regimes = timestamp_regimes(df)
     flagged = [r for r in regimes if not r["ok"]]
 
     warn_path = project.logs_dir / "import_warnings.log"
     warn_path.parent.mkdir(parents=True, exist_ok=True)
-    _write_log(warn_path, flagged, orphan_lines, note_lines)
+    _write_log(warn_path, flagged, orphan_lines, note_lines, front_lines)
 
-    _print_summary(df, ids, cfg["session_regex"], regimes, orphan_lines, note_lines, warn_path)
+    _print_summary(df, {**timed, **untimed}, cfg["session_regex"], regimes,
+                   orphan_lines, note_lines, front_lines, warn_path)
     _print_changes(diff, purged)
     return df
 
 
 def run_import_unsynced(project: Project) -> pd.DataFrame:
-    """Read `data/unsynced/` — transcripts that were never SYNC'd — into their own table.
+    """`toolkit import --unsynced`, kept as it was typed before both folders were read together.
 
-    They are kept apart from the corpus all the way through, because without timestamps there is
-    no clipping and so no labels, topics or places: a summary is the only thing the toolkit can
-    make from one. The summaries themselves do land in the same deliverable as the corpus's, so
-    the one thing this refuses outright is a transcript belonging to somebody who is already in
-    the corpus — two rows for one narrator would overwrite each other.
+    There is one import now, so this is that import. Saying so matters more than saving the
+    words: somebody following an older note would otherwise think the untimed folder had been
+    skipped this time.
     """
-    cfg = load_step_config(project, "import")
-    require(cfg, ["interviewer_labels", "strip_suffixes", "session_regex"], "import")
-    files = find_unsynced_files(project)
-    ids = _ids_for(files, cfg["strip_suffixes"])
-    _refuse_narrators_already_in_the_corpus(project, ids, cfg["session_regex"])
+    print(f"Every import reads {project.unsynced_dir.name}/ as well now — importing both.\n")
+    return run_import(project)
 
-    records: list[dict] = []
-    front_lines: list[str] = []
-    empty: list[str] = []
-    for iid, path in ids.items():
-        paragraphs, front_matter = parse_untimed_paragraphs(
-            path, iid, cfg["interviewer_labels"], cfg.get("other_labels") or [])
-        if not paragraphs:
-            empty.append(path.name)
-            continue
-        records += paragraphs_to_records(paragraphs)
-        for line in front_matter:
-            front_lines.append(f"{path.name}: {line[:160]}")
-    if empty:
-        raise ToolkitError(
-            "No speaker turns found in: " + ", ".join(empty) + "\nEvery turn has to start with a "
-            "paragraph like `SPEAKER: text`. See docs/steps/import.md.")
 
-    updated, diff = manifest_mod.plan_update(project, manifest_mod.UNSYNCED, ids)
-    outdated = diff["changed"] + diff["gone"]
-    purged = _purge_results(project, outdated, cfg["session_regex"]) if outdated else []
+def _put_away_the_old_untimed_table(project: Project) -> None:
+    """Clear away the separate table untimed transcripts used to live in.
 
-    df = pd.DataFrame(records)
-    project.data_dir.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(project.unsynced_paragraphs_path, index=False)
-    if cfg.get("write_csv", True):
-        df.to_csv(project.unsynced_paragraphs_path.with_suffix(".csv"), index=False)
-    manifest_mod.save_manifest(project, updated)
+    They are in `paragraphs.parquet` with everything else now. The docx files and the manifest
+    are what a project is made of, so nothing is lost by dropping the old table — but leaving
+    it on disk would leave two answers to "what is in this project?".
+    """
+    from ..state import load_state, save_state
 
-    warn_path = project.logs_dir / "import_unsynced.log"
-    warn_path.parent.mkdir(parents=True, exist_ok=True)
-    warn_path.write_text(
-        "=== Front matter (everything before the first speaker; not summarized) ===\n"
-        + "\n".join(front_lines) + "\n" if front_lines else "")
+    gone = []
+    for path in (project.unsynced_paragraphs_path,
+                 project.unsynced_paragraphs_path.with_suffix(".csv")):
+        if path.exists():
+            path.unlink()
+            gone.append(path.name)
 
-    narrators = narrator_groups(ids, cfg["session_regex"])
-    print(f"Imported {len(ids)} transcript(s) that were never SYNC'd -> {len(df):,} paragraphs, "
-          f"{len(narrators)} narrator(s).")
-    print("\nSpeaker roles (check that interviewer labels are configured right):")
-    for r in speaker_role_rows(df):
-        print(f"  {r['speaker_role']:<12} {r['speaker_label']:<24} {r['n']:>6} paragraphs")
-    multi = {k: v for k, v in narrators.items() if len(v) > 1}
-    if multi:
-        print("\nMulti-session narrators (sessions pooled into one summary):")
-        for key, session_ids in sorted(multi.items()):
-            print(f"  {key:<32} <- {', '.join(sorted(session_ids))}")
-    if front_lines:
-        print(f"\n{len(front_lines)} paragraph(s) before the first speaker — a title page or a "
-              f"preface — were left out of the interview -> {warn_path}")
-    print("\nThese can be summarized and nothing else: `toolkit summarize --unsynced --demo`.")
-    _print_changes(diff, purged)
-    return df
+    state = load_state(project)
+    # Its summaries were recorded under a step of their own. One pile means one record; the
+    # count is recovered by the next `toolkit summarize`, which finds more to do and says so.
+    if state.get("steps", {}).pop("summarize:unsynced", None) is not None:
+        save_state(project, state)
+        gone.append("their separate record of what had been summarized")
+    if gone:
+        print(f"\nTranscripts that were never SYNC'd are part of the collection now, so "
+              f"{' and '.join(gone)} {'have' if len(gone) > 1 else 'has'} been cleared away. "
+              f"They can be clipped, labelled and tagged like the rest; run the steps again to "
+              f"include them (what is already done stays done).\n")
 
 
 def _purge_results(project: Project, ids: list[str], session_regex: str) -> list[Path]:
@@ -261,14 +260,8 @@ def _covered(project: Project, step_key: str) -> int | None:
         return distinct(out / "clips" / "clips.parquet", "interview_id")
     if step_key == "label":
         return distinct(out / "labels" / "labels.parquet", "interview_id")
-    if step_key in ("summarize", "summarize:unsynced"):
-        path = out / "summaries" / "summaries.parquet"
-        if not path.exists():
-            return None
-        table = pd.read_parquet(path)
-        synced = table["synced"] if "synced" in table.columns else pd.Series(True,
-                                                                             index=table.index)
-        return int(synced.sum()) if step_key == "summarize" else int((~synced).sum())
+    if step_key == "summarize":
+        return distinct(out / "summaries" / "summaries.parquet", "interview_key")
     if step_key.startswith("topics:"):
         set_name = step_key.split(":", 1)[1]
         path = out / "topics" / f"{set_name}_clip_topics_wide.parquet"
@@ -293,38 +286,23 @@ def _print_changes(diff: dict, purged: list[Path]) -> None:
               "just these; everything unchanged stays done, and its calls stay cached.")
 
 
-def _refuse_narrators_already_in_the_corpus(project: Project, ids: dict[str, Path],
-                                            session_regex: str) -> None:
-    if not project.paragraphs_path.exists():
-        return
-    corpus = pd.read_parquet(project.paragraphs_path, columns=["interview_id"])
-    known = {narrator_key(i, session_regex): i for i in corpus["interview_id"].unique()}
+def _refuse_the_same_narrator_twice(timed: dict[str, Path], untimed: dict[str, Path],
+                                    session_regex: str) -> None:
+    """One narrator, one place in the collection.
+
+    Both folders read into one dataset, and a narrator's sessions are pooled by name — so the
+    same person arriving from both piles would be two half-interviews claiming one row.
+    """
+    known = {narrator_key(iid, session_regex): path.name for iid, path in timed.items()}
     clash = [(path.name, known[narrator_key(iid, session_regex)])
-             for iid, path in ids.items() if narrator_key(iid, session_regex) in known]
+             for iid, path in untimed.items() if narrator_key(iid, session_regex) in known]
     if clash:
-        listed = "\n".join(f"  {name}  is the same narrator as the imported {other}"
+        listed = "\n".join(f"  {name}  is the same narrator as {other}"
                            for name, other in clash)
         raise ToolkitError(
-            f"These are already in the collection as SYNC'd transcripts:\n{listed}\n"
-            f"Summaries are keyed by narrator, so one of the two would overwrite the other. "
-            f"Remove them from {project.unsynced_dir}/, or take the SYNC'd ones out of the "
-            f"collection and import again.")
-
-
-def unsynced_interview_rows(project: Project) -> list[dict]:
-    """One row per transcript that was never SYNC'd, for whoever arrives after the import."""
-    if not project.unsynced_paragraphs_path.exists():
-        return []
-    cfg = load_step_config(project, "import")
-    df = pd.read_parquet(project.unsynced_paragraphs_path)
-    groups = narrator_groups(sorted(df["interview_id"].unique()), cfg["session_regex"])
-    narrator_of = {iid: key for key, ids in groups.items() for iid in ids}
-    return [{"interview_id": iid,
-             "narrator": narrator_of[iid],
-             "sessions": len(groups[narrator_of[iid]]),
-             "paragraphs": int(len(g)),
-             "words": int(g["word_count"].sum())}
-            for iid, g in df.groupby("interview_id", sort=True)]
+            f"These transcripts are in both transcript folders:\n{listed}\n"
+            f"Keep one of each pair: the SYNC'd version if there is one, since it can be "
+            f"clipped and tagged as well as summarized.")
 
 
 def timestamp_regimes(df: pd.DataFrame) -> list[dict]:
@@ -336,9 +314,17 @@ def timestamp_regimes(df: pd.DataFrame) -> list[dict]:
     coverage 0.0  -> timestamps only on speaker turns (tolerated; clip times fall back to the
                      turn's timestamp for the untimed paragraphs);
     in between     -> mixed. `ok` is True only for the fully-per-paragraph case.
+
+    Transcripts that were never SYNC'd are left out. They have no timestamps by definition, and
+    counting them here would report the thing that is true of them as a fault in them.
     """
+    from ..core.tables import untimed_ids
+
+    never_synced = untimed_ids(df)
     rows: list[dict] = []
     for iid, g in df.groupby("interview_id", sort=True):
+        if iid in never_synced:
+            continue
         cont = g[g["paragraph_idx_in_turn"] > 0]
         n_cont = len(cont)
         n_ts = int((cont["sub_time_start"].astype(str).str.len() > 0).sum()) if n_cont else 0
@@ -429,8 +415,13 @@ def _regime_label(r: dict) -> str:
 
 
 def _write_log(path: Path, flagged: list[dict], orphan_lines: list[str],
-               note_lines: list[str]) -> None:
+               note_lines: list[str], front_lines: list[str] = ()) -> None:
     sections: list[str] = []
+    if front_lines:
+        sections.append("=== Front matter of transcripts that were never SYNC'd ===\n"
+                        "Everything before the first speaker — a title page, a preface — is "
+                        "about the interview rather than part of it, so it is left out.\n"
+                        + "\n".join(front_lines))
     if flagged:
         sections.append("=== Timestamp coverage (per-turn-only or mixed transcripts) ===\n"
                         "For paragraphs without their own timestamp, a clip's start/end time falls "
@@ -447,11 +438,19 @@ def _write_log(path: Path, flagged: list[dict], orphan_lines: list[str],
 
 def _print_summary(df: pd.DataFrame, ids: dict[str, Path], session_regex: str,
                    regimes: list[dict], orphan_lines: list[str], note_lines: list[str],
-                   warn_path: Path) -> None:
+                   front_lines: list[str], warn_path: Path) -> None:
+    from ..core.tables import untimed_ids
+
     narrators = narrator_groups(ids, session_regex)
+    never_synced = untimed_ids(df)
 
     print(f"Imported {len(ids)} transcripts -> {len(df):,} paragraphs, "
           f"{len(narrators)} narrators.")
+    if never_synced:
+        print(f"  {len(never_synced)} of them were never SYNC'd, so they carry no times: "
+              + ", ".join(sorted(never_synced)))
+        print("  They go through every step like the rest; what their clips cannot show is a "
+              "start and end time.")
 
     print("\nSpeaker roles (check that interviewer labels are configured right):")
     for r in speaker_role_rows(df):
@@ -459,7 +458,9 @@ def _print_summary(df: pd.DataFrame, ids: dict[str, Path], session_regex: str,
 
     # Timestamps: the toolkit expects one per paragraph; warn when a transcript is per-turn-only.
     flagged = [r for r in regimes if not r["ok"]]
-    if not flagged:
+    if not regimes:
+        pass                    # nothing SYNC'd in this project; there is no regime to report
+    elif not flagged:
         print("\nTimestamps: every paragraph carries its own [HH:MM:SS] (per-paragraph timing).")
     else:
         print(f"\n⚠ Timestamps: {len(flagged)} of {len(regimes)} transcripts have timestamps only "
@@ -475,6 +476,9 @@ def _print_summary(df: pd.DataFrame, ids: dict[str, Path], session_regex: str,
         for key, session_ids in sorted(multi.items()):
             print(f"  {key:<32} <- {', '.join(sorted(session_ids))}")
 
+    if front_lines:
+        print(f"\n{len(front_lines)} paragraph(s) before the first speaker — a title page or a "
+              f"preface — were left out of the interview -> {warn_path}")
     if orphan_lines:
         print(f"\n{len(orphan_lines)} paragraph(s) appeared before the first speaker turn and were "
               f"skipped -> {warn_path}")

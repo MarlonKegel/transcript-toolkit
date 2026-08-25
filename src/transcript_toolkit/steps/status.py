@@ -10,22 +10,20 @@ from ..state import load_state
 
 
 def _corpus(project: Project) -> dict:
-    # `data/unsynced/` is a pile of its own that `toolkit import` never reads, so counting it
-    # here would report a collection bigger than the one that was imported — and adding a file
-    # to it would keep saying the collection needed importing again.
-    docx = sorted(p.relative_to(project.data_dir).as_posix()
-                  for p in project.data_dir.rglob("*.docx")
-                  if not p.name.startswith("~$") and project.unsynced_dir not in p.parents)
+    # Both transcript folders are the collection: one import reads them together into one
+    # dataset, so both are counted here and either one being newer than the dataset means
+    # there is an import to run.
+    from .import_ import find_docx_files, find_unsynced_files
+
+    timed = find_docx_files(project)
+    untimed = find_unsynced_files(project)
     imported = project.paragraphs_path.exists()
     stale = False
-    if imported and docx:
-        newest_docx = max((project.data_dir / d).stat().st_mtime for d in docx)
-        stale = newest_docx > project.paragraphs_path.stat().st_mtime
-    unsynced = sorted(p.name for p in project.unsynced_dir.rglob("*.docx")
-                      if not p.name.startswith("~$")) if project.unsynced_dir.is_dir() else []
-    return {"docx_files": len(docx), "imported": imported, "import_stale": stale,
-            "unsynced_files": len(unsynced),
-            "unsynced_imported": project.unsynced_paragraphs_path.exists()}
+    if imported and (timed or untimed):
+        newest = max(p.stat().st_mtime for p in [*timed, *untimed])
+        stale = newest > project.paragraphs_path.stat().st_mtime
+    return {"docx_files": len(timed) + len(untimed), "imported": imported, "import_stale": stale,
+            "unsynced_files": len(untimed)}
 
 
 def _deliverables(project: Project) -> list[str]:
@@ -90,10 +88,8 @@ def run_status(project: Project, as_json: bool = False) -> None:
         imp = "   (transcripts changed since import — re-run `toolkit import`)"
     print(f"Transcripts in data/: {info['docx_files']} .docx{imp}")
     if info.get("unsynced_files"):
-        note = ("" if info.get("unsynced_imported")
-                else "   (not yet read in — run `toolkit import --unsynced`)")
-        print(f"Never SYNC'd, in data/unsynced/: {info['unsynced_files']} .docx — summaries "
-              f"only{note}")
+        print(f"  of those, {info['unsynced_files']} in data/unsynced/ were never SYNC'd: they "
+              f"go through every step, but their clips carry no times")
 
     if info["steps"]:
         print("\nSteps:")

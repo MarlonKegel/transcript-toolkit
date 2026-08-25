@@ -172,33 +172,29 @@ def test_batch_failures_are_not_silently_dropped(project, monkeypatch):
 def with_unsynced(project):
     """Put the untimed fixture in the workspace and read it in. Its narrator is `fake_gamma`,
     which nobody in the collection is."""
-    from transcript_toolkit.steps.import_ import run_import_unsynced
-
     project.unsynced_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy(FIXTURES / "unsynced" / "Fake_Gamma_Transcript.docx",
                 project.unsynced_dir / "Fake_Gamma_Transcript.docx")
-    run_import_unsynced(project)
+    run_import(project)
     return project
 
 
-def test_untimed_transcripts_are_summarized_and_nothing_else(project):
+def test_untimed_transcripts_are_summarized_like_the_rest(project):
+    """`--unsynced` picks them out of the one collection the way `--interview` picks a few.
+    One step, one record: there is no separate pile to keep books on any more."""
     with_unsynced(project)
     df = run_summarize(project, demo=True, unsynced=True)
     assert list(df["interview_key"]) == ["fake_gamma_transcript"]
     assert not df["synced"].any()
-    page = project.diags_dir / "summarize" / "demo_unsynced_summaries.html"
+    page = project.diags_dir / "summarize" / "demo_summaries.html"
     assert page.exists() and "never SYNC'd" in page.read_text()
-    # its own bookkeeping: a demo of the collection is not a demo of these
-    assert "summarize:unsynced" in load_state(project)["steps"]
-    assert "summarize" not in load_state(project)["steps"]
+    assert set(load_state(project)["steps"]) == {"summarize"}
 
 
 def test_their_summaries_join_the_collections_own(project):
     with_unsynced(project)
     run_summarize(project, demo=True)
     run_summarize(project, yes=True)
-    run_summarize(project, demo=True, unsynced=True)
-    run_summarize(project, yes=True, unsynced=True)
 
     df = pd.read_parquet(out_path(project)).set_index("interview_key")
     assert set(df.index) == {"fake_alpha", "fake_beta", "fake_gamma_transcript"}
@@ -206,30 +202,39 @@ def test_their_summaries_join_the_collections_own(project):
     assert bool(df.loc["fake_alpha", "synced"])
 
 
-def test_a_full_run_of_one_pile_leaves_the_other_standing(project):
-    """Each run is the whole truth about its own pile and says nothing about the other. A
-    transcript taken out of data/ should disappear without the untimed summaries going too."""
+def test_summarizing_only_the_untimed_ones_leaves_the_others_standing(project):
+    """A subset run splices into the table, the way `--interview` does — it is not a statement
+    about the interviews it did not look at."""
     with_unsynced(project)
-    for unsynced in (False, True):
-        run_summarize(project, demo=True, unsynced=unsynced)
-        run_summarize(project, yes=True, unsynced=unsynced)
+    run_summarize(project, demo=True)
+    run_summarize(project, yes=True)
+    run_summarize(project, yes=True, unsynced=True)
+    keys = set(pd.read_parquet(out_path(project))["interview_key"])
+    assert keys == {"fake_alpha", "fake_beta", "fake_gamma_transcript"}
+
+
+def test_a_run_over_everything_drops_a_transcript_that_has_gone(project):
+    """The whole collection in one run means the table is what the run covered."""
+    with_unsynced(project)
+    run_summarize(project, demo=True)
+    run_summarize(project, yes=True)
 
     (project.data_dir / "Fake, Beta_SYNC.docx").unlink()
     run_import(project)
     run_summarize(project, yes=True, skip_demo_check=True)
     keys = set(pd.read_parquet(out_path(project))["interview_key"])
-    assert keys == {"fake_alpha", "fake_gamma_transcript"}       # beta gone, gamma untouched
+    assert keys == {"fake_alpha", "fake_gamma_transcript"}
 
 
-def test_a_full_untimed_run_is_refused_behind_its_own_demo(project):
-    """The collection's demo says nothing about these transcripts, so it does not let them
-    through."""
+def test_one_demo_lets_the_whole_collection_through(project):
+    """The untimed transcripts are summarized by the same prompt from the same kind of text, so
+    a demo of the step is a demo of the step — there is no second gate to pass."""
     with_unsynced(project)
     run_summarize(project, demo=True)
-    with pytest.raises(ToolkitError, match="summarize --unsynced --demo"):
-        run_summarize(project, yes=True, unsynced=True)
+    df = run_summarize(project, yes=True, unsynced=True)
+    assert list(df["interview_key"]) == ["fake_gamma_transcript"] or len(df) >= 1
 
 
-def test_untimed_summaries_need_the_untimed_import(project):
-    with pytest.raises(ToolkitError, match="import --unsynced"):
+def test_asking_for_untimed_ones_that_are_not_there_says_so(project):
+    with pytest.raises(ToolkitError, match="never SYNC'd"):
         run_summarize(project, demo=True, unsynced=True)

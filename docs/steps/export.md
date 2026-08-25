@@ -18,13 +18,17 @@ it overwrites the file. `toolkit status` shows what the next export would includ
 
 - **Clips** — one row per clip: Clip Id, Interview (narrator), Session, Start, End, Label, a
   column per topic set (the clip's tags), Locations (and Regions, depending on the mode below).
+  **Start and End are empty** for a clip out of a transcript that was never SYNC'd — there are
+  no times in it to report (see [import.md](import.md)). Everything else in the row is filled
+  in as usual.
 - **Interviews** — one row per narrator: Sessions, Summary, a column per topic set (interview
   tags), Locations (and Regions), and **Imported** — when each of the narrator's transcripts
   was read in (see [import.md](import.md)), so a sheet can be checked against a later
   correction. If any transcripts came in without timestamps
-  (`data/unsynced/` — see [summarize.md](summarize.md)), a **Transcript** column says which
-  rows are SYNC'd and which are not: the latter have a summary and no tags, which is a fact
-  about the transcript rather than work left undone.
+  (`data/unsynced/` — see [import.md](import.md)), a **Transcript** column says which rows are
+  SYNC'd and which are not: those interviews are clipped and tagged like the rest, but their
+  clips' Start and End are empty, and this column is what says that is a fact about the
+  transcript rather than something that went wrong.
 - **Categories** — the vocabularies (each topic set's names, the country and region lists) as
   reference columns. These follow the same mode, so you never see a reference value that appears
   in no row.

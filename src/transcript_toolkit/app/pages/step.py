@@ -29,7 +29,6 @@ from .sample import needed_here, sample_section
 from .settings_form import settings_form
 from .spend import step_spend_box
 from .topics_editor import editor
-from .unsynced import unsynced_section
 
 SET_QUERY = "set"
 
@@ -82,9 +81,6 @@ def step_page(slug: str, set: str | None = None,               # noqa: A002 - UR
             _tuning(project, step, set_name, refresh_all)
             _sequels(project, step, set_name, href, refresh_all)
             _extras(step, set_name, href)
-            if step.key == "summarize":
-                # Last on the page, as its own fold: for most projects it never applies.
-                unsynced_section(refresh_all)
 
         actions()
         rest()

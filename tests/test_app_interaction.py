@@ -9,6 +9,7 @@ import shutil
 from pathlib import Path
 
 import pytest
+from nicegui import ui
 from nicegui.testing import User
 
 from transcript_toolkit.app import jobs
@@ -230,17 +231,25 @@ async def test_a_failed_run_offers_the_step_that_was_skipped(user: User, open_wo
     await user.should_see("Run the demo")
 
 
-def _upload_element(user: User):
-    """The page's upload box, as NiceGUI's own element."""
+def _upload_element(user: User, label: str = "Drop .docx files here"):
+    """One of the page's upload boxes, as NiceGUI's own element, named by what it says.
+
+    The Workspace page has two: the transcripts, and the folded-away one for transcripts that
+    were never SYNC'd. Taking whichever comes first would make a test about the collection pass
+    or fail on the order the page happens to be built in.
+    """
     from nicegui.elements.upload import Upload
-    return list(user.find(kind=Upload).elements)[0]
+    boxes = [e for e in user.find(kind=Upload).elements if e._props.get("label") == label]
+    assert boxes, f"no upload box labelled {label!r} on this page"
+    return boxes[0]
 
 
-async def _drop(user: User, name: str, data: bytes) -> None:
+async def _drop(user: User, name: str, data: bytes,
+                label: str = "Drop .docx files here") -> None:
     """Drop a file on it exactly the way the browser does — NiceGUI's own event, its own
     payload type. Calling a handler with a hand-made object would only prove the object."""
     from nicegui.elements.upload_files import SmallFileUpload
-    await _upload_element(user).handle_uploads(
+    await _upload_element(user, label).handle_uploads(
         [SmallFileUpload(name=name, content_type="application/octet-stream", _data=data)])
     await asyncio.sleep(0.3)        # the handler is async; NiceGUI runs it as a task
 
@@ -321,7 +330,7 @@ async def test_the_transcript_list_shows_what_has_been_imported(user: User, open
 async def test_importing_when_there_is_nothing_new_says_so_instead_of_running(user: User,
                                                                              open_workspace):
     await user.open("/workspace")
-    user.find("Import").click()
+    user.find(kind=ui.button, content="Import").click()
     await settle(user)
     await user.should_see("Everything is already imported")
     assert CONTEXT.jobs.current is None
@@ -332,7 +341,8 @@ async def test_dropping_a_topic_list_creates_the_set(user: User, open_workspace)
     """Uploading a topic list is the only way to make a set from inside the app."""
     await user.open("/step/topics")
     await user.should_see("No topic list yet")
-    await _drop(user, "collection.csv", b"name,description\nWork,About work\n")
+    await _drop(user, "collection.csv", b"name,description\nWork,About work\n",
+                label="Drop a topic list here")
     assert (open_workspace.topics_dir / "collection.csv").exists()
 
     await user.open("/step/topics")

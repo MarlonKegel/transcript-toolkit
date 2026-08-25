@@ -13,6 +13,25 @@ def load_paragraphs(project: Project) -> pd.DataFrame:
     return pd.read_parquet(project.paragraphs_path)
 
 
+def untimed_ids(paragraphs: pd.DataFrame) -> set[str]:
+    """The interviews in the dataset that carry no timestamps anywhere.
+
+    Read off the rows rather than stored as a flag, because the parsers make it true by
+    construction: the SYNC'd parser cannot open a turn without an `[HH:MM:SS]` (its pattern
+    requires one), so an interview with no turn timestamp at all is one that came from
+    `data/unsynced/`, and one with any is timed. Nothing about an existing dataset has to be
+    migrated for this to answer correctly.
+
+    What it is for: a clip out of one of these has no times to show, the spreadsheet's Start
+    and End are blank for it, and the summaries table marks it — so a reader can see why.
+    """
+    if paragraphs.empty:
+        return set()
+    timed = (paragraphs.assign(_t=paragraphs["turn_time_start"].astype(str) != "")
+             .groupby("interview_id")["_t"].any())
+    return set(timed[~timed].index)
+
+
 def clips_path(project: Project):
     return project.outputs_dir / "clips" / "clips.parquet"
 

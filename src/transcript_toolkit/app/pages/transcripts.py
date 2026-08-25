@@ -13,6 +13,7 @@ from .. import content, theme, workspaces
 from ..context import CONTEXT
 from .common import guard, info, inline_state, launch, section, transcript_upload
 from .settings_form import settings_form
+from .unsynced import unsynced_section
 
 HREF = "/workspace"
 
@@ -23,8 +24,8 @@ TIMESTAMP_NOTE = ("Every paragraph should carry its own [HH:MM:SS]. Where only t
 
 def transcripts_section(refresh) -> None:
     project = CONTEXT.require_project()
-    section("Transcripts", "Word files of SYNC'd (timestamped) transcripts — one per interview, "
-                           "or one per session.")
+    section("Transcripts", "Word files — one per interview, or one per session. Import reads "
+                           "them into the dataset every step works from.")
     with ui.card().classes("w-full"):
 
         @ui.refreshable
@@ -50,6 +51,10 @@ def transcripts_section(refresh) -> None:
                      "interview id. Change one and import again.").classes("text-xs opacity-70")
             settings_form("import", on_saved=refresh, note=False,
                           save_label="Save how transcripts are read")
+
+        # Its own folder, and Import reads it too. Folded away because most projects never
+        # have one.
+        unsynced_section(listing.refresh)
 
 
 def _listing(project) -> None:
@@ -128,7 +133,7 @@ async def _import_click() -> None:
     """Import, unless there is nothing new to import — in which case say so instead of running
     a command that would look like it did nothing."""
     project = CONTEXT.require_project()
-    if not workspaces.transcript_rows(project):
+    if not workspaces.all_transcript_rows(project):
         guard(ToolkitError("There are no transcripts to import yet. Drop your .docx files in "
                            "the box above first."))
         return

@@ -58,6 +58,20 @@ created by `toolkit init` carries its own `AGENTS.md` with rules for assisting e
   `core/prompts.py` owns both and is the only place that should answer "which file?".
 - Deliverables have fixed filenames under `outputs/`; model/reasoning metadata lives in table
   columns and `.toolkit/state.json`, not filenames.
+- **One collection, two transcript folders.** `data/` is parsed by the SYNC'd parser and
+  `data/unsynced/` by the untimed one, but a single `toolkit import` reads both into one
+  `paragraphs.parquet` and every step works on all of it. A clip is a span of paragraph
+  *indices* — the model is asked for indices and never for a time — so an untimed interview
+  clips, labels and tags like any other; timestamps are metadata carried alongside. Two folders
+  only so that a transcript with no times in `data/` still fails loudly instead of silently
+  becoming a text-only one. `core/tables.untimed_ids` is the one place that answers "which of
+  these has no times", derived from the rows (a parser invariant), never from a stored flag.
+- **What a button waits for is a file, and `steps/freshness.py` owns the filenames.** The app's
+  `needs` names resolve through `WRITES` (a step's own output) and `DERIVED` (a later free
+  move's), never through `toolkit status`'s deliverable list — that list answers "what would
+  the spreadsheet include?", which for locations is a file written a command after the tagging.
+  Gating on it once made `locations map` wait for its own output. `tests/test_gates.py` pins
+  both the whole gate matrix and the rule that no move may wait for a file it writes itself.
 
 ## Style (owner's rules)
 

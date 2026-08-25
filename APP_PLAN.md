@@ -1267,3 +1267,32 @@ meeting. Item by item, with the standing UI-vs-CLI call for each:
 
 Also in this round: version 1.1.0; docs updated (clip/label/import/export/CONFIG/WORKFLOW/APP,
 plus the freq_width wording); the docs bundle rebuilt.
+
+
+## 30. Round 9 (2026-08-25) — the locations dead end, and text-only transcripts
+
+Two items from Evan McCormick, both after a fortnight of real use. The plan they were built to
+is `ROUND9_PLAN.md` (repo root, untracked). Shipped as **v1.1.1** (item A alone, because it was
+blocking a live user) and **v1.2.0** (item B).
+
+| # | Feedback | What was done | UI or CLI? |
+|---|---|---|---|
+| 1 | Locations demo "does not produce a review page"; after a full run steps 4/5/6 are all greyed out and there is no way on | Three defects stacked. **The gate**: all four locations sequels were gated on the deliverable named `locations`, which points at `clip_countries.parquet` — the file `locations map` itself writes, so step 4 waited for its own output. Buttons now resolve `needs` through `steps/freshness.py`'s `WRITES`/`DERIVED` (file truth) instead of `toolkit status`'s deliverable list, which answers a different question; `map`/`annotate` read the tagging, `thresholds`/`rollup` read what `map` wrote (`locations.map`). **The pages**: a full `locations tag` — and `topics tag` — wrote no review page at all, though clip/label/summarize all write theirs; both now render through the same function `annotate` uses. **The demo page**: `diags/locations/demo.html` was never declared in `Step.reviews`, so nothing linked to the file the demo had just written. Also fixed: Home said "not started" for a tagged-but-unmapped locations step, same root cause. | Both (CLI: full runs write their pages; UI: gate, declared reviews, stage wording) |
+| 2 | Can a text-only interview (no timecodes, per-paragraph speaker labels) be clipped and tagged, or is that impossible without audio? | It was never impossible: the clip model is asked for `start_paragraph_idx`/`end_paragraph_idx` and never for a time, chunking is by word count, and `format_paragraph_full` already dropped an empty timestamp by design. So **one collection**: `toolkit import` reads `data/` and `data/unsynced/` into one `paragraphs.parquet`, and untimed interviews are clipped, labelled, summarized and tagged like the rest. `unsynced_paragraphs.parquet` and the `summarize:unsynced` step key are retired on the next import, with a line saying so; `summarize --unsynced` becomes a subset selector and `import --unsynced` an alias. Override pins fall back to `p{idx}` where there are no times (otherwise every untimed clip would pin to the same empty pair and the dropped-out-loud promise would silently stop being kept). Review pages show `¶12–¶19`; export leaves Start/End blank. The app's fold moved from Summarize to the Workspace transcript list. | CLI-level, app inherits (except the fold move, UI-only) |
+
+**The guard, which is what makes item 1 a class fix rather than a point fix.**
+`tests/test_gates.py` walks a project through the pipeline and pins exactly which moves open at
+each stage, and states the invariant the bug broke — *no move may wait for a file it writes
+itself* — over every step present and future. Two contracts were added to `AGENTS.md`: that one,
+and one collection / two transcript folders.
+
+**Two folders, still.** `data/unsynced/` was kept rather than merged away: a transcript with no
+times in `data/` is usually a mistake (a wrong file, a broken export) and import must keep
+failing loudly on it. Moving it is how a curator says the missing times are deliberate.
+
+**Migration is self-healing and free.** An existing project's `summarize` full record reads as
+PARTIAL once untimed transcripts join the collection — "more to run" — and re-running costs
+nothing for what is already summarized, because the fingerprint is unchanged and every finished
+call is cached. Verified end to end against a simulated v1.1.x workspace.
+
+**Deliberately not done:** exact-pin dependencies (standing item, still to be done alone).

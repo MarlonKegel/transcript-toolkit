@@ -1,7 +1,8 @@
 # transcript-toolkit
 
-Toolkit for processing oral history interview transcripts. Takes SYNC'd (timestamped) `.docx`
-transcripts and produces, via LLM steps with human review built in:
+Toolkit for processing oral history interview transcripts. Takes `.docx` transcripts — SYNC'd
+(timestamped) ones, and ones that were never SYNC'd — and produces, via LLM steps with human
+review built in:
 
 ```
 import ─► clip ─► label ──────────┐
@@ -10,7 +11,9 @@ import ─► clip ─► label ──────────┐
    └───────► summarize ───────────┘
 ```
 
-- **import** — parse transcripts into a paragraph dataset
+- **import** — parse transcripts into a paragraph dataset (`data/`, plus `data/unsynced/` for
+  transcripts that have no timestamps and never will — those go through every step too, and
+  only their clips' start and end times are left blank)
 - **clip** — split each interview into topically coherent clips
 - **label** — one-line label per clip
 - **summarize** — a "scope and content" abstract per interview

@@ -22,8 +22,8 @@ SET_HELP = ("which topic set to use — the name of your topic spreadsheet in to
 BATCH_HELP = ("run the full corpus on the 50%%-off Batch API (slower: up to 24h) or force it off; "
               "omit to be asked, with both cost estimates, at the confirmation prompt")
 
-UNSYNCED_HELP = ("read data/unsynced/ instead: transcripts that were never SYNC'd. Without "
-                 "timestamps nothing can be clipped, so these can only be summarized")
+UNSYNCED_HELP = ("kept for older habits: every import now reads data/unsynced/ as well, so this "
+                 "does exactly what `toolkit import` does")
 
 
 def _common() -> argparse.ArgumentParser:
@@ -158,7 +158,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="bypass the demo gate (dev use only)")
     p.add_argument("--batch", action=argparse.BooleanOptionalAction, default=None, help=BATCH_HELP)
     p.add_argument("--unsynced", action="store_true",
-                   help="summarize the transcripts in data/unsynced/ instead of the collection")
+                   help="summarize only the transcripts that were never SYNC'd (a subset of the "
+                        "collection, the way --interview names a few)")
     p.set_defaults(func=cmd_summarize)
     ssub = p.add_subparsers(dest="action", metavar="")
     pa = ssub.add_parser("annotate", parents=[common],

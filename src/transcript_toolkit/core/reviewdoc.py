@@ -135,6 +135,19 @@ def effective_ts(r) -> str:
     return r.sub_time_start or r.turn_time_start
 
 
+def clip_span(clip) -> str:
+    """Where a clip sits in its interview, in whatever terms it has.
+
+    Times, for a transcript that was SYNC'd. Paragraph numbers for one that never was — a
+    heading reading "–" twice tells a reader nothing, and where in the interview they are is
+    the thing the heading is for.
+    """
+    start, end = str(clip.start_ts or ""), str(clip.end_ts or "")
+    if start or end:
+        return f"{start}–{end}"
+    return f"¶{int(clip.start_paragraph_idx)}–{int(clip.end_paragraph_idx)}"
+
+
 def para(idx: int, ts: str, role: str, speech: str) -> str:
     """One transcript line: `[idx] [ts] [role] speech`. The timestamp badge is dropped when empty."""
     ts_html = f'<span class="ts">{esc(ts)}</span>' if ts else ""

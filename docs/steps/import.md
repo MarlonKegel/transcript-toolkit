@@ -64,18 +64,28 @@ between the same file again and a changed one:
 
 ## Transcripts that were never SYNC'd
 
-`toolkit import --unsynced` reads `data/unsynced/` instead — transcripts with no timestamps
-anywhere, often with a title page and a preface before the interview starts. This is the one way
-such a file gets into the toolkit, and what it can be used for is **summaries and nothing else**:
-a clip is a span between two times, so without them there is nothing to clip, and labels, topics
-and places all hang off the clips.
+Sometimes a narrator revises a transcript so heavily that the recording no longer matches it,
+and the edited text becomes the record. Those transcripts have no timestamps and never will.
+Put them in `data/unsynced/`.
 
-- A turn starts at `SPEAKER: text`; every other paragraph continues the turn it is in.
+`toolkit import` reads that folder along with `data/`, into the same dataset — so these
+interviews are clipped, labelled, summarized and tagged like every other one. A clip is a run of
+paragraphs, and paragraph numbers are something every transcript has. **The one difference is
+that their clips have no start and end time**, so those cells are empty in the spreadsheet and
+the review pages show a paragraph range (`¶12–¶19`) where the others show a time.
+
+- A turn starts at `SPEAKER: text`; every other paragraph continues the turn it is in. A label
+  on every one of a speaker's paragraphs (`Hellam:` before each) is fine.
 - Everything before the first speaker — the title page, the preface — is **left out** of the
-  interview and written to `logs/import_unsynced.log`, so you can check what was dropped.
-- `toolkit import` does not look in this folder, and a transcript here belonging to a narrator
-  already in the collection is refused: the summaries of both piles go into one table keyed by
-  narrator, so one would overwrite the other.
-- Output: `data/unsynced_paragraphs.parquet` (+ `.csv`). Then `toolkit summarize --unsynced`.
+  interview and written to `logs/import_warnings.log`, so you can check what was dropped.
+- The same narrator must not be in both folders: sessions are pooled by name, so one person
+  arriving from both would be two half-interviews claiming one row. Import refuses it and says
+  which pair.
+- `toolkit import --unsynced` still works and does exactly what `toolkit import` does.
 
-In the app this is on the Summarize page, under "Transcripts that were never SYNC'd".
+**Why two folders, if it is all one collection?** Because a transcript with no timestamps in
+`data/` is usually a mistake — a wrong file, a broken export — and import fails loudly on it
+rather than quietly treating it as text-only. Moving it to `data/unsynced/` is how you say the
+missing times are deliberate.
+
+In the app this is on the Workspace page, folded under the transcript list.

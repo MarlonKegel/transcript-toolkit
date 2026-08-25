@@ -37,15 +37,19 @@ def save_manifest(project: Project, manifest: dict) -> None:
     project.import_manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
 
 
-def plan_update(project: Project, pile: str, files_by_id: dict[str, Path]) -> tuple[dict, dict]:
+def plan_update(project: Project, pile: str, files_by_id: dict[str, Path],
+                manifest: dict | None = None) -> tuple[dict, dict]:
     """What this import means for the manifest: the new pile, and which ids changed.
 
     Nothing is written here — the caller purges the changed ids' old results FIRST and saves
     after, so a crash between the two leaves the manifest still naming the old hashes and the
     next import redoes the purge instead of skipping it.
+
+    One import plans both piles, so pass the manifest the previous call returned; loading it
+    from disk each time would let the second pile's plan discard the first's.
     Returns (manifest_with_new_pile, {"new": [...], "changed": [...], "gone": [...]}).
     """
-    manifest = load_manifest(project)
+    manifest = load_manifest(project) if manifest is None else manifest
     old = manifest.get(pile, {})
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     entries: dict[str, dict] = {}

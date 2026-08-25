@@ -526,12 +526,13 @@ def test_more_transcripts_than_the_last_run_covered_keeps_the_button_live(server
             workspace.state_path.write_text(was)
 
 
-def test_untimed_transcripts_are_offered_on_the_summarize_page_only(server):
-    """The one way into the toolkit for a transcript with no timestamps, and it is reached from
-    Summarize because a summary is the only thing that can be made from one."""
-    _, body = get(server, "/step/summarize")
+def test_untimed_transcripts_are_offered_beside_the_other_transcripts(server):
+    """They are transcripts, so their folder is on the page the transcripts are on. It used to
+    be on Summarize, when a summary was the only thing that could be made from one — putting it
+    back there would say they are still a special case, and they are not."""
+    _, body = get(server, "/workspace")
     assert "Transcripts that were never SYNC'd" in body
     assert "Drop transcripts that were never SYNC'd here" in body
-    for slug in ("clip", "label", "topics", "locations"):
+    for slug in ("clip", "label", "summarize", "topics", "locations"):
         _, other = get(server, f"/step/{slug}")
         assert "never SYNC'd" not in other

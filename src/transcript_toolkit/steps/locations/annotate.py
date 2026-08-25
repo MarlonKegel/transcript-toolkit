@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from ...core.reviewdoc import document, esc, role_badge
+from ...core.reviewdoc import clip_span, document, esc, role_badge
 from ...core.tables import load_paragraphs, paragraphs_by_interview
 from ...errors import ToolkitError
 from ...project import Project
@@ -49,7 +49,7 @@ def write_review_html(project: Project, wide: pd.DataFrame, long: pd.DataFrame,
     for r in sel.itertuples():
         body.append('<section class="clip">')
         body.append(f'<h2>{esc(r.clip_id)} <span class="meta">{esc(r.interview_id)} · '
-                    f'{esc(r.start_ts)}–{esc(r.end_ts)} · {r.n_paragraphs} paras, '
+                    f'{esc(clip_span(r))} · {r.n_paragraphs} paras, '
                     f'{r.total_words} words</span></h2>')
         body.append(clip_text_html(int(r.start_paragraph_idx), int(r.end_paragraph_idx),
                                    para_by_interview[r.interview_id]))

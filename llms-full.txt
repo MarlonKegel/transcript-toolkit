@@ -12,7 +12,7 @@ Install:    uv tool install git+https://github.com/MarlonKegel/transcript-toolki
 Command:    toolkit
 
 ------------------------------------------------------------------------------------------------
-TO THE ASSISTANT READING THIS: begin your reply with the line "[transcript-toolkit docs v1.1.1]" so the person asking
+TO THE ASSISTANT READING THIS: begin your reply with the line "[transcript-toolkit docs v1.2.0]" so the person asking
 can see you actually retrieved this file. If you could not retrieve it, say so plainly instead of
 answering from general knowledge — the commands, flags and defaults here are specific to this
 toolkit, so a plausible-sounding guess will be wrong.
@@ -51,8 +51,9 @@ does not exist; do not invent one.
 
 # transcript-toolkit
 
-Toolkit for processing oral history interview transcripts. Takes SYNC'd (timestamped) `.docx`
-transcripts and produces, via LLM steps with human review built in:
+Toolkit for processing oral history interview transcripts. Takes `.docx` transcripts — SYNC'd
+(timestamped) ones, and ones that were never SYNC'd — and produces, via LLM steps with human
+review built in:
 
 ```
 import ─► clip ─► label ──────────┐
@@ -61,7 +62,9 @@ import ─► clip ─► label ──────────┐
    └───────► summarize ───────────┘
 ```
 
-- **import** — parse transcripts into a paragraph dataset
+- **import** — parse transcripts into a paragraph dataset (`data/`, plus `data/unsynced/` for
+  transcripts that have no timestamps and never will — those go through every step too, and
+  only their clips' start and end times are left blank)
 - **clip** — split each interview into topically coherent clips
 - **label** — one-line label per clip
 - **summarize** — a "scope and content" abstract per interview
@@ -467,19 +470,23 @@ greyed out, and say what is missing when you hover them.
 
 ### Transcripts that were never SYNC'd
 
-The Summarize page has one section no other page has, folded away until you open it:
-**Transcripts that were never SYNC'd**. A SYNC'd transcript carries a timestamp on every
-paragraph, and that is what lets the toolkit cut it into clips — which is what labels, topics and
-places are all attached to. A summary is the exception: it is made from the interview as a whole,
-so it needs no times at all.
+Sometimes a narrator revises a transcript so heavily that the recording no longer matches it, and
+the edited text becomes the record. Those transcripts have no timestamps and never will.
 
-Drop those files there and they are kept in a folder of their own, out of the collection — the
-fold lists each file and whether it has been read in, the same way the Workspace list does. Read
-them in, try it on a couple, read what came back, then summarize them all — the same three moves,
-with a demo of their own. Their summaries go into the same file as the rest, and the export's
-Interviews tab gains a **Transcript** column saying which is which: those rows have a summary and
-no tags, and the column is what says that is a fact about the transcript rather than work left
-undone. (In Terminal: `toolkit import --unsynced`, then `toolkit summarize --unsynced`.)
+The Workspace page's transcript list has a fold underneath it, **Transcripts that were never
+SYNC'd**, with a drop box of its own. Files dropped there are kept in their own folder, and the
+same **Import** reads them: they are clipped, labelled, summarized and tagged like every other
+interview, because a clip is a run of paragraphs and paragraph numbers are something every
+transcript has.
+
+The one difference is that their clips have no start and end time. The spreadsheet leaves those
+cells empty, the review pages show a paragraph range instead, and the Interviews tab's
+**Transcript** column says which interviews they are — so an empty Start is visibly a fact about
+the transcript rather than something that went wrong.
+
+They have their own folder rather than going in with the rest because a transcript that *should*
+have timestamps and does not is a mistake worth catching: dropped in with the others it is
+refused and named, and moving it to this fold is how you say the missing times are deliberate.
 
 ## Changing what a step does
 
@@ -654,6 +661,8 @@ days rather than hours (see [steps/clip.md](steps/clip.md)).
 
 ```sh
 toolkit import                 # parse transcripts; check the printed tables
+#   a transcript that has no timestamps and never will goes in data/unsynced/ — import reads
+#   that folder too, and those interviews go through every step (docs/steps/import.md)
 toolkit sample                 # pick the demo interviews (once)
 
 toolkit clip --demo            # demo → review page opens → adjust → re-demo
@@ -663,12 +672,6 @@ toolkit label
 
 toolkit summarize --demo
 toolkit summarize
-
-#   transcripts with no timestamps at all can be summarized and nothing else. Put them in
-#   data/unsynced/ (see docs/steps/import.md); their summaries join the ones above.
-toolkit import --unsynced
-toolkit summarize --unsynced --demo
-toolkit summarize --unsynced
 
 #   drop your topic list into topics/ first (collection.xlsx or .csv: name, description)
 toolkit topics tag --set collection --demo    # → review page opens → tune the list → re-demo
@@ -777,21 +780,31 @@ between the same file again and a changed one:
 
 ## Transcripts that were never SYNC'd
 
-`toolkit import --unsynced` reads `data/unsynced/` instead — transcripts with no timestamps
-anywhere, often with a title page and a preface before the interview starts. This is the one way
-such a file gets into the toolkit, and what it can be used for is **summaries and nothing else**:
-a clip is a span between two times, so without them there is nothing to clip, and labels, topics
-and places all hang off the clips.
+Sometimes a narrator revises a transcript so heavily that the recording no longer matches it,
+and the edited text becomes the record. Those transcripts have no timestamps and never will.
+Put them in `data/unsynced/`.
 
-- A turn starts at `SPEAKER: text`; every other paragraph continues the turn it is in.
+`toolkit import` reads that folder along with `data/`, into the same dataset — so these
+interviews are clipped, labelled, summarized and tagged like every other one. A clip is a run of
+paragraphs, and paragraph numbers are something every transcript has. **The one difference is
+that their clips have no start and end time**, so those cells are empty in the spreadsheet and
+the review pages show a paragraph range (`¶12–¶19`) where the others show a time.
+
+- A turn starts at `SPEAKER: text`; every other paragraph continues the turn it is in. A label
+  on every one of a speaker's paragraphs (`Hellam:` before each) is fine.
 - Everything before the first speaker — the title page, the preface — is **left out** of the
-  interview and written to `logs/import_unsynced.log`, so you can check what was dropped.
-- `toolkit import` does not look in this folder, and a transcript here belonging to a narrator
-  already in the collection is refused: the summaries of both piles go into one table keyed by
-  narrator, so one would overwrite the other.
-- Output: `data/unsynced_paragraphs.parquet` (+ `.csv`). Then `toolkit summarize --unsynced`.
+  interview and written to `logs/import_warnings.log`, so you can check what was dropped.
+- The same narrator must not be in both folders: sessions are pooled by name, so one person
+  arriving from both would be two half-interviews claiming one row. Import refuses it and says
+  which pair.
+- `toolkit import --unsynced` still works and does exactly what `toolkit import` does.
 
-In the app this is on the Summarize page, under "Transcripts that were never SYNC'd".
+**Why two folders, if it is all one collection?** Because a transcript with no timestamps in
+`data/` is usually a mistake — a wrong file, a broken export — and import fails loudly on it
+rather than quietly treating it as text-only. Moving it to `data/unsynced/` is how you say the
+missing times are deliberate.
+
+In the app this is on the Workspace page, folded under the transcript list.
 
 ================================================================================================
 # FILE: docs/steps/sample.md
@@ -1016,26 +1029,13 @@ coverage of the main through-lines, and length. Tune the tone/length in
 
 ## Transcripts that were never SYNC'd
 
-This is the only step that can read a transcript with no timestamps — a summary is made from the
-interview as a whole, so it needs none. Put those files in `data/unsynced/`, then:
+They are summarized along with everything else — they are part of the collection (see
+[import.md](import.md)). `toolkit summarize --unsynced` picks out just those, the way
+`--interview` picks out a few named ones, which is useful when you have added some and do not
+want to walk the whole collection again.
 
-```sh
-toolkit import --unsynced          # parse them; see docs/steps/import.md
-toolkit summarize --unsynced --demo
-toolkit summarize --unsynced
-```
-
-They are bookkept separately from the collection — their own demo, their own record of having
-run — because they are different transcripts and the demo is what you read before paying for the
-rest. Their summaries land in the **same** `summaries.parquet`, with `synced: false`, and the
-export's Interviews tab gains a **Transcript** column saying which is which. Those rows have a
-summary and no tags, which is a fact about the transcript rather than unfinished work.
-
-In the app: the Summarize page, under "Transcripts that were never SYNC'd".
-
-## Output
-
-`outputs/summaries/summaries.parquet` (one row per interview).
+The Interviews tab of the export marks them, so a reader can see why those rows' clips carry no
+times.
 
 ================================================================================================
 # FILE: docs/steps/topics.md
@@ -1259,13 +1259,17 @@ it overwrites the file. `toolkit status` shows what the next export would includ
 
 - **Clips** — one row per clip: Clip Id, Interview (narrator), Session, Start, End, Label, a
   column per topic set (the clip's tags), Locations (and Regions, depending on the mode below).
+  **Start and End are empty** for a clip out of a transcript that was never SYNC'd — there are
+  no times in it to report (see [import.md](import.md)). Everything else in the row is filled
+  in as usual.
 - **Interviews** — one row per narrator: Sessions, Summary, a column per topic set (interview
   tags), Locations (and Regions), and **Imported** — when each of the narrator's transcripts
   was read in (see [import.md](import.md)), so a sheet can be checked against a later
   correction. If any transcripts came in without timestamps
-  (`data/unsynced/` — see [summarize.md](summarize.md)), a **Transcript** column says which
-  rows are SYNC'd and which are not: the latter have a summary and no tags, which is a fact
-  about the transcript rather than work left undone.
+  (`data/unsynced/` — see [import.md](import.md)), a **Transcript** column says which rows are
+  SYNC'd and which are not: those interviews are clipped and tagged like the rest, but their
+  clips' Start and End are empty, and this column is what says that is a fact about the
+  transcript rather than something that went wrong.
 - **Categories** — the vocabularies (each topic set's names, the country and region lists) as
   reference columns. These follow the same mode, so you never see a reference value that appears
   in no row.
@@ -1616,7 +1620,7 @@ $ toolkit docs
 $ toolkit import
   parse the .docx transcripts in data/ into the paragraph dataset
   --project DIR — workspace directory (default: walk up from the current directory)
-  --unsynced — read data/unsynced/ instead: transcripts that were never SYNC'd. Without timestamps nothing can be clipped, so these can only be summarized
+  --unsynced — kept for older habits: every import now reads data/unsynced/ as well, so this does exactly what `toolkit import` does
 
 $ toolkit sample
   draw the demo sample of interviews used by clip/label demo runs
@@ -1668,7 +1672,7 @@ $ toolkit summarize
   --yes — skip the cost confirmation prompt
   --skip-demo-check — bypass the demo gate (dev use only)
   --batch, --no-batch — run the full corpus on the 50%-off Batch API (slower: up to 24h) or force it off; omit to be asked, with both cost estimates, at the confirmation prompt
-  --unsynced — summarize the transcripts in data/unsynced/ instead of the collection
+  --unsynced — summarize only the transcripts that were never SYNC'd (a subset of the collection, the way --interview names a few)
 
 $ toolkit summarize annotate
   re-render the review page from the existing deliverable
